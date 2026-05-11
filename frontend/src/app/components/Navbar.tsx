@@ -22,7 +22,6 @@ export default function Navbar() {
         <div className="hidden md:flex items-center gap-6">
           <Link href="/indexes" className="text-sm text-white/60 hover:text-white transition-colors">Indexes</Link>
           <a href="/#how-it-works" onClick={(e) => { e.preventDefault(); window.location.assign(window.location.origin + '/#how-it-works'); }} className="text-sm text-white/60 hover:text-white transition-colors cursor-pointer">How it Works</a>
-          <a href="/#pricing" onClick={(e) => { e.preventDefault(); window.location.assign(window.location.origin + '/#pricing'); }} className="text-sm text-white/60 hover:text-white transition-colors cursor-pointer">Pricing</a>
         </div>
 
         {/* CTAs */}
@@ -44,7 +43,6 @@ export default function Navbar() {
         <div className="md:hidden border-t border-brand-border bg-black px-4 py-4 flex flex-col gap-4">
           <Link href="/indexes" className="text-sm text-white/60 hover:text-white" onClick={() => setOpen(false)}>Indexes</Link>
           <a href="/#how-it-works" className="text-sm text-white/60 hover:text-white" onClick={() => setOpen(false)}>How it Works</a>
-          <a href="/#pricing" className="text-sm text-white/60 hover:text-white" onClick={() => setOpen(false)}>Pricing</a>
           <Link href="/dashboard" className="text-sm text-center text-white/60 border border-white/10 rounded-lg px-4 py-2" onClick={() => setOpen(false)}>Dashboard</Link>
           <div className="flex justify-center">
             <ConnectButton accountStatus="full" chainStatus="none" showBalance={false} />

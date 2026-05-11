@@ -185,50 +185,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── Pricing ───────────────────────────────────────────────────────── */}
-      <section id="pricing" className="max-w-4xl mx-auto px-4 pb-24">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl font-bold text-white mb-3">Simple, transparent pricing</h2>
-          <p className="text-white/40">No hidden fees. No lock-in. Pay only for what you use.</p>
-        </div>
-        <div className="grid md:grid-cols-2 gap-6">
-          <div className="bg-brand-card border border-white/5 rounded-2xl p-6">
-            <p className="text-sm text-white/40 mb-1">Free</p>
-            <p className="text-4xl font-bold text-white mb-1">$0</p>
-            <p className="text-sm text-white/30 mb-6">+ 0.75% annual management fee on AUM</p>
-            <ul className="space-y-3 text-sm text-white/60">
-              {["Access to 1 index (read-only)", "On-chain dashboard", "Weekly Alpha Memo (preview)", "0.75% management fee"].map((f) => (
-                <li key={f} className="flex items-center gap-2">
-                  <span className="text-brand-orange">✓</span> {f}
-                </li>
-              ))}
-            </ul>
-            <Link href="/indexes" className="block w-full text-center mt-6 border border-white/10 hover:border-brand-orange/40 rounded-full px-4 py-3 text-sm text-white/60 hover:text-white transition-all">
-              Get Started Free
-            </Link>
-          </div>
-
-          <div className="bg-brand-card border border-brand-orange/30 rounded-2xl p-6 relative overflow-hidden">
-            <div className="absolute top-0 right-0 bg-brand-orange text-black text-xs font-bold px-3 py-1 rounded-bl-lg">
-              Most Popular
-            </div>
-            <p className="text-sm text-brand-orange mb-1">Pro</p>
-            <p className="text-4xl font-bold text-white mb-1">$29<span className="text-lg font-normal text-white/40">/mo</span></p>
-            <p className="text-sm text-white/30 mb-6">or $249/year (save 28%) · + 15% performance fee</p>
-            <ul className="space-y-3 text-sm text-white/60">
-              {["All indexes, full access", "Full weekly Alpha Memo", "Discord Pro channel + alerts", "Early access to new indexes", "Monthly founder Q&A"].map((f) => (
-                <li key={f} className="flex items-center gap-2">
-                  <span className="text-brand-orange">✓</span> {f}
-                </li>
-              ))}
-            </ul>
-            <Link href="/indexes" className="block w-full text-center mt-6 bg-brand-orange hover:bg-brand-orange-dark text-black font-semibold rounded-full px-4 py-3 text-sm transition-all">
-              Start Pro — $29/mo
-            </Link>
-          </div>
-        </div>
-      </section>
-
       {/* ── Footer ────────────────────────────────────────────────────────── */}
       <footer className="border-t border-white/5 py-10 px-4">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">

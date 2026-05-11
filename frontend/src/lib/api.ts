@@ -70,6 +70,15 @@ export const investApi = {
     const { data } = await api.get("/api/invest/fund-wallet");
     return data;
   },
+
+  withdraw: async (walletAddress: string, indexId: string, amountUsd: number) => {
+    const { data } = await api.post("/api/invest/withdraw", {
+      wallet_address: walletAddress,
+      index_id: indexId,
+      amount_usd: amountUsd,
+    });
+    return data;
+  },
 };
 
 // ─── Admin ────────────────────────────────────────────────────────────────────

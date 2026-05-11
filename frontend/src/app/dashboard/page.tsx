@@ -12,6 +12,7 @@ import Navbar from "../components/Navbar";
 import AgentActivityFeed from "../components/AgentActivityFeed";
 import MacroWidget from "../components/MacroWidget";
 import NetworkGuard from "../components/NetworkGuard";
+import WithdrawButton from "../components/WithdrawButton";
 import { investApi, agentApi, macroApi } from "@/lib/api";
 import type { AgentActivity, MacroData } from "@/types";
 
@@ -225,6 +226,14 @@ export default function DashboardPage() {
                               <p className="font-semibold text-white">{fmtUSD(p.high_water_mark_usd)}</p>
                               <p className="text-xs text-white/30">Fee: {fmtUSD(p.accrued_performance_fee_usd)}</p>
                             </div>
+                          </div>
+                          <div className="shrink-0 flex items-center">
+                            <WithdrawButton
+                              indexId={p.index_id}
+                              indexName={p.index_name}
+                              currentValueUsd={p.current_value_usd}
+                              navUsd={1}
+                            />
                           </div>
                         </div>
                       </div>
