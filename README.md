@@ -1,236 +1,228 @@
-# AlphaGrid
+# SoSoMon — AI-Managed Thematic Crypto Indexes
 
-**Thematic indexes. Managed by AI. Verified on-chain.**
+> Built on SoSoValue ValueChain · Powered by SoDEX · Managed by AI
 
-> One-person on-chain financial business built on SoSoValue ValueChain using 3 AI agents.
-
----
-
-## What is AlphaGrid?
-
-AlphaGrid runs AI-powered thematic crypto index strategies on SoSoValue's ValueChain platform. Three specialized AI agents handle all research, portfolio maintenance, and content generation — the founder reviews decisions in ~1.5 hours/week.
-
-**3 Active Indexes:**
-- AI × Crypto Infrastructure
-- Real World Assets Top 10
-- DePIN Momentum
-
-**3 AI Agents:**
-- **Scout** (GPT-4o) — Daily screening of 400+ tokens via CoinGecko + SoSoValue
-- **Rebalancer** (Claude Sonnet) — Weekly rebalancing + real-time risk overrides
-- **Narrator** (GPT-4o) — Weekly Alpha Memo + Twitter threads
-
-**Revenue:**
-- 0.75% annual management fee on AUM
-- $29/month Pro subscription (Alpha Memo + Discord alerts)
-- 15% performance fee above high-water mark
+**SoSoMon** is a one-person on-chain financial business that runs three autonomous AI agents to manage thematic crypto index funds. Users deposit USDC, the platform allocates capital across curated token baskets, and AI agents handle everything — screening, rebalancing, and reporting — automatically.
 
 ---
 
-## Project Structure
+## Live Demo
+
+- **App:** https://sosomon.ekem.com.br:8443
+- **API Docs:** https://sosomon.ekem.com.br:8443/api/docs
+- **Network:** Base (USDC deposits) + SoSoValue ValueChain (trading via SoDEX)
+
+---
+
+## The Problem
+
+Retail investors want exposure to thematic crypto sectors (AI, RWA, DePIN) but lack the time, tools, and expertise to manage a diversified portfolio. Existing solutions are either too centralized, too complex, or don't use real on-chain infrastructure.
+
+---
+
+## The Solution
+
+SoSoMon provides institutional-quality thematic index management powered by AI agents — fully automated, transparent, and built on SoSoValue ValueChain.
+
+Three indexes, three agents, zero manual intervention:
+
+| Index | Theme | Description |
+|---|---|---|
+| AI × Crypto Infrastructure | ai-crypto | AI-native protocols powering the next compute layer |
+| Real World Assets Top 10 | rwa | Leading tokenized RWA protocols bridging TradFi and DeFi |
+| DePIN Momentum | depin | Decentralized physical infrastructure with real-world traction |
+
+---
+
+## AI Agents
+
+### Scout — Daily Screening
+- Runs daily at 06:00 UTC
+- Screens 400+ tokens using SoSoValue SSI index constituents as universe
+- Uses SoSoValue sector flows, news, and macro context as inputs
+- Powered by Google Gemini — generates ranked inclusion lists with AI rationale
+- Saves proposals to DB for admin review
+
+### Rebalancer — Portfolio Maintenance
+- Runs every Monday at 08:00 UTC + drift check every 4 hours
+- Monitors portfolio drift against target weights
+- Reads macro sentiment score (derived from SoSoValue real data)
+- Triggers risk overrides: sentiment < 25 → 30% USDC buffer; < 15 → 50% buffer
+- Executes trades on SoDEX via EIP-712 signed API calls
+
+### Narrator — Weekly Content
+- Runs every Sunday at 18:00 UTC
+- Generates weekly Alpha Memo using real SoSoValue data:
+  - BTC/ETH ETF flows
+  - Macro calendar (CPI, NFP, FOMC)
+  - Hot news and sector sentiment
+  - Portfolio performance vs benchmark
+
+---
+
+## SoSoValue Integration
+
+SoSoMon uses the SoSoValue API throughout the entire decision pipeline:
+
+| Endpoint | Usage |
+|---|---|
+| `/currencies/sector-spotlight` | 24h sector performance → sentiment score |
+| `/indices` + `/indices/{ticker}` | SSI index constituents as token universe for Scout |
+| `/etfs/summary-history` | BTC/ETH ETF flow data for macro context |
+| `/news/hot` | Market news for Scout and Narrator context |
+| `/macro/events` | Macro calendar (CPI, NFP, FOMC) for Narrator |
+
+**Sentiment Score** is derived in real-time from sector spotlight 24h change averages + ETF flow adjustments — giving a proprietary 0-100 score that drives agent risk decisions.
+
+---
+
+## SoDEX Integration
+
+SoSoMon uses the SoDEX Spot API for all trading operations:
+
+| Feature | Endpoint |
+|---|---|
+| Market data | `GET /markets/symbols`, `/markets/tickers`, `/markets/{sym}/klines` |
+| Portfolio | `GET /accounts/{addr}/balances`, `/accounts/{addr}/trades` |
+| Trading | `POST /trade/orders/batch` (EIP-712 signed) |
+| Cancel | `DELETE /trade/orders/batch` (EIP-712 signed) |
+
+**Authentication:** EIP-712 `ExchangeAction` typed data — chainId 286623 (ValueChain mainnet), nonce = Unix timestamp ms, `0x01` signature prefix.
+
+**Fund Wallet:** Publicly visible on Base network — accepts USDC deposits from investors.
+
+---
+
+## Architecture
 
 ```
-sosovalue-business/
-├── frontend/               # Next.js 14 app
-│   └── src/
-│       ├── app/
-│       │   ├── page.tsx                    # Landing page
-│       │   ├── indexes/page.tsx            # All indexes list
-│       │   ├── indexes/[slug]/page.tsx     # Index detail
-│       │   ├── dashboard/page.tsx          # Subscriber dashboard
-│       │   └── components/
-│       │       ├── Navbar.tsx
-│       │       ├── IndexCard.tsx
-│       │       ├── AgentActivityFeed.tsx
-│       │       └── MacroWidget.tsx
-│       ├── lib/
-│       │   ├── api.ts                      # API client
-│       │   └── utils.ts                    # Helpers
-│       └── types/index.ts                  # TypeScript types
-│
-├── backend/                # Python FastAPI
-│   ├── main.py             # App entry point
-│   ├── database.py         # SQLAlchemy setup
-│   ├── models.py           # DB models
-│   ├── schemas.py          # Pydantic schemas
-│   ├── scheduler.py        # APScheduler (cron jobs)
-│   ├── agents/
-│   │   ├── scout.py        # Scout Agent (GPT-4o)
-│   │   ├── rebalancer.py   # Rebalancer Agent (Claude)
-│   │   └── narrator.py     # Narrator Agent (GPT-4o)
-│   ├── services/
-│   │   ├── coingecko.py    # CoinGecko Pro API
-│   │   └── sosovalue.py    # SoSoValue API
-│   └── api/
-│       ├── indexes.py      # GET /api/indexes
-│       ├── agents.py       # GET /api/agents/activity
-│       ├── macro.py        # GET /api/macro
-│       └── stats.py        # GET /api/stats
-│
-└── infra/
-    └── docker-compose.yml
+┌─────────────────────────────────────────────────────┐
+│                    SoSoMon                          │
+│                                                     │
+│  Next.js Frontend (React, wagmi, RainbowKit)        │
+│  ├── Home — live stats + index cards                │
+│  ├── Indexes — detail + constituents                │
+│  ├── Dashboard — portfolio + AI activity + macro    │
+│  └── Admin — wallet-signed auth (EIP-191)           │
+│                                                     │
+│  FastAPI Backend (Python)                           │
+│  ├── /api/indexes    — index data + constituents    │
+│  ├── /api/macro      — SoSoValue macro context      │
+│  ├── /api/agents     — AI activity log              │
+│  ├── /api/invest     — portfolio + fund wallet      │
+│  ├── /api/stats      — public platform stats        │
+│  └── /api/admin      — admin operations             │
+│                                                     │
+│  APScheduler                                        │
+│  ├── Scout      — daily 06:00 UTC                  │
+│  ├── Rebalancer — Mon 08:00 + drift every 4h       │
+│  ├── Narrator   — Sun 18:00 UTC                    │
+│  └── DepositMonitor — every 2 minutes              │
+│                                                     │
+│  SQLite DB                                          │
+│  ├── alpha_indexes         — index definitions      │
+│  ├── index_constituents    — token weights          │
+│  ├── rebalance_proposals   — agent proposals        │
+│  ├── subscribers           — investor wallets       │
+│  ├── subscriber_portfolios — positions              │
+│  └── agent_activity_logs   — full audit trail       │
+└─────────────────────────────────────────────────────┘
+         │                          │
+         ▼                          ▼
+  SoSoValue API              SoDEX Spot API
+  (market intelligence)      (trade execution)
+         │                          │
+         └──────────────────────────┘
+                      │
+                      ▼
+              SoSoValue ValueChain
+              (chainId: 286623)
 ```
+
+---
+
+## Security
+
+- **No private keys in code or config files** — all sensitive values encrypted with AES-256-GCM at rest
+- **Admin access** via EIP-191 wallet signature — no passwords stored anywhere
+- **API keys and private keys** stored encrypted — never in source code, logs, or version control
+- **Fund wallet** is a dedicated SoDEX API key account — separate from the operator master wallet
+- **Deposits** detected automatically via `eth_getLogs` on Base — no user action needed after transfer
+- **Open source** — full code on GitHub for public audit. `.env` files excluded via `.gitignore`
+
+---
+
+## Revenue Model
+
+- **0.75%/year** management fee on AUM
+- **15% performance fee** on profits above high-water mark (HWM)
+- Fees accrue automatically, tracked per subscriber portfolio
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js 14, TypeScript, Tailwind CSS, wagmi v2, RainbowKit v2 |
+| Backend | Python 3.11, FastAPI, SQLAlchemy, APScheduler |
+| Database | SQLite (upgradeable to PostgreSQL) |
+| AI | Google Gemini (agent reasoning) |
+| Blockchain | Base (USDC deposits), SoSoValue ValueChain (trading) |
+| Auth | EIP-191 (admin), EIP-712 (SoDEX trading) |
+| Infra | Ubuntu 24.04, Nginx, PM2, Let's Encrypt SSL |
 
 ---
 
 ## Setup
 
 ### Prerequisites
-
-- Node.js 18+
 - Python 3.11+
-- API Keys: OpenAI, Anthropic, CoinGecko Pro, SoSoValue
+- Node.js 18+
+- SoSoValue API key
+- SoDEX API key (from sodex.com/apikeys)
+- Google Gemini API key
 
 ### Backend
 
 ```bash
 cd backend
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-
-# Configure environment
 cp .env.example .env
-# Edit .env with your API keys
-
-# Start server
-uvicorn main:app --reload --port 8000
+# Fill in your API keys — never commit .env
+python -m uvicorn main:app --host 0.0.0.0 --port 8000
 ```
-
-API docs available at: http://localhost:8000/docs
 
 ### Frontend
 
 ```bash
 cd frontend
 npm install
-
-# Configure environment
 cp .env.local.example .env.local
-# Edit .env.local
-
-npm run dev
+# Set NEXT_PUBLIC_API_URL
+npm run build
+npm start
 ```
 
-App available at: http://localhost:3000
+### Environment Variables
 
-### Docker (both services)
+All secrets are set in `backend/.env` — see `backend/.env.example` for the list of required keys. **Never commit `.env` files.**
 
-```bash
-cd infra
-cp ../backend/.env.example ../backend/.env
-# Edit .env with your API keys
-docker-compose up --build
-```
+Private keys are stored encrypted via AES-256-GCM. Use `backend/utils/crypto.py` to encrypt before storing. The `MASTER_ENCRYPTION_KEY` and all API keys must be set only in the server environment — never hardcoded.
 
 ---
 
-## Agent Schedule
+## Buildathon
 
-| Agent | Schedule | Trigger |
-|---|---|---|
-| Scout | Daily 06:00 UTC | Cron |
-| Rebalancer | Monday 08:00 UTC | Cron (weekly) |
-| Rebalancer | Every 4 hours | Drift check |
-| Narrator | Sunday 18:00 UTC | Cron |
+Built for the **SoDEX × SoSoValue Buildathon** — Wave 1 submission.
 
-**After each Rebalancer run:** founder receives email with proposal. Review takes ~15 min. Approve → executes on ValueChain.
-
-**After each Narrator run:** content files saved to `backend/generated_content/`. Founder reviews and posts to Twitter/X + Substack. Takes ~15 min.
+- SoSoValue API used throughout the agent decision pipeline
+- SoDEX Spot API used for all trade execution
+- Deployed on SoSoValue ValueChain mainnet (chainId 286623)
+- Fund wallet on Base network accepting USDC deposits
 
 ---
 
-## API Reference
+## License
 
-| Endpoint | Description |
-|---|---|
-| `GET /api/indexes` | List all active indexes |
-| `GET /api/indexes/{slug}` | Index detail with constituents |
-| `GET /api/agents/activity` | Agent activity log |
-| `GET /api/macro` | SoSoValue sentiment + sector flows |
-| `GET /api/stats` | Public stats (AUM, subscribers, etc.) |
-| `GET /health` | Health check |
-
----
-
-## Decision Logic
-
-### Scout Inclusion Criteria (all must pass)
-- Market cap > $50M
-- 24h volume > $500K
-- 90-day price history on CoinGecko
-- Matches thematic category per SoSoValue classification
-- No known exploit in past 12 months
-
-### Rebalancer Weight Logic
-- Base: equal weight across 10 tokens
-- +20% boost if 30d price change > 0 (positive momentum)
-- -20% reduction if TVL declining > 15% over 30 days
-- Cap: no single token > 25%
-- Stablecoin buffer: inversely correlated with SoSoValue sentiment score
-
-### Risk Override Triggers (automatic)
-- Any token loses > 40% in 7 days → immediate ejection
-- Sentiment score < 15 → all indexes go to 30% stablecoin allocation
-
----
-
-## Revenue Model
-
-| Stream | Rate | At $5M AUM |
-|---|---|---|
-| Management fee | 0.75%/year | $37,500/year |
-| Pro subscriptions | $29/month | $11,600/month (400 subs) |
-| Performance fee | 15% of profits above HWM | $37,500/quarter (20% gain) |
-| **Total Year 1** | | **~$175,000/year** |
-
----
-
-## Tech Stack
-
-| Layer | Tech | Cost/Month |
-|---|---|---|
-| Frontend | Next.js 14 + Tailwind CSS | Free (Vercel) |
-| Backend | Python + FastAPI | $20 (Railway) |
-| AI (Scout/Narrator) | OpenAI GPT-4o | ~$100 |
-| AI (Rebalancer) | Anthropic Claude Sonnet | ~$50 |
-| Token Data | CoinGecko Pro API | $129 |
-| On-chain | SoSoValue ValueChain | Per protocol |
-| Payments | Stripe | 2.9% per txn |
-| Email | ConvertKit | $29 |
-| Community | Discord | Free |
-| Analytics | Dune Analytics | Free |
-| **Total** | | **~$380/month** |
-
-Break-even: **14 Pro subscribers**.
-
----
-
-## Roadmap
-
-**MVP (Month 1)**
-- [x] 3 indexes live on ValueChain
-- [x] Scout + Rebalancer + Narrator agents
-- [x] Landing page + index detail pages
-- [x] Subscriber dashboard
-- [ ] Stripe subscription integration
-- [ ] Wallet connect + index token deposit
-
-**Phase 2 (Month 2-3)**
-- [ ] 5 active indexes
-- [ ] Dune Analytics public dashboard
-- [ ] ConvertKit email automation
-- [ ] Referral system (Rewardful)
-- [ ] Twitter/X bot for auto-posting after review
-
-**Phase 3 (Month 4-6)**
-- [ ] $GRID governance token (at $2M AUM milestone)
-- [ ] SBT loyalty NFTs (90-day streak)
-- [ ] Mobile-responsive dashboard
-- [ ] Institutional API access tier
-
----
-
-*Built for the SoSoValue ValueChain Hackathon · AlphaGrid v0.1*
-
-*Not financial advice. Past performance does not guarantee future results.*
+MIT — open source for public audit and community contribution.
