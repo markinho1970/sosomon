@@ -1,0 +1,29 @@
+version: "3.9"
+
+services:
+  backend:
+    build: ../backend
+    container_name: alphagrid-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../backend/.env
+    volumes:
+      - ../backend:/app
+      - alphagrid-db:/app/data
+    restart: unless-stopped
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build: ../frontend
+    container_name: alphagrid-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  alphagrid-db:
