@@ -58,25 +58,50 @@ Three indexes, three agents, zero manual intervention:
   - Hot news and sector sentiment
   - Portfolio performance vs benchmark
 
+### Deposit Monitor — On-Chain Settlement (Wave 2)
+- Runs every 2 minutes via APScheduler + AsyncIO on two independent threads (Mainnet + Testnet)
+- Polls `eth_getLogs` on Base Mainnet (8453) and Base Sepolia (84532) for USDC `Transfer` events to the fund wallet
+- On confirmed deposit: validates amount, attributes to investor portfolio, allocates index tokens at current NAV, writes `AgentActivityLog` entry
+- Deposits below $5 minimum: triggers `refund_executor` which builds and broadcasts a USDC transfer back to sender — refund TX hash stored and shown to investor
+- All events (deposits, refunds, unattributed transfers) recorded in `agent_activity_logs` with full metadata (tx hash, amount, wallet, network, index)
+
+---
+
+## On-Chain Addresses
+
+| Resource | Network | Address |
+|---|---|---|
+| Fund Wallet | Base Mainnet + Base Sepolia | `0x935b2f2E58Bc0D8111062D615318e2aCb11F1D0b` |
+| USDC Contract | Base Mainnet (8453) | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
+| USDC Contract | Base Sepolia (84532) | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
+
+**Verify on Basescan:**
+- Mainnet: https://basescan.org/address/0x935b2f2E58Bc0D8111062D615318e2aCb11F1D0b
+- Testnet: https://sepolia.basescan.org/address/0x935b2f2E58Bc0D8111062D615318e2aCb11F1D0b
+
 ---
 
 ## SoSoValue Integration
+
+**Base URL:** `https://openapi.sosovalue.com/openapi/v1`
 
 SoSoMon uses the SoSoValue API throughout the entire decision pipeline:
 
 | Endpoint | Usage |
 |---|---|
-| `/currencies/sector-spotlight` | 24h sector performance → sentiment score |
+| `/currencies/sector-spotlight` | 24h sector performance → proprietary sentiment score (0-100) |
 | `/indices` + `/indices/{ticker}` | SSI index constituents as token universe for Scout |
 | `/etfs/summary-history` | BTC/ETH ETF flow data for macro context |
 | `/news/hot` | Market news for Scout and Narrator context |
 | `/macro/events` | Macro calendar (CPI, NFP, FOMC) for Narrator |
 
-**Sentiment Score** is derived in real-time from sector spotlight 24h change averages + ETF flow adjustments — giving a proprietary 0-100 score that drives agent risk decisions.
+**Sentiment Score** is derived in real-time from sector spotlight 24h change averages + ETF flow adjustments — giving a proprietary 0-100 score that drives all agent risk decisions (sentiment < 25 → 30% USDC buffer; < 15 → 50% buffer).
 
 ---
 
 ## SoDEX Integration
+
+**Base URL:** `https://mainnet-gw.sodex.dev/api/v1/spot`
 
 SoSoMon uses the SoDEX Spot API for all trading operations:
 
@@ -89,7 +114,7 @@ SoSoMon uses the SoDEX Spot API for all trading operations:
 
 **Authentication:** EIP-712 `ExchangeAction` typed data — chainId 286623 (ValueChain mainnet), nonce = Unix timestamp ms, `0x01` signature prefix.
 
-**Fund Wallet:** Publicly visible on Base network — accepts USDC deposits from investors.
+**Fund Wallet:** `0x935b2f2E58Bc0D8111062D615318e2aCb11F1D0b` — publicly auditable on Base network.
 
 ---
 
