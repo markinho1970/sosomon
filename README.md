@@ -103,6 +103,8 @@ SoSoMon uses the SoDEX Spot API for all trading operations:
 │  ├── Home — live stats + index cards                │
 │  ├── Indexes — detail + constituents                │
 │  ├── Dashboard — portfolio + AI activity + macro    │
+│  ├── Transparency — rebalance history + deposits    │
+│  ├── What's New — API integration showcase          │
 │  └── Admin — wallet-signed auth (EIP-191)           │
 │                                                     │
 │  FastAPI Backend (Python)                           │
@@ -135,8 +137,8 @@ SoSoMon uses the SoDEX Spot API for all trading operations:
          └──────────────────────────┘
                       │
                       ▼
-              SoSoValue ValueChain
-              (chainId: 286623)
+              Base Mainnet (8453) + Base Sepolia (84532)
+              SoSoValue ValueChain (chainId: 286623)
 ```
 
 ---
@@ -212,14 +214,54 @@ Private keys are stored encrypted via AES-256-GCM. Use `backend/utils/crypto.py`
 
 ---
 
+## What's New — Wave 2
+
+### Real On-Chain Deposits & Auto-Refunds
+- `deposit_monitor` service polls `eth_getLogs` every 2 minutes on both Base Mainnet (8453) and Base Sepolia (84532)
+- Incoming USDC transfers to the fund wallet are detected automatically and credited to the investor's portfolio with NAV-based token allocation
+- Deposits below the $5 minimum are automatically refunded to the originating wallet — refund TX hash stored and displayed to the investor
+- Three real testnet transactions confirmed on Base Sepolia during Wave 2: AI×Crypto ($5), RWA ($5), DePIN ($5) — AUM reached $14.59
+
+### Dual Network Architecture
+- Testnet (Base Sepolia, orange banner) and Mainnet (Base, green toggle) run as fully independent environments
+- All state — portfolios, deposits, NAV, activity logs — is isolated per network
+- Single toggle switches context with no data leakage between environments
+
+### Investor Dashboard
+- Real-time portfolio value, P&L, 30-day return
+- HWM-based performance fee tracker (15% above high-water mark)
+- NAV chart with synthetic daily series anchored to real inception/current NAV
+- Full deposit history with ISO timestamps rendered in the viewer's local timezone
+- AI Activity Feed: deposit, refund, and withdrawal events translated in real time on language switch
+
+### Transparency Page
+- Live rebalance history, constituent allocation breakdown, AI rationale per token
+- Investor deposit timeline — all sourced from real on-chain and backend data, no mocks
+
+### What's New Page
+- Dedicated section showcasing SoSoValue API and SoDEX API integrations with function signatures — available in all 7 languages
+
+### Internationalization (7 Languages)
+- Full i18n coverage across all pages: English, Portuguese BR, Chinese, Japanese, Hindi, Indonesian, Korean
+- All Wave 2 features fully translated — language switch is instant, no page reload
+
+### Admin Panel
+- Fund wallet live balance (ETH + USDC) per network
+- Full movement history (deposits, refunds, withdrawals, manual credits) with expandable TX details and Basescan links
+
+---
+
 ## Buildathon
 
-Built for the **SoDEX × SoSoValue Buildathon** — Wave 1 submission.
+Built for the **SoDEX × SoSoValue Buildathon** — Wave 2 submission.
 
 - SoSoValue API used throughout the agent decision pipeline
 - SoDEX Spot API used for all trade execution
+- Real on-chain deposits and auto-refunds on Base Mainnet + Base Sepolia
 - Deployed on SoSoValue ValueChain mainnet (chainId 286623)
 - Fund wallet on Base network accepting USDC deposits
+
+> Wave 1 code preserved in the [`wave1`](https://github.com/markinho1970/sosomon/tree/wave1) branch.
 
 ---
 

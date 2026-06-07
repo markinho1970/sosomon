@@ -7,7 +7,9 @@ import type {
   ApiResponse,
 } from "@/types";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// Empty string = relative URLs → hits Next.js rewrite proxy (/api/* → backend)
+// Set NEXT_PUBLIC_API_URL only if frontend and backend are on different origins
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -18,13 +20,13 @@ const api = axios.create({
 // ─── Indexes ──────────────────────────────────────────────────────────────────
 
 export const indexApi = {
-  getAll: async (): Promise<AlphaIndex[]> => {
-    const { data } = await api.get<ApiResponse<AlphaIndex[]>>("/api/indexes");
+  getAll: async (networkMode: "mainnet" | "testnet" = "mainnet"): Promise<AlphaIndex[]> => {
+    const { data } = await api.get<ApiResponse<AlphaIndex[]>>(`/api/indexes?network_mode=${networkMode}`);
     return data.data;
   },
 
-  getBySlug: async (slug: string): Promise<AlphaIndex> => {
-    const { data } = await api.get<ApiResponse<AlphaIndex>>(`/api/indexes/${slug}`);
+  getBySlug: async (slug: string, networkMode: "mainnet" | "testnet" = "mainnet"): Promise<AlphaIndex> => {
+    const { data } = await api.get<ApiResponse<AlphaIndex>>(`/api/indexes/${slug}?network_mode=${networkMode}`);
     return data.data;
   },
 };
@@ -52,8 +54,8 @@ export const macroApi = {
 // ─── Portfolio / Invest ───────────────────────────────────────────────────────
 
 export const investApi = {
-  getPortfolio: async (walletAddress: string) => {
-    const { data } = await api.get(`/api/invest/portfolio/${walletAddress}`);
+  getPortfolio: async (walletAddress: string, networkMode: "mainnet" | "testnet" = "mainnet") => {
+    const { data } = await api.get(`/api/invest/portfolio/${walletAddress}?network_mode=${networkMode}`);
     return data;
   },
 
@@ -66,8 +68,18 @@ export const investApi = {
     return data;
   },
 
-  getFundWallet: async (): Promise<{ address: string | null; usdc_balance: number | null; configured: boolean }> => {
-    const { data } = await api.get("/api/invest/fund-wallet");
+  getRefunds: async (walletAddress: string, networkMode: "mainnet" | "testnet" = "mainnet") => {
+    const { data } = await api.get(`/api/invest/refunds/${walletAddress}?network_mode=${networkMode}`);
+    return data.refunds as Array<{amount_usd: number; minimum_usd: number; tx_hash: string; timestamp: string; description: string}>;
+  },
+
+  getFundWallet: async (mode: "mainnet" | "testnet" = "mainnet"): Promise<{ address: string | null; usdc_balance: number | null; configured: boolean; network_mode: string }> => {
+    const { data } = await api.get(`/api/invest/fund-wallet?mode=${mode}`);
+    return data;
+  },
+
+  getNetworkConfig: async (mode: "mainnet" | "testnet" = "mainnet") => {
+    const { data } = await api.get(`/api/invest/network-config?mode=${mode}`);
     return data;
   },
 
@@ -114,9 +126,77 @@ export const adminApi = {
     return data;
   },
 
-  getStats: async (address: string, message: string, signature: string) => {
-    const { data } = await api.get("/api/admin/stats", adminHeaders(address, message, signature));
+  getStats: async (address: string, message: string, signature: string, networkMode = "mainnet") => {
+    const { data } = await api.get(`/api/admin/stats?network_mode=${networkMode}`, adminHeaders(address, message, signature));
     return data.data;
+  },
+
+  runRebalancer: async (address: string, message: string, signature: string, dryRun = true) => {
+    const { data } = await api.post(
+      "/api/admin/run-rebalancer",
+      { dry_run: dryRun },
+      adminHeaders(address, message, signature)
+    );
+    return data;
+  },
+
+  executeProposal: async (
+    proposalId: number,
+    address: string,
+    message: string,
+    signature: string,
+    dryRun = false
+  ) => {
+    const { data } = await api.post(
+      `/api/admin/proposals/${proposalId}/execute`,
+      { dry_run: dryRun },
+      adminHeaders(address, message, signature)
+    );
+    return data;
+  },
+
+  getPortfolio: async (address: string, message: string, signature: string) => {
+    const { data } = await api.get("/api/admin/portfolio", adminHeaders(address, message, signature));
+    return data.data;
+  },
+
+  getTrades: async (address: string, message: string, signature: string, limit = 50) => {
+    const { data } = await api.get(
+      `/api/admin/trades?limit=${limit}`,
+      adminHeaders(address, message, signature)
+    );
+    return data.data;
+  },
+  getReport: async (address: string, message: string, signature: string) => {
+    const { data } = await api.get("/api/admin/report", adminHeaders(address, message, signature));
+    return data.data;
+  },
+
+  getFundWallet: async (address: string, message: string, signature: string, networkMode = "mainnet") => {
+    const { data } = await api.get(
+      `/api/admin/fund-wallet?network_mode=${networkMode}`,
+      adminHeaders(address, message, signature)
+    );
+    return data.data;
+  },
+
+  getMovements: async (address: string, message: string, signature: string, networkMode = "mainnet", limit = 50) => {
+    const { data } = await api.get(
+      `/api/admin/movements?network_mode=${networkMode}&limit=${limit}`,
+      adminHeaders(address, message, signature)
+    );
+    return data;
+  },
+};
+
+// ─── Performance ─────────────────────────────────────────────────────────────
+
+export const performanceApi = {
+  get: async (indexId: string, days = 90, walletAddress?: string) => {
+    const params = new URLSearchParams({ days: String(days) });
+    if (walletAddress) params.append("wallet_address", walletAddress);
+    const { data } = await api.get(`/api/performance/${indexId}?${params}`);
+    return data;
   },
 };
 
@@ -142,8 +222,8 @@ export interface PublicStats {
 }
 
 export const statsApi = {
-  get: async (): Promise<PublicStats> => {
-    const { data } = await api.get<ApiResponse<PublicStats>>("/api/stats");
+  get: async (networkMode: "mainnet" | "testnet" = "mainnet"): Promise<PublicStats> => {
+    const { data } = await api.get<ApiResponse<PublicStats>>(`/api/stats?network_mode=${networkMode}`);
     return data.data;
   },
 };

@@ -5,6 +5,9 @@ import Link from "next/link";
 import { ArrowRight, Bot, Zap, RefreshCw } from "lucide-react";
 import Navbar from "./components/Navbar";
 import { indexApi, statsApi } from "@/lib/api";
+import { useLang } from "@/lib/LanguageContext";
+import { useNetworkMode } from "@/lib/NetworkModeContext";
+import { INDEX_I18N } from "@/lib/i18n/translations";
 import type { AlphaIndex } from "@/types";
 
 const THEME_COLORS: Record<string, string> = {
@@ -12,17 +15,13 @@ const THEME_COLORS: Record<string, string> = {
   rwa: "from-orange-500/10 to-transparent border-orange-400/20",
   depin: "from-amber-600/10 to-transparent border-amber-500/20",
 };
-
 const THEME_BADGE: Record<string, string> = {
   "ai-crypto": "bg-orange-500/10 text-orange-400 border border-orange-500/20",
   rwa: "bg-orange-400/10 text-orange-300 border border-orange-400/20",
   depin: "bg-amber-500/10 text-amber-400 border border-amber-500/20",
 };
-
 const THEME_LABELS: Record<string, string> = {
-  "ai-crypto": "AI × Crypto",
-  rwa: "Real World Assets",
-  depin: "DePIN",
+  "ai-crypto": "AI × Crypto", rwa: "Real World Assets", depin: "DePIN",
 };
 
 function formatUSD(v: number) {
@@ -32,73 +31,65 @@ function formatUSD(v: number) {
 }
 
 export default function Home() {
+  const { t, lang } = useLang();
+  const { networkMode } = useNetworkMode();
   const [indexes, setIndexes] = useState<AlphaIndex[]>([]);
-  const [stats, setStats] = useState({
-    total_aum_usd: 0,
-    active_indexes: 0,
-    total_subscribers: 0,
-    avg_return_30d_pct: 0,
-  });
+  const [stats, setStats] = useState({ total_aum_usd: 0, active_indexes: 0, total_subscribers: 0, avg_return_30d_pct: 0 });
 
   useEffect(() => {
-    indexApi.getAll().then(setIndexes).catch(() => {});
-    statsApi.get().then(setStats).catch(() => {});
-  }, []);
+    indexApi.getAll(networkMode).then(setIndexes).catch(() => {});
+    statsApi.get(networkMode).then(setStats).catch(() => {});
+  }, [networkMode]);
+
+  const agents = [
+    { icon: <Bot size={24} className="text-brand-orange" />, name: "Scout",    roleKey: "home_scout_role",    descKey: "home_scout_desc" },
+    { icon: <RefreshCw size={24} className="text-brand-orange" />, name: "Rebalancer", roleKey: "home_rebal_role", descKey: "home_rebal_desc" },
+    { icon: <Zap size={24} className="text-brand-orange" />, name: "Narrator", roleKey: "home_narrator_role", descKey: "home_narrator_desc" },
+  ];
 
   return (
     <div className="min-h-screen bg-black text-white">
       <Navbar />
 
-      {/* ── Hero ─────────────────────────────────────────────────────────── */}
+      {/* Hero */}
       <section className="relative pt-32 pb-24 px-4 overflow-hidden">
-        <div
-          className="absolute inset-0 opacity-30"
-          style={{
-            backgroundImage: "linear-gradient(rgba(249,115,22,0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(249,115,22,0.07) 1px, transparent 1px)",
-            backgroundSize: "40px 40px",
-          }}
-        />
+        <div className="absolute inset-0 opacity-30" style={{ backgroundImage: "linear-gradient(rgba(249,115,22,0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(249,115,22,0.07) 1px, transparent 1px)", backgroundSize: "40px 40px" }} />
         <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full bg-brand-orange/5 blur-3xl pointer-events-none" />
 
         <div className="relative max-w-4xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-orange/10 border border-brand-orange/30 text-brand-orange text-xs font-medium mb-6">
             <span className="w-1.5 h-1.5 rounded-full bg-brand-orange animate-pulse" />
-            Built on SoSoValue ValueChain · Powered by SoDEX
+            {t("home_badge")}
           </div>
 
           <h1 className="text-5xl md:text-7xl font-bold text-white leading-tight tracking-tight mb-6">
-            Thematic indexes.
-            <br />
-            <span className="text-brand-orange">Managed by AI.</span>
-            <br />
-            Verified on-chain.
+            {t("home_h1a")}<br />
+            <span className="text-brand-orange">{t("home_h1b")}</span><br />
+            {t("home_h1c")}
           </h1>
 
           <p className="text-lg md:text-xl text-white/50 max-w-2xl mx-auto mb-10 leading-relaxed">
-            SoSoMon runs AI agents that screen, rebalance, and report on crypto thematic indexes —
-            institutional-quality portfolio management, fully automated on SoSoValue ValueChain.
+            {t("home_sub")}
           </p>
 
           <div className="flex flex-col sm:flex-row gap-3 justify-center mb-16">
             <Link href="/indexes" className="flex items-center justify-center gap-2 text-base px-8 py-4 bg-brand-orange hover:bg-brand-orange-dark text-black font-semibold rounded-full transition-all">
-              Explore Indexes
-              <ArrowRight size={18} />
+              {t("home_explore")} <ArrowRight size={18} />
             </Link>
             <Link href="#how-it-works" className="flex items-center justify-center gap-2 text-base px-8 py-4 border border-white/10 hover:border-brand-orange/40 rounded-full transition-all text-white/70 hover:text-white">
-              How it Works
+              {t("home_how")}
             </Link>
           </div>
 
-          {/* Live stats bar */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto">
             {[
-              { label: "Total AUM", value: formatUSD(stats.total_aum_usd) },
-              { label: "Active Indexes", value: stats.active_indexes.toString() },
-              { label: "Subscribers", value: stats.total_subscribers.toString() },
-              { label: "Avg 30d Return", value: stats.avg_return_30d_pct > 0 ? `+${stats.avg_return_30d_pct}%` : "—" },
+              { labelKey: "home_aum",     value: formatUSD(stats.total_aum_usd) },
+              { labelKey: "home_indexes", value: stats.active_indexes.toString() },
+              { labelKey: "home_subs",    value: stats.total_subscribers.toString() },
+              { labelKey: "home_avg30d",  value: stats.avg_return_30d_pct > 0 ? `+${stats.avg_return_30d_pct}%` : "—" },
             ].map((s) => (
-              <div key={s.label} className="bg-white/3 border border-white/5 rounded-xl p-4">
-                <p className="text-xs text-white/30 uppercase tracking-wider mb-1">{s.label}</p>
+              <div key={s.labelKey} className="bg-white/3 border border-white/5 rounded-xl p-4">
+                <p className="text-xs text-white/30 uppercase tracking-wider mb-1">{t(s.labelKey)}</p>
                 <p className="text-xl font-bold text-white">{s.value || "—"}</p>
               </div>
             ))}
@@ -106,15 +97,14 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── Index Cards ───────────────────────────────────────────────────── */}
+      {/* Index Cards */}
       <section className="max-w-7xl mx-auto px-4 pb-24">
         <div className="flex items-center justify-between mb-8">
-          <h2 className="text-2xl font-bold text-white">Active Indexes</h2>
+          <h2 className="text-2xl font-bold text-white">{t("home_active")}</h2>
           <Link href="/indexes" className="text-sm text-brand-orange hover:text-orange-400 flex items-center gap-1 transition-colors">
-            View all <ArrowRight size={14} />
+            {t("home_viewall")} <ArrowRight size={14} />
           </Link>
         </div>
-
         <div className="grid md:grid-cols-3 gap-4">
           {indexes.map((idx) => (
             <Link key={idx.id} href={`/indexes/${idx.id}`}>
@@ -122,11 +112,15 @@ export default function Home() {
                 <span className={`text-xs mb-3 inline-flex px-2 py-1 rounded-full ${THEME_BADGE[idx.theme] ?? "bg-white/10 text-white/60"}`}>
                   {THEME_LABELS[idx.theme] ?? idx.theme}
                 </span>
-                <h3 className="font-semibold text-white text-lg mb-2">{idx.name}</h3>
-                <p className="text-sm text-white/40 mb-4 leading-relaxed">{idx.description}</p>
+                <h3 className="font-semibold text-white text-lg mb-2">
+                  {INDEX_I18N[idx.slug ?? idx.id]?.[lang]?.name ?? idx.name}
+                </h3>
+                <p className="text-sm text-white/40 mb-4 leading-relaxed">
+                  {INDEX_I18N[idx.slug ?? idx.id]?.[lang]?.description ?? idx.description}
+                </p>
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-white/30 mb-0.5">AUM</p>
+                    <p className="text-xs text-white/30 mb-0.5">{t("idx_aum")}</p>
                     <p className="font-semibold text-white">{formatUSD(idx.aum_usd ?? 0)}</p>
                   </div>
                   <div className={`text-xl font-bold ${(idx.return_30d_pct ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
@@ -140,61 +134,34 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── How it Works ──────────────────────────────────────────────────── */}
+      {/* How it Works */}
       <section id="how-it-works" className="max-w-7xl mx-auto px-4 pb-24">
         <div className="text-center mb-12">
-          <h2 className="text-3xl font-bold text-white mb-3">One person. Three AI agents.</h2>
-          <p className="text-white/40 max-w-xl mx-auto">
-            SoSoMon runs entirely on AI agents operating on SoSoValue ValueChain. The agents handle everything.
-          </p>
+          <h2 className="text-3xl font-bold text-white mb-3">{t("home_hiw_title")}</h2>
+          <p className="text-white/40 max-w-xl mx-auto">{t("home_hiw_sub")}</p>
         </div>
-
         <div className="grid md:grid-cols-3 gap-6">
-          {[
-            {
-              icon: <Bot size={24} className="text-brand-orange" />,
-              bg: "bg-brand-orange/10 border-brand-orange/20",
-              agent: "Scout",
-              role: "Research & Screening",
-              description: "Scans 400+ tokens daily using SoSoValue data feeds and SoDEX market data. Outputs ranked inclusion lists with AI-written rationale.",
-            },
-            {
-              icon: <RefreshCw size={24} className="text-brand-orange" />,
-              bg: "bg-brand-orange/10 border-brand-orange/20",
-              agent: "Rebalancer",
-              role: "Portfolio Maintenance",
-              description: "Monitors drift, sentiment score, and liquidity. Proposes rebalancing weekly or when risk triggers are hit. Executes orders on SoDEX.",
-            },
-            {
-              icon: <Zap size={24} className="text-brand-orange" />,
-              bg: "bg-brand-orange/10 border-brand-orange/20",
-              agent: "Narrator",
-              role: "Content & Reports",
-              description: "Generates the weekly Alpha Memo, Twitter threads, and subscriber digests automatically from agent data. Full transparency, zero spin.",
-            },
-          ].map((item) => (
-            <div key={item.agent} className="bg-brand-card border border-white/5 rounded-2xl p-6">
-              <div className={`inline-flex p-3 rounded-xl border mb-4 ${item.bg}`}>
+          {agents.map((item) => (
+            <div key={item.name} className="bg-brand-card border border-white/5 rounded-2xl p-6">
+              <div className="inline-flex p-3 rounded-xl border mb-4 bg-brand-orange/10 border-brand-orange/20">
                 {item.icon}
               </div>
-              <p className="text-xs text-white/30 uppercase tracking-wider mb-1">{item.role}</p>
-              <h3 className="text-xl font-bold text-white mb-2">Agent: {item.agent}</h3>
-              <p className="text-sm text-white/50 leading-relaxed">{item.description}</p>
+              <p className="text-xs text-white/30 uppercase tracking-wider mb-1">{t(item.roleKey)}</p>
+              <h3 className="text-xl font-bold text-white mb-2">Agent: {item.name}</h3>
+              <p className="text-sm text-white/50 leading-relaxed">{t(item.descKey)}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* ── Footer ────────────────────────────────────────────────────────── */}
+      {/* Footer */}
       <footer className="border-t border-white/5 py-10 px-4">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <span className="font-extrabold text-white">SoSo<span className="text-brand-orange">Mon</span></span>
             <span className="text-white/20 text-xs">by SoSoValue ValueChain</span>
           </div>
-          <p className="text-xs text-white/20">
-            Not financial advice. Built on SoSoValue ValueChain. Powered by SoDEX. · © 2025 SoSoMon
-          </p>
+          <p className="text-xs text-white/20">{t("home_footer")} · © 2025 SoSoMon</p>
           <div className="flex gap-4 text-xs text-white/30">
             <a href="https://sodex.com" target="_blank" rel="noopener noreferrer" className="hover:text-brand-orange transition-colors">SoDEX</a>
             <a href="https://sosovalue.com" target="_blank" rel="noopener noreferrer" className="hover:text-brand-orange transition-colors">SoSoValue</a>

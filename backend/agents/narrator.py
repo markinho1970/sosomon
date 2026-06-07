@@ -13,7 +13,7 @@ import json
 from datetime import datetime, timedelta
 from typing import List, Dict
 from loguru import logger
-from google import genai
+from services.llm import generate
 
 from database import SessionLocal
 from models import AlphaIndex, AgentActivityLog, RebalanceProposal
@@ -168,11 +168,7 @@ Write a professional, data-driven Alpha Memo with these sections:
 Style: professional, data-first, zero hype, no emojis. Maximum 600 words. Tone: a hedge fund PM writing to sophisticated investors."""
 
     try:
-        response = await gemini_client.aio.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt,
-        )
-        return response.text
+        return await generate(prompt, max_tokens=800, temperature=0.0)
     except Exception as e:
         logger.error(f"Narrator Alpha Memo generation failed: {e}")
         return f"[NARRATOR ERROR: Alpha Memo generation failed — {e}]"
@@ -220,11 +216,7 @@ RULES:
 Output just the tweets, separated by blank lines."""
 
     try:
-        response = await gemini_client.aio.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt,
-        )
-        return response.text
+        return await generate(prompt, max_tokens=400, temperature=0.0)
     except Exception as e:
         logger.error(f"Narrator Twitter thread generation failed: {e}")
         return f"[NARRATOR ERROR: Thread generation failed — {e}]"
@@ -254,11 +246,7 @@ AlphaGrid Week [N] Scorecard
 Tone: clean, factual, no hype."""
 
     try:
-        response = await gemini_client.aio.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt,
-        )
-        return response.text
+        return await generate(prompt, max_tokens=200, temperature=0.0)
     except Exception as e:
         logger.error(f"Narrator scorecard tweet generation failed: {e}")
         return "[NARRATOR ERROR: Scorecard generation failed]"

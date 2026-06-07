@@ -8,10 +8,11 @@ import httpx
 from typing import Optional, Dict, Any, List
 from loguru import logger
 
-BASE_URL = "https://pro-api.coingecko.com/api/v3"
 API_KEY = os.getenv("COINGECKO_API_KEY", "")
+# Use Pro API if key is configured, otherwise free tier (sufficient for NAV updates)
+BASE_URL = "https://pro-api.coingecko.com/api/v3" if API_KEY else "https://api.coingecko.com/api/v3"
 
-HEADERS = {"x-cg-pro-api-key": API_KEY}
+HEADERS = {"x-cg-pro-api-key": API_KEY} if API_KEY else {}
 
 
 async def get_token_data(coingecko_id: str) -> Optional[Dict[str, Any]]:

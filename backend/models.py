@@ -102,6 +102,7 @@ class SubscriberPortfolio(Base):
     days_invested = Column(Integer, default=0)
     first_invested_at = Column(DateTime, default=datetime.utcnow)
     last_updated_at = Column(DateTime, default=datetime.utcnow)
+    network_mode = Column(String, default="mainnet")  # "mainnet" | "testnet"
 
     subscriber = relationship("Subscriber", back_populates="portfolios")
 
@@ -120,6 +121,34 @@ class ScoutReport(Base):
     raw_output = Column(Text)                        # full AI output for audit log
 
 
+class InvestmentIntent(Base):
+    """Registra a intenção de depósito: qual carteira vai depositar em qual índice.
+    deposit_monitor consulta esta tabela para creditar o índice correto."""
+    __tablename__ = "investment_intents"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    wallet_address = Column(String, nullable=False, index=True)
+    index_id = Column(String, ForeignKey("indexes.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True)
+    fulfilled = Column(Boolean, default=False)
+    network_mode = Column(String, default="mainnet")  # "mainnet" | "testnet"
+
+
+class InvestmentConsent(Base):
+    """Registro auditável da concordância do usuário com o termo de risco."""
+    __tablename__ = "investment_consents"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    wallet_address = Column(String, nullable=False, index=True)
+    index_id = Column(String, ForeignKey("indexes.id"), nullable=False)
+    terms_version = Column(String, nullable=False, default="v1.0")
+    signature = Column(Text, nullable=False)           # assinatura EIP-191 da carteira
+    signed_message = Column(Text, nullable=False)      # mensagem exata que foi assinada
+    signed_at = Column(DateTime, default=datetime.utcnow)
+    ip_hint = Column(String, nullable=True)            # opcional, para auditoria
+
+
 class RebalanceProposal(Base):
     __tablename__ = "rebalance_proposals"
 
@@ -128,7 +157,9 @@ class RebalanceProposal(Base):
     proposed_at = Column(DateTime, default=datetime.utcnow)
     approved_at = Column(DateTime, nullable=True)
     executed_at = Column(DateTime, nullable=True)
-    status = Column(String, default="pending")      # pending | approved | rejected | executed
-    trigger = Column(String)                        # "weekly" | "drift" | "risk_override"
+    status = Column(String, default="pending")      # pending | approved | rejected | executed | failed | dry_run
+    trigger = Column(String)                        # "weekly" | "drift" | "risk_override" | "manual"
     changes = Column(JSON, default=list)            # list of {symbol, old_weight, new_weight, action}
     ai_rationale = Column(Text)
+    execution_orders = Column(JSON, default=list)   # list of executed orders with IDs from SoDEX
+    execution_error = Column(Text, nullable=True)   # error message if execution failed

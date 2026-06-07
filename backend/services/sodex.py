@@ -146,11 +146,15 @@ async def get_balances() -> Dict[str, Any]:
                 params={"accountID": SODEX_ACCOUNT_ID},
             )
             r.raise_for_status()
-            data = r.json().get("data", [])
-            # Converte lista para dict keyed por coin symbol
-            if isinstance(data, list):
-                return {b.get("coin", b.get("id", "")): b for b in data}
-            return data
+            data = r.json().get("data", {})
+            # SoDEX retorna {"blockTime":..., "blockHeight":..., "balances":[...]}
+            if isinstance(data, dict) and "balances" in data:
+                balances_list = data["balances"]
+            elif isinstance(data, list):
+                balances_list = data
+            else:
+                balances_list = []
+            return {b.get("coin", b.get("id", "")): b for b in balances_list if isinstance(b, dict)}
     except Exception as e:
         logger.error(f"SoDEX get_balances: {e}")
         return {}

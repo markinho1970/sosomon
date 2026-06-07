@@ -41,7 +41,7 @@ export interface AlphaIndex {
 
 // ─── Agent Activity ───────────────────────────────────────────────────────────
 
-export type AgentType = "scout" | "rebalancer" | "narrator";
+export type AgentType = "scout" | "rebalancer" | "narrator" | "deposit_monitor";
 export type AgentActionType =
   | "inclusion"
   | "exclusion"
@@ -50,12 +50,18 @@ export type AgentActionType =
   | "risk_override"
   | "rebalance"
   | "no_action"
-  | "content_generated";
+  | "content_generated"
+  | "deposit_detected"
+  | "deposit_refunded"
+  | "deposit_unattributed"
+  | "withdrawal_executed"
+  | "manual_credit";
 
 export interface AgentActivity {
   id: string;
   agent: AgentType;
   action: AgentActionType;
+  index_id?: string;
   token_symbol?: string;
   description: string;
   timestamp: string;

@@ -14,6 +14,8 @@ from api.macro import router as macro_router
 from api.stats import router as stats_router
 from api.invest import router as invest_router
 from api.admin import router as admin_router
+from api.audit import router as audit_router
+from api.performance import router as performance_router
 from scheduler import start_scheduler, stop_scheduler
 
 
@@ -52,6 +54,8 @@ app.include_router(macro_router)
 app.include_router(stats_router)
 app.include_router(invest_router)
 app.include_router(admin_router)
+app.include_router(audit_router)
+app.include_router(performance_router)
 
 
 @app.get("/health")

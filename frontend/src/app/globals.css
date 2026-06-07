@@ -88,3 +88,8 @@ body {
     @apply text-xs text-red-400 font-medium;
   }
 }
+
+/* Testnet banner: adjust page top padding automatically */
+html[data-testnet="true"] main {
+  padding-top: 8rem !important;
+}

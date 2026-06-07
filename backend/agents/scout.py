@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime
 from typing import List, Dict, Any
 from loguru import logger
-from google import genai
+from services.llm import generate
 
 from database import SessionLocal
 from models import AlphaIndex, IndexConstituent, AgentActivityLog, ScoutReport
@@ -86,7 +86,7 @@ async def run_scout_for_index(index_id: str, theme: str, db):
 
     # 3. Notícias temáticas reais da SoSoValue
     theme_news = await sosovalue.get_news_for_theme(theme, limit=3)
-    news_summary = "; ".join([n.get("title", "") for n in theme_news[:3]]) if theme_news else ""
+    news_summary = "; ".join([n.get("title", "") or "" for n in theme_news[:3] if n]) if theme_news else ""
     if news_summary:
         logger.info(f"Scout: notícias {theme}: {news_summary[:120]}...")
 
@@ -258,11 +258,7 @@ Respond ONLY with a JSON array:
 ]"""
 
     try:
-        response = await gemini_client.aio.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt,
-        )
-        content = response.text
+        content = await generate(prompt, max_tokens=512, temperature=0.0)
         # Extract JSON array from response
         start = content.find("[")
         end = content.rfind("]") + 1

@@ -1,6 +1,7 @@
 "use client";
 
 import { getSentimentColor, getSentimentLabel } from "@/lib/utils";
+import { useLang } from "@/lib/LanguageContext";
 import type { MacroData } from "@/types";
 
 interface MacroWidgetProps {
@@ -20,6 +21,7 @@ const STANCE_LABELS = {
 };
 
 export default function MacroWidget({ macro }: MacroWidgetProps) {
+  const { t } = useLang();
   const sentimentColor = getSentimentColor(macro.sosovalue_sentiment_score);
   const sentimentLabel = getSentimentLabel(macro.sosovalue_sentiment_score);
   const stanceStyle = STANCE_STYLES[macro.macro_stance];
@@ -28,7 +30,7 @@ export default function MacroWidget({ macro }: MacroWidgetProps) {
     <div className="space-y-4">
       {/* Sentiment Score */}
       <div>
-        <p className="stat-label mb-2">SoSoValue Sentiment</p>
+        <p className="stat-label mb-2">{t("macro_sentiment")}</p>
         <div className="flex items-end gap-3">
           <span className={`text-4xl font-bold ${sentimentColor}`}>
             {macro.sosovalue_sentiment_score}
@@ -37,7 +39,6 @@ export default function MacroWidget({ macro }: MacroWidgetProps) {
             {sentimentLabel}
           </span>
         </div>
-        {/* Bar */}
         <div className="mt-2 h-1.5 bg-white/5 rounded-full overflow-hidden">
           <div
             className="h-full rounded-full bg-gradient-to-r from-red-500 via-yellow-400 to-green-400 opacity-80"
@@ -45,14 +46,14 @@ export default function MacroWidget({ macro }: MacroWidgetProps) {
           />
         </div>
         <div className="flex justify-between text-xs text-white/20 mt-1">
-          <span>Fear</span>
-          <span>Greed</span>
+          <span>{t("macro_fear")}</span>
+          <span>{t("macro_greed")}</span>
         </div>
       </div>
 
       {/* Macro Stance */}
       <div>
-        <p className="stat-label mb-2">AI Macro Stance</p>
+        <p className="stat-label mb-2">{t("macro_stance")}</p>
         <div className="flex items-center gap-2">
           <span className={`badge border font-medium text-sm px-3 py-1 ${stanceStyle}`}>
             {STANCE_LABELS[macro.macro_stance]}
@@ -65,7 +66,7 @@ export default function MacroWidget({ macro }: MacroWidgetProps) {
 
       {/* Sector Flows */}
       <div>
-        <p className="stat-label mb-2">Sector Flows (7d)</p>
+        <p className="stat-label mb-2">{t("macro_flows")}</p>
         <div className="space-y-1.5">
           {macro.sector_flows.map((s) => (
             <div key={s.sector} className="flex items-center justify-between">

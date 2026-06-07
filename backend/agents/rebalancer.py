@@ -16,7 +16,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from loguru import logger
-from google import genai
+from services.llm import generate
 
 from database import SessionLocal
 from models import AlphaIndex, IndexConstituent, AgentActivityLog, ScoutReport, RebalanceProposal
@@ -28,7 +28,6 @@ from services.sodex import (
     execute_rebalance_trades,
 )
 
-gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 DRIFT_THRESHOLD = 5.0        # % deviation from target weight that triggers rebalance
 EJECTION_THRESHOLD = -40.0   # % 7-day loss that triggers emergency ejection
@@ -216,12 +215,8 @@ Generate a rebalancing proposal. Respond ONLY with valid JSON:
 }}"""
 
     try:
-        response = await gemini_client.aio.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt,
-        )
-        content = response.text
-        # Extract JSON
+        content = await generate(prompt, max_tokens=1024, temperature=0.0)
+        # Extract JSON from model output
         start = content.find("{")
         end = content.rfind("}") + 1
         parsed = json.loads(content[start:end])
@@ -317,6 +312,9 @@ async def apply_proposal(proposal_id: int, db, dry_run: bool = False):
 
         logger.info(f"Rebalancer: {len(executed_orders)} ordens {'simuladas' if dry_run else 'executadas'} no SoDEX")
 
+        # Salva as ordens executadas (com order IDs) no banco como evidência
+        proposal.execution_orders = executed_orders
+
         # 4. Atualiza pesos dos constituents no banco
         for change in proposal.changes:
             constituent = db.query(IndexConstituent).filter(
@@ -343,5 +341,6 @@ async def apply_proposal(proposal_id: int, db, dry_run: bool = False):
     except Exception as e:
         logger.error(f"Proposal execution failed: {e}")
         proposal.status = "failed"
+        proposal.execution_error = str(e)
         db.commit()
         raise

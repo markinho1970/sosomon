@@ -13,7 +13,10 @@ import AgentActivityFeed from "../components/AgentActivityFeed";
 import MacroWidget from "../components/MacroWidget";
 import NetworkGuard from "../components/NetworkGuard";
 import WithdrawButton from "../components/WithdrawButton";
+import PerformancePanel from "../components/PerformancePanel";
 import { investApi, agentApi, macroApi } from "@/lib/api";
+import { useNetworkMode } from "@/lib/NetworkModeContext";
+import { useLang } from "@/lib/LanguageContext";
 import type { AgentActivity, MacroData } from "@/types";
 
 const THEME_BADGE: Record<string, string> = {
@@ -50,30 +53,39 @@ interface Portfolio {
 
 export default function DashboardPage() {
   const { address, isConnected } = useAccount();
-  const [activeTab, setActiveTab] = useState<"portfolio" | "activity" | "macro">("portfolio");
+  const { networkMode } = useNetworkMode();
+  const { t } = useLang();
+  const [activeTab, setActiveTab] = useState<"portfolio" | "performance" | "activity" | "macro">("portfolio");
+  const [selectedIndexForPerf, setSelectedIndexForPerf] = useState<string | null>(null);
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [activities, setActivities] = useState<AgentActivity[]>([]);
   const [macro, setMacro] = useState<MacroData | null>(null);
   const [subscriber, setSubscriber] = useState<{ is_pro: boolean; days_streak: number } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [refundNotices, setRefundNotices] = useState<Array<{amount_usd: number; minimum_usd: number; tx_hash: string}>>([]);
 
   useEffect(() => {
     if (!address) return;
+    let cancelled = false;
     setLoading(true);
     Promise.all([
-      investApi.getPortfolio(address),
+      investApi.getPortfolio(address, networkMode),
       agentApi.getRecentActivity(20),
       macroApi.get(),
+      investApi.getRefunds(address, networkMode),
     ])
-      .then(([portfolioData, activityData, macroData]) => {
+      .then(([portfolioData, activityData, macroData, refundsData]: any[]) => {
+        if (cancelled) return;
         setPortfolios(portfolioData.portfolios ?? []);
         setSubscriber(portfolioData.subscriber ?? null);
         setActivities(activityData ?? []);
         setMacro(macroData ?? null);
+        setRefundNotices(refundsData ?? []);
       })
       .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [address]);
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [address, networkMode]);
 
   const totalValue = portfolios.reduce((s, p) => s + p.current_value_usd, 0);
   const totalDeposited = portfolios.reduce((s, p) => s + p.deposited_usd, 0);
@@ -87,12 +99,12 @@ export default function DashboardPage() {
         <main className="max-w-7xl mx-auto px-4 pt-32 pb-16 flex flex-col items-center justify-center text-center gap-6">
           <Wallet size={48} className="text-white/20" />
           <div>
-            <h1 className="text-3xl font-bold text-white mb-2">Connect Your Wallet</h1>
-            <p className="text-white/40 max-w-sm mx-auto">Connect your wallet to view your portfolio, AI activity, and macro data.</p>
+            <h1 className="text-3xl font-bold text-white mb-2">{t("dash_connect_wallet")}</h1>
+            <p className="text-white/40 max-w-sm mx-auto">{t("dash_connect_desc")}</p>
           </div>
           <ConnectButton />
           <Link href="/indexes" className="text-sm text-white/30 hover:text-white transition-colors">
-            Browse indexes without connecting →
+            {t("dash_browse_no_connect")}
           </Link>
         </main>
       </div>
@@ -103,14 +115,28 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-brand-dark">
       <Navbar />
       <main className="max-w-7xl mx-auto px-4 pt-20 pb-16">
+        {refundNotices.length > 0 && (
+          <div className="mb-6 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4 flex items-start justify-between gap-4">
+            <div>
+              <p className="text-yellow-400 font-semibold text-sm mb-1">&#9888; {t("dash_refund_title")}</p>
+              {refundNotices.map((r, i) => (
+                <p key={i} className="text-white/70 text-sm">
+                  ${r.amount_usd.toFixed(2)} USDC — {t("mov_below_min")} ${r.minimum_usd}
+                  {r.tx_hash && <span className="text-white/40 ml-2 font-mono text-xs">{r.tx_hash.slice(0,16)}…</span>}
+                </p>
+              ))}
+            </div>
+            <button onClick={() => setRefundNotices([])} className="text-white/30 hover:text-white/70 text-lg leading-none shrink-0">&#x2715;</button>
+          </div>
+        )}
 
         <NetworkGuard />
 
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-white mb-1">My Portfolio</h1>
+            <h1 className="text-3xl font-bold text-white mb-1">{t("dash_title")}</h1>
             <p className="text-white/40 text-sm">
-              Connected: <span className="font-mono text-white/60">{address?.slice(0, 6)}…{address?.slice(-4)}</span>
+              {t("dash_connected")} <span className="font-mono text-white/60">{address?.slice(0, 6)}…{address?.slice(-4)}</span>
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -131,49 +157,59 @@ export default function DashboardPage() {
 
         {loading ? (
           <div className="flex items-center justify-center py-20 text-white/30">
-            <RefreshCw size={20} className="animate-spin mr-2" /> Loading portfolio…
+            <RefreshCw size={20} className="animate-spin mr-2" /> {t("dash_loading")}
           </div>
         ) : (
           <>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
               <div className="stat-card">
-                <p className="stat-label">Total Value</p>
+                <p className="stat-label">{t("dash_total_value")}</p>
                 <p className="stat-value">{fmtUSD(totalValue)}</p>
                 <p className={totalReturnPct >= 0 ? "stat-change-positive" : "stat-change-negative"}>
-                  {fmtPct(totalReturnPct)} all-time
+                  {fmtPct(totalReturnPct)} {t("dash_alltime")}
                 </p>
               </div>
               <div className="stat-card">
-                <p className="stat-label">Total Deposited</p>
+                <p className="stat-label">{t("dash_total_deposited")}</p>
                 <p className="stat-value">{fmtUSD(totalDeposited)}</p>
-                <p className="text-xs text-white/30">across {portfolios.length} indexes</p>
+                <p className="text-xs text-white/30">{t("dash_across", { n: portfolios.length })}</p>
               </div>
               <div className="stat-card">
-                <p className="stat-label">30d Return</p>
-                <p className={`stat-value ${portfolios.length > 0 ? "text-green-400" : "text-white/30"}`}>
-                  {portfolios.length > 0
-                    ? fmtPct(portfolios.reduce((s, p) => s + p.return_30d_pct * p.current_value_usd, 0) / (totalValue || 1))
-                    : "—"}
-                </p>
-                <p className="text-xs text-white/30">weighted avg</p>
+                <p className="stat-label">{t("dash_30d")}</p>
+                {(() => {
+                  const w30d = portfolios.length > 0
+                    ? portfolios.reduce((s, p) => s + p.return_30d_pct * p.current_value_usd, 0) / (totalValue || 1)
+                    : null;
+                  return (
+                    <p className={`stat-value ${w30d === null ? "text-white/30" : w30d >= 0 ? "text-green-400" : "text-red-400"}`}>
+                      {w30d !== null ? fmtPct(w30d) : "—"}
+                    </p>
+                  );
+                })()}
+                <p className="text-xs text-white/30">{t("dash_wavg")}</p>
               </div>
               <div className="stat-card">
-                <p className="stat-label">Accrued Perf. Fee</p>
+                <p className="stat-label">{t("dash_fee")}</p>
                 <p className="stat-value">{fmtUSD(totalFees)}</p>
-                <p className="text-xs text-white/30">15% on profits above HWM</p>
+                <p className="text-xs text-white/30">{t("dash_hwm")}</p>
               </div>
             </div>
 
-            <div className="flex gap-1 mb-6 bg-white/3 rounded-xl p-1 w-fit">
-              {(["portfolio", "activity", "macro"] as const).map((tab) => (
+            <div className="flex gap-1 mb-6 bg-white/3 rounded-xl p-1 w-fit flex-wrap">
+              {(["portfolio", "performance", "activity", "macro"] as const).map((tab) => (
                 <button
                   key={tab}
-                  onClick={() => setActiveTab(tab)}
+                  onClick={() => {
+                    setActiveTab(tab);
+                    if (tab === "performance" && !selectedIndexForPerf && portfolios.length > 0) {
+                      setSelectedIndexForPerf(portfolios[0].index_id);
+                    }
+                  }}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-all capitalize ${
                     activeTab === tab ? "bg-brand-blue text-white" : "text-white/40 hover:text-white"
                   }`}
                 >
-                  {tab === "activity" ? "AI Activity" : tab === "macro" ? "Macro" : "Portfolio"}
+                  {tab === "activity" ? t("tab_activity") : tab === "macro" ? t("tab_macro") : tab === "performance" ? t("tab_performance") : t("tab_portfolio")}
                 </button>
               ))}
             </div>
@@ -182,9 +218,9 @@ export default function DashboardPage() {
               <div className="space-y-4">
                 {portfolios.length === 0 ? (
                   <div className="card border-dashed border-white/10 text-center py-12">
-                    <p className="text-white/40 text-sm mb-4">No active investments yet.</p>
+                    <p className="text-white/40 text-sm mb-4">{t("dash_empty")}</p>
                     <Link href="/indexes" className="btn-primary inline-flex items-center gap-2">
-                      <BarChart3 size={16} /> Browse Indexes
+                      <BarChart3 size={16} /> {t("dash_browse")}
                     </Link>
                   </div>
                 ) : (
@@ -197,7 +233,7 @@ export default function DashboardPage() {
                               <span className={`badge border text-xs ${THEME_BADGE[p.theme] ?? ""}`}>
                                 {p.theme === "ai-crypto" ? "AI × Crypto" : p.theme.toUpperCase()}
                               </span>
-                              <span className="text-xs text-white/30">{p.days_invested} days invested</span>
+                              <span className="text-xs text-white/30">{p.days_invested} {t("dash_days_invested")}</span>
                             </div>
                             <Link href={`/indexes/${p.index_id}`} className="font-semibold text-white hover:text-brand-blue transition-colors">
                               {p.index_name}
@@ -232,6 +268,7 @@ export default function DashboardPage() {
                               indexId={p.index_id}
                               indexName={p.index_name}
                               currentValueUsd={p.current_value_usd}
+                              depositedUsd={p.deposited_usd}
                               navUsd={1}
                             />
                           </div>
@@ -239,11 +276,50 @@ export default function DashboardPage() {
                       </div>
                     ))}
                     <div className="card border-dashed border-white/10 text-center py-8">
-                      <p className="text-white/40 text-sm mb-3">Add another index to your portfolio?</p>
+                      <p className="text-white/40 text-sm mb-3">{t("dash_add_another")}</p>
                       <Link href="/indexes" className="btn-primary inline-flex items-center gap-2">
                         <BarChart3 size={16} /> Browse Indexes
                       </Link>
                     </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {activeTab === "performance" && (
+              <div className="space-y-4">
+                {portfolios.length === 0 ? (
+                  <div className="card text-center py-12 border-dashed border-white/10">
+                    <p className="text-white/40 text-sm mb-4">No investments yet — performance chart will appear after your first deposit.</p>
+                    <Link href="/indexes" className="btn-primary inline-flex items-center gap-2">
+                      <BarChart3 size={16} /> Browse Indexes
+                    </Link>
+                  </div>
+                ) : (
+                  <>
+                    {portfolios.length > 1 && (
+                      <div className="flex gap-2 flex-wrap">
+                        {portfolios.map((p) => (
+                          <button
+                            key={p.index_id}
+                            onClick={() => setSelectedIndexForPerf(p.index_id)}
+                            className={`text-xs px-3 py-1.5 rounded-lg border transition-all ${
+                              selectedIndexForPerf === p.index_id
+                                ? "border-brand-blue bg-brand-blue/10 text-white"
+                                : "border-white/10 text-white/40 hover:text-white"
+                            }`}
+                          >
+                            {p.index_name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {selectedIndexForPerf && (
+                      <PerformancePanel
+                        indexId={selectedIndexForPerf}
+                        walletAddress={address}
+                      />
+                    )}
                   </>
                 )}
               </div>
