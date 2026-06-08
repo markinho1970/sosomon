@@ -285,6 +285,12 @@ export default function InvestButton({ indexId, indexName, navUsd }: Props) {
                     <p className="text-xs text-white/30 mt-1">{t("invest_wallet_note")}</p>
                   </div>
 
+                  {/* Alerta: enviar somente da carteira logada */}
+                  <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 flex gap-2.5">
+                    <span className="text-amber-400 text-base shrink-0">⚠️</span>
+                    <p className="text-xs text-amber-300 leading-relaxed">{t("invest_wallet_alert")}</p>
+                  </div>
+
                   <div className="bg-white/3 rounded-xl p-4">
                     <p className="text-xs text-white/40 uppercase tracking-wider mb-3">{t("invest_send_to")}</p>
                     {loadingWallet ? (

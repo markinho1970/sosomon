@@ -40,11 +40,19 @@ async def generate_weekly_content():
         etf_flow = await sosovalue.get_btc_etf_flow_summary()
         macro_calendar = await sosovalue.get_macro_events()
 
+        # SSI benchmark snapshots (SoSoValue) — um por tema de index ativo
+        ssi_benchmarks = {}
+        for idx in indexes:
+            snap = await sosovalue.get_benchmark_for_theme(idx.theme)
+            if snap:
+                ssi_benchmarks[idx.id] = {"name": idx.name, "theme": idx.theme, "snap": snap}
+
         # Generate Alpha Memo (consolidated weekly newsletter)
         alpha_memo = await _generate_alpha_memo(indexes, macro, db,
                                                  hot_news=hot_news,
                                                  etf_flow=etf_flow,
-                                                 macro_calendar=macro_calendar)
+                                                 macro_calendar=macro_calendar,
+                                                 ssi_benchmarks=ssi_benchmarks)
         _save_content(alpha_memo, "alpha_memo")
 
         # Generate Twitter thread for best-performing index
@@ -78,7 +86,8 @@ async def generate_weekly_content():
 async def _generate_alpha_memo(indexes: List, macro: Dict, db,
                                 hot_news: list = None,
                                 etf_flow: dict = None,
-                                macro_calendar: list = None) -> str:
+                                macro_calendar: list = None,
+                                ssi_benchmarks: dict = None) -> str:
     """Generate the weekly Alpha Memo email for Pro subscribers."""
 
     # Build index performance summaries
@@ -122,6 +131,28 @@ async def _generate_alpha_memo(indexes: List, macro: Dict, db,
         ]
         calendar_line = "\n".join(upcoming)
 
+    # SSI benchmark comparison table
+    ssi_comparison = ""
+    if ssi_benchmarks:
+        from services.sosovalue import THEME_INDEX_MAP
+        lines = []
+        for idx in indexes:
+            bench = ssi_benchmarks.get(idx.id)
+            if not bench:
+                continue
+            snap = bench["snap"]
+            ssi_7d  = float(snap.get("7day_roi",  0) or 0)
+            ssi_30d = float(snap.get("1month_roi", 0) or 0)
+            alpha_7d  = idx.return_7d_pct  - ssi_7d
+            alpha_30d = idx.return_30d_pct - ssi_30d
+            ticker = THEME_INDEX_MAP.get(idx.theme, "?")
+            lines.append(
+                f"- {idx.name} vs {ticker}: "
+                f"7d {idx.return_7d_pct:+.1f}% vs SSI {ssi_7d:+.1f}% (alpha {alpha_7d:+.1f}%) | "
+                f"30d {idx.return_30d_pct:+.1f}% vs SSI {ssi_30d:+.1f}% (alpha {alpha_30d:+.1f}%)"
+            )
+        ssi_comparison = "\n".join(lines) if lines else "SSI benchmark data unavailable this week."
+
     prompt = f"""You are writing the weekly SoSoMon Alpha Memo — a premium newsletter for Pro subscribers.
 
 DATE: {datetime.utcnow().strftime('%B %d, %Y')}
@@ -140,6 +171,9 @@ BREAKING NEWS (SoSoValue feed):
 
 SECTOR FLOWS:
 {json.dumps(macro['sector_flows'][:6], indent=2)}
+
+SSI BENCHMARK COMPARISON (SoSoValue live data):
+{ssi_comparison}
 
 INDEX PERFORMANCE THIS WEEK:
 {index_data_str}

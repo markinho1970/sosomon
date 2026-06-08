@@ -241,6 +241,8 @@ export default function AdminPage() {
     loadKeyRef.current = ""; // força reload ao trocar rede manualmente
     setNetworkMode(mode);
     localStorage.setItem("sosomon_admin_network", mode);
+    setReport(null);
+    setShowReport(false);
   }
 
   function expireSession() {
@@ -377,7 +379,7 @@ export default function AdminPage() {
     if (!session) return;
     setLoadingReport(true);
     try {
-      const r = await adminApi.getReport(session.address, session.message, session.signature);
+      const r = await adminApi.getReport(session.address, session.message, session.signature, networkMode);
       setReport(r);
       setShowReport(true);
     } catch { /**/ }
@@ -410,7 +412,7 @@ export default function AdminPage() {
 
   function LangPicker() {
     return (
-      <div ref={langRef} className="absolute top-4 right-4 z-20">
+      <div ref={langRef} className="relative z-20">
         <button onClick={() => setLangOpen(v => !v)}
           className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-white/10 bg-white/5 text-white/50 hover:text-white text-xs transition-all">
           <span>{currentLang.flag}</span>
@@ -506,10 +508,10 @@ export default function AdminPage() {
   const ethColor = ethBal >= 0.05 ? "text-green-400" : ethBal >= 0.01 ? "text-amber-400" : "text-red-400";
 
   return (
-    <div className="min-h-screen bg-brand-dark">
+    <div className="min-h-screen bg-brand-dark pt-14">
 
       {/* Header */}
-      <div className="border-b border-white/5 bg-black/60 px-6 py-3 flex items-center justify-between">
+      <div className="fixed top-0 left-0 right-0 z-30 border-b border-white/5 bg-black/90 backdrop-blur-sm px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className="text-white font-bold">SoSoMon</span>
           <span className="text-white/20">·</span>
@@ -551,6 +553,7 @@ export default function AdminPage() {
           <button onClick={() => loadAll(networkMode)} className="text-white/30 hover:text-white transition-colors">
             <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
           </button>
+          <LangPicker />
           <button onClick={() => { expireSession(); disconnect(); }} className="text-white/20 hover:text-white/50 text-xs transition-colors">
             {t("admin_disconnect")}
           </button>
@@ -843,17 +846,17 @@ export default function AdminPage() {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <BarChart3 size={16} className="text-brand-blue" />
-                  <h2 className="font-semibold text-white">Relatório Gerencial</h2>
+                  <h2 className="font-semibold text-white">{t("admin_report_title")}</h2>
                   <span className="text-white/20 text-xs">{String(report.generated_at ?? "").replace("T", " ").slice(0, 19)} UTC</span>
                 </div>
-                <button onClick={() => setShowReport(false)} className="text-white/30 hover:text-white/60 text-xs border border-white/10 rounded px-2 py-1">Fechar</button>
+                <button onClick={() => setShowReport(false)} className="text-white/30 hover:text-white/60 text-xs border border-white/10 rounded px-2 py-1">{t("admin_report_close")}</button>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
                 {[
-                  { label: "AUM Total", value: fmtUSD(Number(p.total_aum_usd ?? 0)) },
-                  { label: "Investidores", value: String(p.total_investors ?? 0) },
+                  { label: t("admin_total_aum"), value: fmtUSD(Number(p.total_aum_usd ?? 0)) },
+                  { label: t("admin_subscribers"), value: String(p.total_investors ?? 0) },
                   { label: "Pro", value: String(p.pro_investors ?? 0) },
-                  { label: "Propostas Total", value: String(proposals.total ?? 0) },
+                  { label: t("admin_report_proposals_total"), value: String(proposals.total ?? 0) },
                 ].map(s => (
                   <div key={s.label} className="bg-white/3 rounded-xl p-3 border border-white/5">
                     <p className="text-white/40 text-xs mb-1">{s.label}</p>
@@ -861,38 +864,26 @@ export default function AdminPage() {
                   </div>
                 ))}
               </div>
-              <div className="grid md:grid-cols-2 gap-3 mb-6">
-                <div>
-                  <p className="text-white/40 text-xs mb-2 uppercase tracking-wide">Por Rede</p>
-                  {(["mainnet", "testnet"] as const).map(net => {
-                    const n = p[net] as Record<string, unknown>;
-                    return (
-                      <div key={net} className="flex justify-between py-1.5 border-b border-white/5 text-sm">
-                        <span className="text-white/60 capitalize">{net}</span>
-                        <span className="text-white">{String(n?.investors ?? 0)} inv · {fmtUSD(Number(n?.aum_usd ?? 0))}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div>
-                  <p className="text-white/40 text-xs mb-2 uppercase tracking-wide">Propostas por Status</p>
+              <div className="mb-6">
+                <p className="text-white/40 text-xs mb-2 uppercase tracking-wide">{t("admin_report_proposals_status")}</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                   {Object.entries(byStatus).map(([k, v]) => (
                     <div key={k} className="flex justify-between py-1.5 border-b border-white/5 text-sm">
                       <span className={`capitalize ${STATUS_BADGE[k]?.split(" ")[1] ?? "text-white/60"}`}>{k}</span>
                       <span className="text-white">{v}</span>
                     </div>
                   ))}
-                  {Object.keys(byStatus).length === 0 && <p className="text-white/30 text-xs">Nenhuma proposta ainda</p>}
+                  {Object.keys(byStatus).length === 0 && <p className="text-white/30 text-xs">{t("admin_report_no_proposals")}</p>}
                 </div>
               </div>
               <div className="mb-4">
-                <p className="text-white/40 text-xs mb-2 uppercase tracking-wide">Índices</p>
+                <p className="text-white/40 text-xs mb-2 uppercase tracking-wide">{t("admin_report_indexes")}</p>
                 <div className="space-y-2">
                   {indexes.map(idx => (
                     <div key={String(idx.id)} className="flex items-center justify-between p-2.5 rounded-lg bg-white/3">
                       <div>
                         <p className="text-sm text-white font-medium">{String(idx.name)}</p>
-                        <p className="text-xs text-white/30">{String(idx.subscriber_count ?? 0)} investidores · NAV ${Number(idx.nav_usd ?? 1).toFixed(4)}</p>
+                        <p className="text-xs text-white/30">{t("admin_investors").replace("{n}", String(idx.subscriber_count ?? 0))} · NAV ${Number(idx.nav_usd ?? 1).toFixed(4)}</p>
                       </div>
                       <div className="text-right">
                         <p className="text-sm text-white">{fmtUSD(Number(idx.aum_usd ?? 0))}</p>
@@ -906,7 +897,7 @@ export default function AdminPage() {
               </div>
               {activity.length > 0 && (
                 <div>
-                  <p className="text-white/40 text-xs mb-2 uppercase tracking-wide">Atividade Recente</p>
+                  <p className="text-white/40 text-xs mb-2 uppercase tracking-wide">{t("admin_report_activity")}</p>
                   <div className="space-y-1">
                     {activity.slice(0, 5).map((a, i) => (
                       <div key={i} className="flex items-start gap-2 py-1.5 border-b border-white/5">

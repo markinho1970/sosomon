@@ -290,26 +290,11 @@ def admin_stats(network_mode: str = "mainnet", db: Session = Depends(get_db), _:
 
 
 @router.get("/report")
-def admin_report(db: Session = Depends(get_db), _: None = Depends(require_admin)):
+def admin_report(network_mode: str = "mainnet", db: Session = Depends(get_db), _: None = Depends(require_admin)):
     """Relatório gerencial consolidado da plataforma."""
     now = datetime.utcnow()
 
     indexes = db.query(AlphaIndex).filter(AlphaIndex.is_active == True).all()
-    index_summary = []
-    for idx in indexes:
-        index_summary.append({
-            "id": idx.id,
-            "name": idx.name,
-            "aum_usd": round(idx.aum_usd or 0, 2),
-            "nav_usd": round(idx.nav_usd or 1, 4),
-            "return_7d_pct": round(idx.return_7d_pct or 0, 2),
-            "return_30d_pct": round(idx.return_30d_pct or 0, 2),
-            "total_return_pct": round(idx.total_return_pct or 0, 2),
-            "subscriber_count": idx.subscriber_count or 0,
-            "management_fee_pct": idx.management_fee_pct or 0.75,
-            "last_rebalanced_at": idx.last_rebalanced_at.isoformat() if idx.last_rebalanced_at else None,
-        })
-
     all_portfolios = db.query(SubscriberPortfolio).all()
     mainnet_portfolios = [p for p in all_portfolios if p.network_mode == "mainnet"]
     testnet_portfolios = [p for p in all_portfolios if p.network_mode == "testnet"]
@@ -317,10 +302,30 @@ def admin_report(db: Session = Depends(get_db), _: None = Depends(require_admin)
     testnet_ids = {p.subscriber_id for p in testnet_portfolios}
     all_ids = mainnet_ids | testnet_ids
 
+    # IDs e portfolios filtrados pela rede selecionada
+    selected_portfolios = mainnet_portfolios if network_mode == "mainnet" else testnet_portfolios
+    selected_ids = mainnet_ids if network_mode == "mainnet" else testnet_ids
+
+    index_summary = []
+    for idx in indexes:
+        idx_portfolios = [p for p in selected_portfolios if p.index_id == idx.id]
+        index_summary.append({
+            "id": idx.id,
+            "name": idx.name,
+            "aum_usd": round(sum(p.current_value_usd or 0 for p in idx_portfolios), 2),
+            "nav_usd": round(idx.nav_usd or 1, 4),
+            "return_7d_pct": round(idx.return_7d_pct or 0, 2),
+            "return_30d_pct": round(idx.return_30d_pct or 0, 2),
+            "total_return_pct": round(idx.total_return_pct or 0, 2),
+            "subscriber_count": len({p.subscriber_id for p in idx_portfolios}),
+            "management_fee_pct": idx.management_fee_pct or 0.75,
+            "last_rebalanced_at": idx.last_rebalanced_at.isoformat() if idx.last_rebalanced_at else None,
+        })
+
     pro_count = 0
-    if all_ids:
+    if selected_ids:
         pro_count = db.query(func.count(Subscriber.id)).filter(
-            Subscriber.id.in_(list(all_ids)), Subscriber.is_pro == True
+            Subscriber.id.in_(list(selected_ids)), Subscriber.is_pro == True
         ).scalar() or 0
 
     proposals = db.query(RebalanceProposal).all()
@@ -337,24 +342,30 @@ def admin_report(db: Session = Depends(get_db), _: None = Depends(require_admin)
         deltas = [(p.executed_at - p.proposed_at).total_seconds() / 3600 for p in executed]
         avg_hours = round(sum(deltas) / len(deltas), 1)
 
-    recent = db.query(AgentActivityLog).order_by(AgentActivityLog.timestamp.desc()).limit(10).all()
-    activity = [
-        {
+    recent_all = db.query(AgentActivityLog).order_by(AgentActivityLog.timestamp.desc()).limit(50).all()
+    activity = []
+    for a in recent_all:
+        a_data = a.data or {}
+        log_net = a_data.get("network_mode")
+        if log_net and log_net != network_mode:
+            continue
+        activity.append({
             "agent": a.agent,
             "action": a.action,
             "description": (a.description or "")[:120],
             "timestamp": a.timestamp.isoformat() if a.timestamp else None,
-        }
-        for a in recent
-    ]
+        })
+        if len(activity) >= 10:
+            break
 
     return {
         "data": {
             "generated_at": now.isoformat() + "Z",
             "platform": {
-                "total_aum_usd": round(sum(i["aum_usd"] for i in index_summary), 2),
+                "network_mode": network_mode,
+                "total_aum_usd": round(sum(p.current_value_usd or 0 for p in selected_portfolios), 2),
                 "total_indexes": len(indexes),
-                "total_investors": len(all_ids),
+                "total_investors": len(selected_ids),
                 "pro_investors": pro_count,
                 "mainnet": {
                     "investors": len(mainnet_ids),

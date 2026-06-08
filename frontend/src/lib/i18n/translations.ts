@@ -156,6 +156,9 @@ export const T: Record<Lang, Record<string, string>> = {
     admin_pending_badge: "{n} pending", admin_ready_badge: "{n} ready to execute",
 
     admin_run_rebalancer: "Run Rebalancer", admin_running: "Running…",
+    admin_report_title: "Management Report", admin_report_close: "Close",
+    admin_report_proposals_status: "Proposals by Status", admin_report_no_proposals: "No proposals yet",
+    admin_report_indexes: "Indexes", admin_report_activity: "Recent Activity", admin_report_proposals_total: "Total Proposals",
 
     admin_approve: "Approve", admin_reject: "Reject", admin_execute: "Execute",
 
@@ -182,6 +185,8 @@ export const T: Record<Lang, Record<string, string>> = {
     admin_network_mainnet: "Mainnet", admin_network_testnet: "Testnet",
 
     home_footer: "Not financial advice. Built on SoSoValue ValueChain. Powered by SoDEX.",
+    disclaimer: "SoSoMon is for informational purposes only. Not financial advice. Crypto assets involve significant risk of loss. Past performance does not guarantee future results.",
+    intellectual_credit: "Intellectual creation of Khamalmoney Inc.",
 
     // Transparency
 
@@ -520,6 +525,7 @@ export const T: Record<Lang, Record<string, string>> = {
     invest_your_wallet: "Your wallet (sender)",
 
     invest_wallet_note: "Only deposits from this wallet will be credited.",
+    invest_wallet_alert: "Send USDC only from the wallet shown above. Deposits from a different address will be credited to that address — not to your account here.",
 
     invest_send_to: "Send USDC to this address",
 
@@ -691,6 +697,9 @@ export const T: Record<Lang, Record<string, string>> = {
     admin_pending_badge: "{n} pendentes", admin_ready_badge: "{n} prontas para executar",
 
     admin_run_rebalancer: "Executar Rebalancer", admin_running: "Executando…",
+    admin_report_title: "Relatório Gerencial", admin_report_close: "Fechar",
+    admin_report_proposals_status: "Propostas por Status", admin_report_no_proposals: "Nenhuma proposta ainda",
+    admin_report_indexes: "Índices", admin_report_activity: "Atividade Recente", admin_report_proposals_total: "Propostas Total",
 
     admin_approve: "Aprovar", admin_reject: "Rejeitar", admin_execute: "Executar",
 
@@ -717,6 +726,8 @@ export const T: Record<Lang, Record<string, string>> = {
     admin_network_mainnet: "Mainnet", admin_network_testnet: "Testnet",
 
     home_footer: "Não é conselho financeiro. Construído na SoSoValue ValueChain. Powered by SoDEX.",
+    disclaimer: "SoSoMon é apenas para fins informativos. Não é consultoria financeira. Ativos cripto envolvem riscos significativos de perda. Desempenho passado não garante resultados futuros.",
+    intellectual_credit: "Criação intelectual de Khamalmoney Inc.",
 
     transp_title: "Auditabilidade On-Chain", transp_log: "Log de Transparência",
 
@@ -1035,6 +1046,7 @@ export const T: Record<Lang, Record<string, string>> = {
     invest_your_wallet: "Sua carteira (remetente)",
 
     invest_wallet_note: "Somente depósitos desta carteira serão creditados.",
+    invest_wallet_alert: "Envie USDC somente da carteira exibida acima. Depósitos enviados de outro endereço serão creditados naquele endereço — e não na sua conta aqui.",
 
     invest_send_to: "Envie USDC para este endereço",
 
@@ -1108,6 +1120,7 @@ export const T: Record<Lang, Record<string, string>> = {
     mov_below_min: "低于最低存款",
 
     invest_btn: "存款并投资", invest_connect: "连接钱包以投资",
+    invest_wallet_alert: "请仅从上方显示的钱包发送USDC。从其他地址发送的存款将记入该地址，而非您的账户。",
 
     invest_title: "风险声明 — {index}", invest_signed: "已签署 — 进行存款",
 
@@ -1333,6 +1346,10 @@ export const T: Record<Lang, Record<string, string>> = {
     admin_pending_badge: "{n} 待处理", admin_ready_badge: "{n} 可执行",
 
     admin_run_rebalancer: "运行再平衡器", admin_running: "运行中…",
+    admin_investors: "{n} 位投资者",
+    admin_report_title: "管理报告", admin_report_close: "关闭",
+    admin_report_proposals_status: "提案状态", admin_report_no_proposals: "暂无提案",
+    admin_report_indexes: "指数", admin_report_activity: "近期活动", admin_report_proposals_total: "提案总数",
 
     admin_approve: "批准", admin_reject: "拒绝", admin_execute: "执行",
 
@@ -1347,6 +1364,8 @@ export const T: Record<Lang, Record<string, string>> = {
     admin_network_mainnet: "主网", admin_network_testnet: "测试网",
 
     home_footer: "非财务建议。基于SoSoValue ValueChain。由SoDEX驱动。",
+    disclaimer: "SoSoMon仅供参考。非财务建议。加密资产存在重大亏损风险。过去表现不代表未来结果。",
+    intellectual_credit: "Khamalmoney Inc. 的智识创作",
 
   },
 
@@ -1382,6 +1401,7 @@ export const T: Record<Lang, Record<string, string>> = {
     mov_below_min: "最低預金額未満",
 
     invest_btn: "預金して投資", invest_connect: "投資するためにウォレットを接続",
+    invest_wallet_alert: "上記のウォレットからのみUSDCを送金してください。別のアドレスからの入金はそのアドレスに記録され、あなたのアカウントには反映されません。",
 
     invest_title: "リスク開示 — {index}", invest_signed: "署名済み — 入金してください",
 
@@ -1607,6 +1627,10 @@ export const T: Record<Lang, Record<string, string>> = {
     admin_pending_badge: "{n} 保留中", admin_ready_badge: "{n} 実行可能",
 
     admin_run_rebalancer: "リバランサーを実行", admin_running: "実行中…",
+    admin_investors: "{n} 名の投資家",
+    admin_report_title: "管理レポート", admin_report_close: "閉じる",
+    admin_report_proposals_status: "提案ステータス別", admin_report_no_proposals: "提案はまだありません",
+    admin_report_indexes: "インデックス", admin_report_activity: "最近のアクティビティ", admin_report_proposals_total: "提案合計",
 
     admin_approve: "承認", admin_reject: "拒否", admin_execute: "実行",
 
@@ -1621,6 +1645,8 @@ export const T: Record<Lang, Record<string, string>> = {
     admin_network_mainnet: "メインネット", admin_network_testnet: "テストネット",
 
     home_footer: "投資アドバイスではありません。SoSoValue ValueChain上に構築。SoDEXで駆動。",
+    disclaimer: "SoSoMonは情報提供のみを目的としています。投資アドバイスではありません。暗号資産には重大な損失リスクが伴います。過去の実績は将来の結果を保証しません。",
+    intellectual_credit: "Khamalmoney Inc. の知的創造物",
 
   },
 
@@ -1656,6 +1682,7 @@ export const T: Record<Lang, Record<string, string>> = {
     mov_below_min: "न्यूनतम जमा से कम",
 
     invest_btn: "जमा करें और निवेश करें", invest_connect: "निवेश के लिए वॉलेट कनेक्ट करें",
+    invest_wallet_alert: "USDC केवल ऊपर दिखाए गए वॉलेट से भेजें। किसी अन्य पते से भेजी गई राशि उस पते पर क्रेडिट होगी, आपके खाते में नहीं।",
 
     invest_title: "जोखिम प्रकटीकरण — {index}", invest_signed: "हस्ताक्षरित — जमा करें",
 
@@ -1875,6 +1902,10 @@ export const T: Record<Lang, Record<string, string>> = {
     admin_pending_badge: "{n} लंबित", admin_ready_badge: "{n} निष्पादन के लिए तैयार",
 
     admin_run_rebalancer: "Rebalancer चलाएं", admin_running: "चल रहा है…",
+    admin_investors: "{n} निवेशक",
+    admin_report_title: "प्रबंधन रिपोर्ट", admin_report_close: "बंद करें",
+    admin_report_proposals_status: "प्रस्ताव स्थिति", admin_report_no_proposals: "अभी कोई प्रस्ताव नहीं",
+    admin_report_indexes: "सूचकांक", admin_report_activity: "हालिया गतिविधि", admin_report_proposals_total: "कुल प्रस्ताव",
 
     admin_approve: "अनुमोदन", admin_reject: "अस्वीकार", admin_execute: "निष्पादित करें",
 
@@ -1889,6 +1920,8 @@ export const T: Record<Lang, Record<string, string>> = {
     admin_network_mainnet: "मेननेट", admin_network_testnet: "टेस्टनेट",
 
     home_footer: "वित्तीय सलाह नहीं। SoSoValue ValueChain पर निर्मित। SoDEX द्वारा संचालित।",
+    disclaimer: "SoSoMon केवल सूचना के उद्देश्यों के लिए है। वित्तीय सलाह नहीं। क्रिप्टो संपत्तियों में महत्वपूर्ण जोखिम है। पिछला प्रदर्शन भविष्य के परिणामों की गारंटी नहीं देता।",
+    intellectual_credit: "Khamalmoney Inc. की बौद्धिक कृति",
 
   },
 
@@ -1924,6 +1957,7 @@ export const T: Record<Lang, Record<string, string>> = {
     mov_below_min: "Di bawah setoran minimum",
 
     invest_btn: "Setor & Investasi", invest_connect: "Hubungkan Dompet untuk Investasi",
+    invest_wallet_alert: "Kirim USDC hanya dari dompet yang ditampilkan di atas. Deposit dari alamat lain akan dikreditkan ke alamat tersebut, bukan ke akun Anda.",
 
     invest_title: "Pengungkapan Risiko — {index}", invest_signed: "Ditandatangani — Lakukan Setoran",
 
@@ -2143,6 +2177,10 @@ export const T: Record<Lang, Record<string, string>> = {
     admin_pending_badge: "{n} tertunda", admin_ready_badge: "{n} siap dieksekusi",
 
     admin_run_rebalancer: "Jalankan Rebalancer", admin_running: "Berjalan…",
+    admin_investors: "{n} investor",
+    admin_report_title: "Laporan Manajemen", admin_report_close: "Tutup",
+    admin_report_proposals_status: "Proposal per Status", admin_report_no_proposals: "Belum ada proposal",
+    admin_report_indexes: "Indeks", admin_report_activity: "Aktivitas Terkini", admin_report_proposals_total: "Total Proposal",
 
     admin_approve: "Setujui", admin_reject: "Tolak", admin_execute: "Eksekusi",
 
@@ -2157,6 +2195,8 @@ export const T: Record<Lang, Record<string, string>> = {
     admin_network_mainnet: "mainnet", admin_network_testnet: "testnet",
 
     home_footer: "Bukan saran keuangan. Dibangun di SoSoValue ValueChain. Didukung oleh SoDEX.",
+    disclaimer: "SoSoMon hanya untuk tujuan informasi. Bukan saran keuangan. Aset kripto melibatkan risiko kerugian yang signifikan. Kinerja masa lalu tidak menjamin hasil di masa depan.",
+    intellectual_credit: "Kreasi intelektual dari Khamalmoney Inc.",
 
   },
 
@@ -2192,6 +2232,7 @@ export const T: Record<Lang, Record<string, string>> = {
     mov_below_min: "최소 입금액 미만",
 
     invest_btn: "입금 및 투자", invest_connect: "투자를 위해 지갑 연결",
+    invest_wallet_alert: "위에 표시된 지갑에서만 USDC를 보내세요. 다른 주소에서 보낸 입금은 해당 주소에 기록되며 귀하의 계정에는 반영되지 않습니다.",
 
     invest_title: "위험 공시 — {index}", invest_signed: "서명 완료 — 입금하세요",
 
@@ -2411,6 +2452,10 @@ export const T: Record<Lang, Record<string, string>> = {
     admin_pending_badge: "{n} 대기 중", admin_ready_badge: "{n} 실행 준비됨",
 
     admin_run_rebalancer: "리밸런서 실행", admin_running: "실행 중…",
+    admin_investors: "{n} 명의 투자자",
+    admin_report_title: "관리 보고서", admin_report_close: "닫기",
+    admin_report_proposals_status: "상태별 제안", admin_report_no_proposals: "아직 제안 없음",
+    admin_report_indexes: "인덱스", admin_report_activity: "최근 활동", admin_report_proposals_total: "총 제안",
 
     admin_approve: "승인", admin_reject: "거부", admin_execute: "실행",
 
@@ -2425,6 +2470,8 @@ export const T: Record<Lang, Record<string, string>> = {
     admin_network_mainnet: "메인넷", admin_network_testnet: "테스트넷",
 
     home_footer: "재무 조언이 아닙니다. SoSoValue ValueChain 기반. SoDEX 제공.",
+    disclaimer: "SoSoMon은 정보 제공 목적으로만 제공됩니다. 금융 조언이 아닙니다. 암호화폐 자산은 상당한 손실 위험을 수반합니다. 과거 실적이 미래 결과를 보장하지 않습니다.",
+    intellectual_credit: "Khamalmoney Inc.의 지적 창작물",
 
   },
 

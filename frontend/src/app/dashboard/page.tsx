@@ -62,17 +62,43 @@ export default function DashboardPage() {
   const [macro, setMacro] = useState<MacroData | null>(null);
   const [subscriber, setSubscriber] = useState<{ is_pro: boolean; days_streak: number } | null>(null);
   const [loading, setLoading] = useState(false);
-  const [refundNotices, setRefundNotices] = useState<Array<{amount_usd: number; minimum_usd: number; tx_hash: string}>>([]);
+  const [refundNotices, setRefundNotices] = useState<Array<{amount_usd: number; minimum_usd: number; tx_hash: string}>>([]); 
+  const [viewingAddress, setViewingAddress] = useState<string | null>(null);
+  const [pendingWalletChange, setPendingWalletChange] = useState<string | null>(null);
 
+  // Efeito 1: detecta desconexao e troca de conta no MetaMask
   useEffect(() => {
-    if (!address) return;
+    if (!address) {
+      setViewingAddress(null);
+      setPendingWalletChange(null);
+      setPortfolios([]);
+      setSubscriber(null);
+      setRefundNotices([]);
+      return;
+    }
+    setViewingAddress(prev => {
+      if (!prev) return address;
+      if (prev !== address) {
+        setPendingWalletChange(address);
+        return prev;
+      }
+      return prev;
+    });
+  }, [address]);
+
+  // Efeito 2: busca dados quando a carteira visualizada muda
+  useEffect(() => {
+    if (!viewingAddress) return;
+    setPortfolios([]);
+    setSubscriber(null);
+    setRefundNotices([]);
     let cancelled = false;
     setLoading(true);
     Promise.all([
-      investApi.getPortfolio(address, networkMode),
+      investApi.getPortfolio(viewingAddress, networkMode),
       agentApi.getRecentActivity(20),
       macroApi.get(),
-      investApi.getRefunds(address, networkMode),
+      investApi.getRefunds(viewingAddress, networkMode),
     ])
       .then(([portfolioData, activityData, macroData, refundsData]: any[]) => {
         if (cancelled) return;
@@ -85,7 +111,7 @@ export default function DashboardPage() {
       .catch(console.error)
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [address, networkMode]);
+  }, [viewingAddress, networkMode]);
 
   const totalValue = portfolios.reduce((s, p) => s + p.current_value_usd, 0);
   const totalDeposited = portfolios.reduce((s, p) => s + p.deposited_usd, 0);
@@ -132,11 +158,37 @@ export default function DashboardPage() {
 
         <NetworkGuard />
 
+        {pendingWalletChange && (
+          <div className="mb-4 rounded-xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-sky-300">MetaMask account changed</p>
+              <p className="text-xs text-sky-400/70 mt-0.5">
+                Active: <span className="font-mono">{pendingWalletChange.slice(0,6)}…{pendingWalletChange.slice(-4)}</span>
+                {"· "}Viewing: <span className="font-mono">{viewingAddress?.slice(0,6)}…{viewingAddress?.slice(-4)}</span>
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={() => { setViewingAddress(pendingWalletChange); setPendingWalletChange(null); }}
+                className="px-3 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-black text-xs font-semibold transition-all"
+              >
+                Switch to {pendingWalletChange.slice(0,6)}…
+              </button>
+              <button
+                onClick={() => setPendingWalletChange(null)}
+                className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 text-xs font-medium transition-all"
+              >
+                Stay on {viewingAddress?.slice(0,6)}…
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
             <h1 className="text-3xl font-bold text-white mb-1">{t("dash_title")}</h1>
             <p className="text-white/40 text-sm">
-              {t("dash_connected")} <span className="font-mono text-white/60">{address?.slice(0, 6)}…{address?.slice(-4)}</span>
+              {t("dash_connected")} <span className="font-mono text-white/60">{viewingAddress?.slice(0, 6)}…{viewingAddress?.slice(-4)}</span>
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -317,7 +369,7 @@ export default function DashboardPage() {
                     {selectedIndexForPerf && (
                       <PerformancePanel
                         indexId={selectedIndexForPerf}
-                        walletAddress={address}
+                        walletAddress={viewingAddress ?? address}
                       />
                     )}
                   </>

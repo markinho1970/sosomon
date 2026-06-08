@@ -167,8 +167,8 @@ export const adminApi = {
     );
     return data.data;
   },
-  getReport: async (address: string, message: string, signature: string) => {
-    const { data } = await api.get("/api/admin/report", adminHeaders(address, message, signature));
+  getReport: async (address: string, message: string, signature: string, networkMode: string = "mainnet") => {
+    const { data } = await api.get(`/api/admin/report?network_mode=${networkMode}`, adminHeaders(address, message, signature));
     return data.data;
   },
 

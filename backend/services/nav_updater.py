@@ -49,10 +49,11 @@ async def _fetch_prices() -> dict:
 async def _fetch_fund_usdc() -> float:
     """Saldo USDC da fund wallet na rede Base."""
     try:
-        from services.deposit_monitor import _usdc_balance, FUND_WALLET, _configured
-        if not _configured():
+        from services.deposit_monitor import NETWORKS, _configured, _usdc_balance
+        net = NETWORKS["mainnet"]
+        if not _configured(net):
             return 0.0
-        return await _usdc_balance(FUND_WALLET)
+        return await _usdc_balance(net["rpc"], net["usdc"], net["fund_wallet"])
     except Exception as e:
         logger.warning(f"NAV Updater: erro ao buscar saldo fund wallet: {e}")
         return 0.0

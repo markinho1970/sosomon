@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "./providers";
 import TestnetBanner from "./components/TestnetBanner";
+import DisclaimerFooter from "./components/DisclaimerFooter";
 
 export const metadata: Metadata = {
   title: "SoSoMon — AI-Managed Thematic Crypto Indexes",
@@ -44,7 +45,10 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body className="min-h-screen bg-brand-dark text-brand-white antialiased">
         <TestnetBanner />
-        <Providers>{children}</Providers>
+        <Providers>
+          {children}
+          <DisclaimerFooter />
+        </Providers>
       </body>
     </html>
   );
