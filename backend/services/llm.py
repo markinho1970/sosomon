@@ -57,23 +57,13 @@ async def _call_gemini(prompt: str, max_tokens: int = 512, temperature: float = 
     """Call Google GenAI Gemini if configured (uses google.genai)."""
     try:
         from google import genai
-
         client = genai.Client(api_key=GEMINI_KEY)
-
-        # Use async generate_content if available
-        try:
-            response = await client.aio.models.generate_content(model="gemini-2.0-flash", contents=prompt)
-            return getattr(response, "text", str(response))
-        except Exception:
-            # Fallback to sync in executor
-            def sync_call():
-                resp = client.models.generate(model="gemini-2.0-flash", prompt=prompt)
-                return getattr(resp, "text", str(resp))
-
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, sync_call)
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash-lite", contents=prompt
+        )
+        return getattr(response, "text", str(response))
     except Exception as e:
-        raise RuntimeError(f"Gemini call failed: {e}")
+        raise RuntimeError("Gemini call failed: " + str(e))
 
 
 async def generate(prompt: str, max_tokens: int = 512, temperature: float = 0.0) -> str:

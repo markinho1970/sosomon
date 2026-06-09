@@ -3,7 +3,8 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useState, useRef, useEffect } from "react";
-import { Menu, X, FlaskConical, Globe, ChevronDown } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { Menu, X, FlaskConical, Globe, ChevronDown, Lock } from "lucide-react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useNetworkMode } from "@/lib/NetworkModeContext";
 import { useLang } from "@/lib/LanguageContext";
@@ -18,6 +19,9 @@ export default function Navbar() {
   const { isTestnet, toggleMode } = useNetworkMode();
   const { lang, setLang, t } = useLang();
   const { switchChain } = useSwitchChain();
+  const pathname = usePathname();
+
+  const isFaucetPage = pathname === "/faucet-sepolia";
 
   const currentLang = LANGUAGES.find(l => l.code === lang)!;
 
@@ -30,6 +34,7 @@ export default function Navbar() {
   }, []);
 
   function handleToggle() {
+    if (isFaucetPage) return;
     toggleMode();
     switchChain({ chainId: isTestnet ? base.id : baseSepolia.id });
   }
@@ -52,6 +57,19 @@ export default function Navbar() {
         <div className="hidden md:flex items-center gap-6">
           <Link href="/indexes" className="text-sm text-white/60 hover:text-white transition-colors">{t("nav_indexes")}</Link>
           <Link href="/transparency" className="text-sm text-white/60 hover:text-white transition-colors">{t("nav_transparency")}</Link>
+
+          {/* Faucet — disabled on mainnet */}
+          {isTestnet ? (
+            <Link href="/faucet-sepolia" className="text-sm text-white/60 hover:text-white transition-colors">Faucet</Link>
+          ) : (
+            <span
+              title="Switch to Testnet to access the faucet"
+              className="text-sm text-white/20 cursor-not-allowed select-none"
+            >
+              Faucet
+            </span>
+          )}
+
           <Link href="/whats-new" className="flex items-center gap-1.5 text-sm text-amber-400/80 hover:text-amber-300 transition-colors font-medium">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
             {t("nav_whats_new")}
@@ -92,16 +110,20 @@ export default function Navbar() {
             )}
           </div>
 
-          {/* Toggle Mainnet/Testnet */}
+          {/* Toggle Mainnet/Testnet — locked on faucet page */}
           <button
             onClick={handleToggle}
+            disabled={isFaucetPage}
+            title={isFaucetPage ? "Network locked: Faucet requires Base Sepolia" : undefined}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-semibold transition-all ${
-              isTestnet
-                ? "border-orange-500/50 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20"
-                : "border-green-500/50 bg-green-500/10 text-green-400 hover:bg-green-500/20"
+              isFaucetPage
+                ? "border-orange-500/30 bg-orange-500/8 text-orange-400/50 cursor-not-allowed"
+                : isTestnet
+                  ? "border-orange-500/50 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20"
+                  : "border-green-500/50 bg-green-500/10 text-green-400 hover:bg-green-500/20"
             }`}
           >
-            {isTestnet ? <FlaskConical size={13} /> : <Globe size={13} />}
+            {isFaucetPage ? <Lock size={12} /> : isTestnet ? <FlaskConical size={13} /> : <Globe size={13} />}
             {isTestnet ? t("nav_testnet") : t("nav_mainnet")}
           </button>
 
@@ -117,6 +139,14 @@ export default function Navbar() {
         <div className="md:hidden border-t border-brand-border bg-black px-4 py-4 flex flex-col gap-4">
           <Link href="/indexes" className="text-sm text-white/60 hover:text-white" onClick={() => setOpen(false)}>{t("nav_indexes")}</Link>
           <Link href="/transparency" className="text-sm text-white/60 hover:text-white" onClick={() => setOpen(false)}>{t("nav_transparency")}</Link>
+
+          {/* Faucet mobile — disabled on mainnet */}
+          {isTestnet ? (
+            <Link href="/faucet-sepolia" className="text-sm text-white/60 hover:text-white" onClick={() => setOpen(false)}>Faucet</Link>
+          ) : (
+            <span className="text-sm text-white/20 cursor-not-allowed">Faucet</span>
+          )}
+
           <Link href="/whats-new" className="text-sm text-amber-400/80 hover:text-amber-300 font-medium" onClick={() => setOpen(false)}>{t("nav_whats_new")}</Link>
           <Link href="/dashboard" className="text-sm text-center text-white/60 border border-white/10 rounded-lg px-4 py-2" onClick={() => setOpen(false)}>{t("nav_dashboard")}</Link>
           <div className="grid grid-cols-4 gap-1">
@@ -128,12 +158,22 @@ export default function Navbar() {
             ))}
           </div>
           <button
-            onClick={() => { handleToggle(); setOpen(false); }}
-            className={`text-sm text-center rounded-lg px-4 py-2 border font-semibold ${
-              isTestnet ? "border-orange-500/40 text-orange-400" : "border-green-500/40 text-green-400"
+            onClick={() => { if (!isFaucetPage) { handleToggle(); setOpen(false); } }}
+            disabled={isFaucetPage}
+            className={`text-sm text-center rounded-lg px-4 py-2 border font-semibold transition-all ${
+              isFaucetPage
+                ? "border-orange-500/20 text-orange-400/40 cursor-not-allowed"
+                : isTestnet
+                  ? "border-orange-500/40 text-orange-400"
+                  : "border-green-500/40 text-green-400"
             }`}
           >
-            {isTestnet ? `${t("nav_testnet")} — trocar para Mainnet` : `${t("nav_mainnet")} — trocar para Testnet`}
+            {isFaucetPage
+              ? `🔒 ${t("nav_testnet")} — locked`
+              : isTestnet
+                ? `${t("nav_testnet")} — trocar para Mainnet`
+                : `${t("nav_mainnet")} — trocar para Testnet`
+            }
           </button>
           <div className="flex justify-center">
             <ConnectButton accountStatus="full" chainStatus="none" showBalance={false} />

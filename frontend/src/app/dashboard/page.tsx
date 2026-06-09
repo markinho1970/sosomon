@@ -53,7 +53,7 @@ interface Portfolio {
 
 export default function DashboardPage() {
   const { address, isConnected } = useAccount();
-  const { networkMode } = useNetworkMode();
+  const { networkMode, isTestnet } = useNetworkMode();
   const { t } = useLang();
   const [activeTab, setActiveTab] = useState<"portfolio" | "performance" | "activity" | "macro">("portfolio");
   const [selectedIndexForPerf, setSelectedIndexForPerf] = useState<string | null>(null);
@@ -183,6 +183,7 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
+
 
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
