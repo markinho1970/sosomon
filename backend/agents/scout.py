@@ -24,7 +24,6 @@ from services import sosovalue
 from services.sosovalue import get_macro_context
 from services.sodex import get_all_tickers, get_markets, get_candles
 
-gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 # ─── Token Universe per Theme ─────────────────────────────────────────────────
 # CoinGecko IDs for each thematic universe (top 30 candidates per theme)
