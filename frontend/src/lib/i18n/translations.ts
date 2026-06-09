@@ -598,6 +598,13 @@ export const T: Record<Lang, Record<string, string>> = {
     faucet_tip4: "Test the withdrawal flow too. Request a refund from your portfolio and track the on-chain transaction through Base Sepolia explorer.",
     faucet_tip5: "Every action generates a blockchain transaction. Use the Basescan links in your dashboard to verify full on-chain transparency.",
     faucet_footer: "This faucet is provided to help evaluators and investors explore SoSoMon on Base Sepolia. Test tokens have no real monetary value.",
+    wn_faucet_title: "Testnet Faucet — Test for free, no real funds needed",
+    wn_faucet_badge: "FAUCET",
+    wn_faucet_desc: "We're inviting judges, evaluators, and curious users to explore SoSoMon on Base Sepolia testnet. Get free tokens, make deposits, trigger the AI rebalancer — and help us stress-test the platform before mainnet.",
+    wn_faucet_f1: "0.0001 ETH · up to 3 claims per wallet",
+    wn_faucet_f2: "$20 USDC via Circle's official faucet",
+    wn_faucet_f3: "No signature required — ETH arrives automatically",
+    wn_faucet_cta: "Get test tokens →",
 
   },
 
@@ -1153,6 +1160,13 @@ export const T: Record<Lang, Record<string, string>> = {
     faucet_tip4: "Teste também o fluxo de saque. Solicite um reembolso e acompanhe a transação on-chain pelo explorador da Base Sepolia.",
     faucet_tip5: "Cada ação gera uma transação blockchain. Use os links do Basescan no seu painel para verificar total transparência on-chain.",
     faucet_footer: "Este faucet foi criado para ajudar avaliadores e investidores a explorar o SoSoMon na Base Sepolia. Os tokens de teste não têm valor monetário real.",
+    wn_faucet_title: "Faucet Testnet — Teste gratuitamente, sem fundos reais",
+    wn_faucet_badge: "FAUCET",
+    wn_faucet_desc: "Convidamos juízes, avaliadores e usuários curiosos a explorar o SoSoMon na testnet Base Sepolia. Pegue tokens grátis, faça depósitos, acione o rebalanceador de IA — e nos ajude a testar a plataforma antes do mainnet.",
+    wn_faucet_f1: "0.0001 ETH · até 3 claims por carteira",
+    wn_faucet_f2: "$20 USDC pelo faucet oficial da Circle",
+    wn_faucet_f3: "Sem assinatura — ETH chega automaticamente",
+    wn_faucet_cta: "Pegar tokens de teste →",
 
   },
 
@@ -1468,6 +1482,13 @@ export const T: Record<Lang, Record<string, string>> = {
     faucet_tip4: "也测试提款流程。申请退款并通过Base Sepolia浏览器追踪链上交易。",
     faucet_tip5: "每次操作都会生成区块链交易。使用仪表板中的Basescan链接验证完整的链上透明度。",
     faucet_footer: "此水龙头旨在帮助评估者和投资者在Base Sepolia上探索SoSoMon。测试代币没有真实货币价值。",
+    wn_faucet_title: "测试网水龙头 — 免费测试，无需真实资金",
+    wn_faucet_badge: "水龙头",
+    wn_faucet_desc: "我们邀请评委、评估者和好奇的用户在Base Sepolia测试网上探索SoSoMon。获取免费代币、进行存款、触发AI再平衡器——帮助我们在主网前对平台进行压力测试。",
+    wn_faucet_f1: "0.0001 ETH · 每个钱包最多3次领取",
+    wn_faucet_f2: "通过Circle官方水龙头获取$20 USDC",
+    wn_faucet_f3: "无需签名 — ETH自动到账",
+    wn_faucet_cta: "获取测试代币 →",
 
   },
 
@@ -1783,6 +1804,13 @@ export const T: Record<Lang, Record<string, string>> = {
     faucet_tip4: "出金フローもテストしてください。払い戻しをリクエストし、Base SepoliaエクスプローラーでオンチェーンTXを追跡してください。",
     faucet_tip5: "すべてのアクションがブロックチェーントランザクションを生成します。ダッシュボードのBasescanリンクを使用して完全なオンチェーン透明性を確認してください。",
     faucet_footer: "このフォーセットは評価者と投資者がBase SepoliaでSoSoMonを探索するために提供されています。テストトークンには実際の金銭的価値はありません。",
+    wn_faucet_title: "テストネットフォーセット — 無料テスト、実際の資金不要",
+    wn_faucet_badge: "フォーセット",
+    wn_faucet_desc: "審査員、評価者、興味のあるユーザーをBase Sepoliaテストネット上でSoSoMonを探索するためにご招待します。無料トークンを取得し、デポジットし、AIリバランサーをトリガーして、メインネット前にプラットフォームのストレステストをお手伝いください。",
+    wn_faucet_f1: "0.0001 ETH · ウォレットあたり最大3回",
+    wn_faucet_f2: "CircleのフォーセットでUSDC$20",
+    wn_faucet_f3: "署名不要 — ETHが自動的に届きます",
+    wn_faucet_cta: "テストトークンを取得 →",
 
   },
 
@@ -2092,6 +2120,13 @@ export const T: Record<Lang, Record<string, string>> = {
     faucet_tip4: "निकासी प्रवाह भी परीक्षण करें। रिफंड का अनुरोध करें और Base Sepolia एक्सप्लोरर के माध्यम से ऑन-चेन लेनदेन ट्रैक करें।",
     faucet_tip5: "प्रत्येक क्रिया एक ब्लॉकचेन लेनदेन उत्पन्न करती है। पूर्ण ऑन-चेन पारदर्शिता सत्यापित करने के लिए Basescan लिंक का उपयोग करें।",
     faucet_footer: "यह फॉसेट मूल्यांकनकर्ताओं और निवेशकों को Base Sepolia पर SoSoMon का अन्वेषण करने में मदद के लिए है। टेस्ट टोकन का कोई वास्तविक मौद्रिक मूल्य नहीं है।",
+    wn_faucet_title: "टेस्टनेट फॉसेट — मुफ्त में टेस्ट करें, असली फंड की जरूरत नहीं",
+    wn_faucet_badge: "फॉसेट",
+    wn_faucet_desc: "हम न्यायाधीशों, मूल्यांकनकर्ताओं और जिज्ञासु उपयोगकर्ताओं को Base Sepolia टेस्टनेट पर SoSoMon का अन्वेषण करने के लिए आमंत्रित करते हैं। मुफ्त टोकन प्राप्त करें, जमा करें, AI रिबैलेंसर चालू करें — और मेनेट से पहले प्लेटफॉर्म का परीक्षण करने में मदद करें।",
+    wn_faucet_f1: "0.0001 ETH · प्रति वॉलेट अधिकतम 3 क्लेम",
+    wn_faucet_f2: "Circle के फॉसेट से $20 USDC",
+    wn_faucet_f3: "कोई हस्ताक्षर नहीं — ETH स्वचालित रूप से आता है",
+    wn_faucet_cta: "टेस्ट टोकन प्राप्त करें →",
 
   },
 
@@ -2401,6 +2436,13 @@ export const T: Record<Lang, Record<string, string>> = {
     faucet_tip4: "Uji juga alur penarikan. Minta pengembalian dana dan lacak transaksi on-chain melalui explorer Base Sepolia.",
     faucet_tip5: "Setiap tindakan menghasilkan transaksi blockchain. Gunakan tautan Basescan di dashboard untuk memverifikasi transparansi on-chain penuh.",
     faucet_footer: "Faucet ini disediakan untuk membantu evaluator dan investor menjelajahi SoSoMon di Base Sepolia. Token uji coba tidak memiliki nilai moneter nyata.",
+    wn_faucet_title: "Faucet Testnet — Uji coba gratis, tanpa dana nyata",
+    wn_faucet_badge: "FAUCET",
+    wn_faucet_desc: "Kami mengundang juri, evaluator, dan pengguna yang penasaran untuk menjelajahi SoSoMon di testnet Base Sepolia. Dapatkan token gratis, buat deposit, picu AI rebalancer — dan bantu kami uji coba platform sebelum mainnet.",
+    wn_faucet_f1: "0.0001 ETH · hingga 3 klaim per dompet",
+    wn_faucet_f2: "$20 USDC via faucet resmi Circle",
+    wn_faucet_f3: "Tanpa tanda tangan — ETH tiba otomatis",
+    wn_faucet_cta: "Dapatkan token uji coba →",
 
   },
 
@@ -2710,6 +2752,13 @@ export const T: Record<Lang, Record<string, string>> = {
     faucet_tip4: "출금 흐름도 테스트하세요. 환불을 요청하고 Base Sepolia 탐색기를 통해 온체인 거래를 추적하세요.",
     faucet_tip5: "모든 작업이 블록체인 거래를 생성합니다. 대시보드의 Basescan 링크를 사용하여 완전한 온체인 투명성을 확인하세요.",
     faucet_footer: "이 파우셋은 평가자와 투자자가 Base Sepolia에서 SoSoMon을 탐색하는 데 도움을 주기 위해 제공됩니다. 테스트 토큰은 실제 금전적 가치가 없습니다.",
+    wn_faucet_title: "테스트넷 파우셋 — 무료 테스트, 실제 자금 불필요",
+    wn_faucet_badge: "파우셋",
+    wn_faucet_desc: "심사위원, 평가자, 그리고 호기심 많은 사용자를 Base Sepolia 테스트넷에서 SoSoMon을 탐색하도록 초대합니다. 무료 토큰을 받고, 입금하고, AI 리밸런서를 작동시켜 — 메인넷 전에 플랫폼 스트레스 테스트를 도와주세요.",
+    wn_faucet_f1: "0.0001 ETH · 지갑당 최대 3회 청구",
+    wn_faucet_f2: "Circle 공식 파우셋에서 $20 USDC",
+    wn_faucet_f3: "서명 불필요 — ETH가 자동으로 도착",
+    wn_faucet_cta: "테스트 토큰 받기 →",
 
   },
 

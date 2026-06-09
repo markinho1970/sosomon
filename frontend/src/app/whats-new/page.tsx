@@ -4,7 +4,7 @@ import Link from "next/link";
 import {
   CheckCircle2, ArrowRight, Sparkles, Shield, BarChart3,
   Layers, Eye, Cpu, Bot, Zap, Lock, Globe, ArrowDownCircle, FlaskConical,
-  FileSignature, Timer, AlertTriangle, ToggleLeft,
+  FileSignature, Timer, AlertTriangle, ToggleLeft, Droplets,
 } from "lucide-react";
 import Navbar from "../components/Navbar";
 import { useLang } from "@/lib/LanguageContext";
@@ -177,6 +177,29 @@ export default function WhatsNewPage() {
               <span className="px-2.5 py-1 rounded-lg bg-blue-500/15 text-blue-400 font-medium">✓ {t("wn_toggle_eval")}</span>
               <span className="px-2.5 py-1 rounded-lg bg-purple-500/15 text-purple-400 font-medium">✓ {t("wn_toggle_safe")}</span>
             </div>
+          </div>
+
+          {/* Faucet highlight card */}
+          <div className="mb-4 rounded-2xl border border-sky-500/40 bg-gradient-to-br from-sky-500/10 via-sky-500/5 to-transparent p-5">
+            <div className="flex items-center gap-2 mb-2">
+              <Droplets size={20} className="text-sky-400" />
+              <span className="text-sky-300 font-bold text-base">{t("wn_faucet_title")}</span>
+              <span className="ml-auto text-xs font-bold px-2 py-0.5 rounded bg-sky-500/20 text-sky-400 ring-1 ring-sky-500/40">{t("wn_faucet_badge")}</span>
+            </div>
+            <p className="text-sky-200/70 text-sm leading-relaxed mb-3">
+              {t("wn_faucet_desc")}
+            </p>
+            <div className="flex flex-wrap gap-2 text-xs mb-3">
+              <span className="px-2.5 py-1 rounded-lg bg-sky-500/15 text-sky-300 font-medium">⚡ {t("wn_faucet_f1")}</span>
+              <span className="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-400 font-medium">💵 {t("wn_faucet_f2")}</span>
+              <span className="px-2.5 py-1 rounded-lg bg-white/8 text-white/60 font-medium">✓ {t("wn_faucet_f3")}</span>
+            </div>
+            <Link
+              href="/faucet-sepolia"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-sky-400 hover:text-sky-300 transition-colors"
+            >
+              {t("wn_faucet_cta")}
+            </Link>
           </div>
 
           {/* API Integration Highlights */}
