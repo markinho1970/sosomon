@@ -125,12 +125,13 @@ SoSoMon uses the SoDEX Spot API for all trading operations:
 │                    SoSoMon                          │
 │                                                     │
 │  Next.js Frontend (React, wagmi, RainbowKit)        │
-│  ├── Home — live stats + index cards                │
-│  ├── Indexes — detail + constituents                │
-│  ├── Dashboard — portfolio + AI activity + macro    │
-│  ├── Transparency — rebalance history + deposits    │
-│  ├── What's New — API integration showcase          │
-│  └── Admin — wallet-signed auth (EIP-191)           │
+│  ├── Home          — live stats + index cards       │
+│  ├── Indexes       — detail + constituents          │
+│  ├── Dashboard     — portfolio + AI activity + macro│
+│  ├── Transparency  — rebalance history + deposits   │
+│  ├── Faucet Sepolia— testnet token faucet (ETH+USDC)│
+│  ├── What's New    — API integration showcase       │
+│  └── Admin         — wallet-signed auth (EIP-191)   │
 │                                                     │
 │  FastAPI Backend (Python)                           │
 │  ├── /api/indexes    — index data + constituents    │
@@ -138,6 +139,7 @@ SoSoMon uses the SoDEX Spot API for all trading operations:
 │  ├── /api/agents     — AI activity log              │
 │  ├── /api/invest     — portfolio + fund wallet      │
 │  ├── /api/stats      — public platform stats        │
+│  ├── /api/faucet     — testnet ETH faucet           │
 │  └── /api/admin      — admin operations             │
 │                                                     │
 │  APScheduler                                        │
@@ -153,6 +155,9 @@ SoSoMon uses the SoDEX Spot API for all trading operations:
 │  ├── subscribers           — investor wallets       │
 │  ├── subscriber_portfolios — positions              │
 │  └── agent_activity_logs   — full audit trail       │
+│                                                     │
+│  File-based storage                                 │
+│  └── faucet_claims.json    — claim history per wallet│
 └─────────────────────────────────────────────────────┘
          │                          │
          ▼                          ▼
@@ -236,6 +241,43 @@ npm start
 All secrets are set in `backend/.env` — see `backend/.env.example` for the list of required keys. **Never commit `.env` files.**
 
 Private keys are stored encrypted via AES-256-GCM. Use `backend/utils/crypto.py` to encrypt before storing. The `MASTER_ENCRYPTION_KEY` and all API keys must be set only in the server environment — never hardcoded.
+
+---
+
+## What's New — Post-Buildathon (2026-06-09)
+
+### Testnet Faucet (`/faucet-sepolia`)
+- Dedicated faucet page completely independent from the main investment flow
+- **ETH faucet:** 0.0001 ETH per claim, up to 3 claims per wallet, with progress bar and Basescan link per transaction
+- **USDC faucet:** external link to Circle's official faucet ($20 USDC, Base Sepolia)
+- How-to guide with 4 numbered steps and 5 testing tips for testers and early investors
+- Claims tracked in `faucet_claims.json` — no DB schema changes required
+- Backend: `POST /api/faucet/claim` and `GET /api/faucet/status/{wallet}`
+- **EIP-55 fix:** `to_checksum_address()` applied to the recipient address before signing the transaction
+- **API URL fix:** relative `/api/faucet/...` URLs — Nginx proxies these to the backend; avoids browser resolving `localhost:8000`
+
+### Navigation — Faucet Link + Network Lock
+- "Faucet" added to the top nav between Transparency and What's New
+- On mainnet: link is grayed out and unclickable with an explanatory tooltip
+- On `/faucet-sepolia`: network toggle locked with a padlock icon — prevents switching away from testnet while using the faucet
+
+### What's New — Faucet Card
+- Sky-blue highlight card added to the What's New page describing the open invitation for testers and early investors
+- Generic framing — no buildathon-specific language
+- Available in all 7 languages, updates instantly on language switch
+
+### Dashboard — Cleanup
+- `FaucetPanel` removed from the dashboard (was cluttering the investor view)
+- `FaucetPanel.tsx` kept as a standalone component for potential reuse
+
+### Internationalization (7 Languages) — Faucet
+- ~30 new translation keys per language covering the entire `/faucet-sepolia` page
+- 7 new `wn_faucet_*` keys per language for the What's New card
+- Languages: `en` · `pt` · `zh` · `ja` · `hi` · `id` · `ko`
+
+### Bug Fixes
+- **Gemini/Rebalancer:** `'Models' object has no attribute 'generate'` — switched to `gemini-2.5-flash-lite` and corrected async call to `client.aio.models.generate_content()`
+- **nav_updater.py:** `ImportError: FUND_WALLET` — replaced with `NETWORKS["mainnet"]["fund_wallet"]` from the existing config dict
 
 ---
 
