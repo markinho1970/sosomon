@@ -53,11 +53,21 @@ async def _call_anthropic(prompt: str, max_tokens: int = 512, temperature: float
             raise RuntimeError(f"Anthropic call failed: {e}")
 
 
+_gemini_client = None
+
+
+def _get_gemini_client():
+    global _gemini_client
+    if _gemini_client is None:
+        from google import genai
+        _gemini_client = genai.Client(api_key=GEMINI_KEY)
+    return _gemini_client
+
+
 async def _call_gemini(prompt: str, max_tokens: int = 512, temperature: float = 0.0) -> str:
     """Call Google GenAI Gemini if configured (uses google.genai)."""
     try:
-        from google import genai
-        client = genai.Client(api_key=GEMINI_KEY)
+        client = _get_gemini_client()
         response = await client.aio.models.generate_content(
             model="gemini-2.5-flash-lite", contents=prompt
         )

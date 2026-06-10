@@ -33,10 +33,15 @@ def get_stats(network_mode: str = Query("mainnet"), db: Session = Depends(get_db
         AlphaIndex.is_active == True
     ).scalar() or 0.0
 
+    pending_proposals = db.query(func.count(RebalanceProposal.id)).filter(
+        RebalanceProposal.status == "pending"
+    ).scalar() or 0
+
     return ApiResponse(data=PublicStatsOut(
         total_aum_usd=round(total_aum, 2),
         active_indexes=active_indexes,
         total_subscribers=total_subs,
         total_rebalances=total_rebalances,
         avg_return_30d_pct=round(avg_return, 2),
+        pending_proposals=pending_proposals,
     ))

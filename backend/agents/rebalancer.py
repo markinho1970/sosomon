@@ -103,6 +103,16 @@ async def _process_index(idx: AlphaIndex, sentiment_score: float, target_buffer:
         _log_no_action(idx.id, db)
         return
 
+    # Skip if there is already a pending proposal for this index (except emergencies)
+    if trigger != 'risk_override':
+        existing = db.query(RebalanceProposal).filter(
+            RebalanceProposal.index_id == idx.id,
+            RebalanceProposal.status == 'pending',
+        ).first()
+        if existing:
+            logger.info(f'Rebalancer: skipping {idx.id} — pending proposal #{existing.id} already exists')
+            return
+
     # Generate rebalance proposal using Claude
     proposal_changes = await _generate_proposal(
         idx=idx,

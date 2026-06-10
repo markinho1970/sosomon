@@ -11,6 +11,7 @@ import uuid
 import logging
 from datetime import datetime, timezone
 
+import asyncio
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -53,12 +54,18 @@ def _pad_address(address: str) -> str:
     return "0x" + address.lower().removeprefix("0x").zfill(64)
 
 
-async def _rpc(rpc_url: str, method: str, params: list) -> dict:
+async def _rpc(rpc_url: str, method: str, params: list, _retries: int = 1) -> dict:
     payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
-    async with httpx.AsyncClient(timeout=15) as c:
-        r = await c.post(rpc_url, json=payload)
-        r.raise_for_status()
-        return r.json()
+    try:
+        async with httpx.AsyncClient(timeout=15) as c:
+            r = await c.post(rpc_url, json=payload)
+            r.raise_for_status()
+            return r.json()
+    except (httpx.HTTPStatusError, httpx.TimeoutException, httpx.ConnectError):
+        if _retries > 0:
+            await asyncio.sleep(3)
+            return await _rpc(rpc_url, method, params, _retries - 1)
+        raise
 
 
 async def _latest_block(rpc_url: str) -> int:
@@ -108,7 +115,7 @@ async def check_deposits(db, network: str = "mainnet"):
     try:
         latest = await _latest_block(net["rpc"])
     except Exception as e:
-        logger.error(f"deposit_monitor [{network}]: erro ao buscar bloco: {e}")
+        logger.error(f"deposit_monitor [{network}]: erro ao buscar bloco: {type(e).__name__}: {e or '(sem mensagem)'}")
         return
 
     if _last_block[network] == 0:

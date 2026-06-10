@@ -5,6 +5,7 @@ import TestnetBanner from "./components/TestnetBanner";
 import DisclaimerFooter from "./components/DisclaimerFooter";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://sosomon.xyz"),
   title: "SoSoMon — AI-Managed Thematic Crypto Indexes",
   description:
     "Thematic crypto indexes managed by AI agents, verified on-chain. Built on SoSoValue ValueChain.",

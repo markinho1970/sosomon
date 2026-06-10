@@ -92,6 +92,7 @@ class PublicStatsOut(BaseModel):
     total_subscribers: int
     total_rebalances: int
     avg_return_30d_pct: float
+    pending_proposals: int = 0
 
 
 # ─── Subscriber / Portfolio ───────────────────────────────────────────────────
