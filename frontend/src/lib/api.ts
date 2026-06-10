@@ -187,7 +187,21 @@ export const adminApi = {
     );
     return data;
   },
+
+  alerts: async (address: string, message: string, signature: string) => {
+    const { data } = await api.get("/api/admin/alerts", adminHeaders(address, message, signature));
+    return data as { alerts: SystemAlert[]; healthy: boolean; checked_at: string };
+  },
 };
+
+export interface SystemAlert {
+  id: string;
+  severity: "critical" | "warning" | "info";
+  category: string;
+  title: string;
+  message: string;
+  since: string | null;
+}
 
 // ─── Performance ─────────────────────────────────────────────────────────────
 

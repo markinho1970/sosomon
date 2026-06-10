@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { useAccount, useSignMessage, useDisconnect, useChainId, useSwitchChain } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import {
@@ -9,7 +9,7 @@ import {
   Fuel, ExternalLink, ChevronDown, Copy, Download,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { adminApi } from "@/lib/api";
+import { adminApi, type SystemAlert } from "@/lib/api";
 import { useLang } from "@/lib/LanguageContext";
 import { LANGUAGES, type Lang } from "@/lib/i18n/translations";
 
@@ -173,6 +173,9 @@ export default function AdminPage() {
 
   const [copiedAddr, setCopiedAddr] = useState(false);
   const loadKeyRef = useRef("");
+
+  const [alerts, setAlerts] = useState<SystemAlert[]>([]);
+  const [alertsCheckedAt, setAlertsCheckedAt] = useState("");
 
   // Restaura sessão E rede do localStorage de forma síncrona (antes do primeiro paint = sem flash)
   useLayoutEffect(() => {
@@ -338,6 +341,25 @@ export default function AdminPage() {
     loadAll(networkMode);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, networkMode]);
+
+  const fetchAlerts = useCallback(async () => {
+    if (!session) return;
+    try {
+      const data = await adminApi.alerts(session.address, session.message, session.signature);
+      setAlerts(data.alerts ?? []);
+      setAlertsCheckedAt(
+        new Date(data.checked_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+      );
+    } catch { /**/ }
+  }, [session]);
+
+  useEffect(() => {
+    if (!session) return;
+    fetchAlerts();
+    const id = setInterval(fetchAlerts, 60_000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
 
   async function handleApprove(id: number) {
     if (!session) return;
@@ -589,6 +611,41 @@ export default function AdminPage() {
               <p className={`stat-value ${stats.pending_proposals > 0 ? "text-amber-400" : "text-white"}`}>{stats.pending_proposals}</p>
               <p className="text-xs text-white/30">{t("admin_proposals_label")}</p>
             </div>
+          </div>
+        )}
+
+        {/* System Alerts */}
+        {session && (
+          <div className="space-y-2">
+            {alerts.length === 0 ? (
+              <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-green-500/20 bg-green-500/5">
+                <CheckCircle2 size={13} className="text-green-400 shrink-0" />
+                <p className="text-green-400/70 text-xs">Todos os sistemas operacionais</p>
+                {alertsCheckedAt && <span className="ml-auto text-white/20 text-xs">{alertsCheckedAt}</span>}
+              </div>
+            ) : (
+              alerts.map((alert) => {
+                const cls: Record<string, string> = {
+                  critical: "border-red-500/40 bg-red-500/5 text-red-300",
+                  warning:  "border-amber-500/40 bg-amber-500/5 text-amber-300",
+                  info:     "border-blue-500/40 bg-blue-500/5 text-blue-300",
+                };
+                const icons: Record<string, React.ReactNode> = {
+                  critical: <AlertTriangle size={13} className="text-red-400 shrink-0 mt-0.5" />,
+                  warning:  <AlertTriangle size={13} className="text-amber-400 shrink-0 mt-0.5" />,
+                  info:     <Clock size={13} className="text-blue-400 shrink-0 mt-0.5" />,
+                };
+                return (
+                  <div key={alert.id} className={`flex items-start gap-3 px-4 py-3 rounded-xl border ${cls[alert.severity] ?? "border-white/10 bg-white/5 text-white/60"}`}>
+                    {icons[alert.severity]}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">{alert.title}</p>
+                      <p className="text-xs opacity-70 mt-0.5">{alert.message}</p>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         )}
 

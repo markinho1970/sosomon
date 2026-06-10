@@ -43,6 +43,31 @@ NETWORKS = {
 # Rastreia último bloco processado por rede — independentes
 _last_block = {"mainnet": 0, "testnet": 0}
 
+_RPC_FALLBACKS = {
+    "mainnet": [
+        os.getenv("BASE_RPC_URL", "https://mainnet.base.org"),
+        "https://base.llamarpc.com",
+        "https://rpc.ankr.com/base",
+        "https://base-rpc.publicnode.com",
+    ],
+    "testnet": [
+        os.getenv("BASE_SEPOLIA_RPC_URL", "https://sepolia.base.org"),
+        "https://base-sepolia.llamarpc.com",
+        "https://rpc.ankr.com/base_sepolia",
+        "https://base-sepolia-rpc.publicnode.com",
+    ],
+}
+
+_rpc_status: dict = {
+    "mainnet": {"healthy": True, "active_rpc": None, "last_error": None, "last_error_at": None, "fail_count": 0},
+    "testnet": {"healthy": True, "active_rpc": None, "last_error": None, "last_error_at": None, "fail_count": 0},
+}
+
+
+def get_rpc_status() -> dict:
+    """Retorna status dos RPCs para alertas do admin."""
+    return {k: dict(v) for k, v in _rpc_status.items()}
+
 
 def _configured(net: dict) -> bool:
     if not net["fund_wallet"]:
@@ -54,33 +79,52 @@ def _pad_address(address: str) -> str:
     return "0x" + address.lower().removeprefix("0x").zfill(64)
 
 
-async def _rpc(rpc_url: str, method: str, params: list, _retries: int = 1) -> dict:
+async def _rpc(rpc_url: str, method: str, params: list) -> dict:
+    """Chamada RPC direta a uma URL. Sem retry — use _rpc_resilient para fallback chain."""
     payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
-    try:
-        async with httpx.AsyncClient(timeout=15) as c:
-            r = await c.post(rpc_url, json=payload)
-            r.raise_for_status()
-            return r.json()
-    except (httpx.HTTPStatusError, httpx.TimeoutException, httpx.ConnectError):
-        if _retries > 0:
-            await asyncio.sleep(3)
-            return await _rpc(rpc_url, method, params, _retries - 1)
-        raise
+    async with httpx.AsyncClient(timeout=15) as c:
+        r = await c.post(rpc_url, json=payload)
+        r.raise_for_status()
+        return r.json()
 
 
-async def _latest_block(rpc_url: str) -> int:
-    res = await _rpc(rpc_url, "eth_blockNumber", [])
+async def _rpc_resilient(network: str, method: str, params: list) -> dict:
+    """Tenta cada RPC da lista de fallback em ordem. Atualiza _rpc_status. Lanca excecao se todos falharem."""
+    urls = list(dict.fromkeys(u for u in _RPC_FALLBACKS.get(network, []) if u))
+    last_exc: Exception = RuntimeError("nenhum RPC configurado")
+    for url in urls:
+        try:
+            result = await _rpc(url, method, params)
+            _rpc_status[network].update({"healthy": True, "active_rpc": url, "fail_count": 0})
+            return result
+        except Exception as e:
+            last_exc = e
+            logger.warning(
+                f"deposit_monitor [{network}]: RPC {url} falhou "
+                f"({type(e).__name__}: {e or '(sem msg)'}), tentando proximo..."
+            )
+    _rpc_status[network].update({
+        "healthy": False,
+        "last_error": f"{type(last_exc).__name__}: {last_exc or '(sem msg)'}",
+        "last_error_at": datetime.now(timezone.utc).isoformat(),
+        "fail_count": _rpc_status[network].get("fail_count", 0) + 1,
+    })
+    raise last_exc
+
+
+async def _latest_block(network: str) -> int:
+    res = await _rpc_resilient(network, "eth_blockNumber", [])
     return int(res["result"], 16)
 
 
-async def _get_logs(rpc_url: str, usdc: str, fund_wallet: str, from_block: int, to_block: int) -> list:
+async def _get_logs(network: str, usdc: str, fund_wallet: str, from_block: int, to_block: int) -> list:
     params = [{
         "address": usdc,
         "fromBlock": hex(from_block),
         "toBlock":   hex(to_block),
         "topics": [TRANSFER_TOPIC, None, _pad_address(fund_wallet)],
     }]
-    res = await _rpc(rpc_url, "eth_getLogs", params)
+    res = await _rpc_resilient(network, "eth_getLogs", params)
     return res.get("result", [])
 
 
@@ -113,7 +157,7 @@ async def check_deposits(db, network: str = "mainnet"):
         return
 
     try:
-        latest = await _latest_block(net["rpc"])
+        latest = await _latest_block(network)
     except Exception as e:
         logger.error(f"deposit_monitor [{network}]: erro ao buscar bloco: {type(e).__name__}: {e or '(sem mensagem)'}")
         return
@@ -125,7 +169,7 @@ async def check_deposits(db, network: str = "mainnet"):
         return
 
     try:
-        logs = await _get_logs(net["rpc"], net["usdc"], net["fund_wallet"],
+        logs = await _get_logs(network, net["usdc"], net["fund_wallet"],
                                _last_block[network] + 1, latest)
     except Exception as e:
         logger.error(f"deposit_monitor [{network}]: eth_getLogs falhou: {e}")

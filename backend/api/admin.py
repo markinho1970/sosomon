@@ -439,3 +439,94 @@ def admin_movements(
         })
 
     return {"movements": movements}
+
+
+@router.get("/alerts")
+def admin_alerts(db: Session = Depends(get_db), _: None = Depends(require_admin)):
+    """Retorna alertas do sistema: RPC health, tokens sem preco, scout parado, propostas pendentes."""
+    import datetime as dt
+    from models import IndexConstituent, ScoutReport, RebalanceProposal
+
+    alerts = []
+    now = dt.datetime.utcnow()
+
+    # 1. RPC status
+    try:
+        from services.deposit_monitor import get_rpc_status
+        for net_name, status in get_rpc_status().items():
+            if not status.get("healthy", True):
+                fc = status.get("fail_count", 0)
+                alerts.append({
+                    "id": f"rpc_{net_name}",
+                    "severity": "critical",
+                    "category": "rpc",
+                    "title": f"RPC {net_name} offline",
+                    "message": f"Todos os endpoints falhando ({fc} tentativas consecutivas). Ultimo erro: {status.get('last_error', '?')}",
+                    "since": status.get("last_error_at"),
+                })
+    except Exception:
+        pass
+
+    # 2. Tokens sem preco (nao stablecoin)
+    try:
+        zero_price = (
+            db.query(IndexConstituent)
+            .filter(
+                IndexConstituent.current_price_usd <= 0.0001,
+                IndexConstituent.is_stablecoin == False,
+            )
+            .all()
+        )
+        for t in zero_price:
+            alerts.append({
+                "id": f"price_{t.symbol}_{t.index_id}",
+                "severity": "critical",
+                "category": "price",
+                "title": f"{t.symbol} com preco zero",
+                "message": f"{t.symbol} no indice '{t.index_id}' tem preco ${(t.current_price_usd or 0):.6f}. Verificar coingecko_id: '{t.coingecko_id}'.",
+                "since": None,
+            })
+    except Exception:
+        pass
+
+    # 3. Scout estagnado (> 25h sem rodar)
+    try:
+        last_scout = db.query(func.max(ScoutReport.run_at)).scalar()
+        if last_scout:
+            age_h = (now - last_scout).total_seconds() / 3600
+            if age_h > 25:
+                alerts.append({
+                    "id": "scout_stale",
+                    "severity": "warning",
+                    "category": "agent",
+                    "title": "Scout parado",
+                    "message": f"Ultimo run do Scout ha {age_h:.0f}h. Esperado: diario as 06:00 UTC.",
+                    "since": last_scout.isoformat() if last_scout else None,
+                })
+    except Exception:
+        pass
+
+    # 4. Propostas pendentes
+    try:
+        pending_count = (
+            db.query(func.count(RebalanceProposal.id))
+            .filter(RebalanceProposal.status == "pending")
+            .scalar()
+        ) or 0
+        if pending_count > 0:
+            alerts.append({
+                "id": "pending_proposals",
+                "severity": "info",
+                "category": "proposals",
+                "title": f"{pending_count} proposta(s) pendente(s)",
+                "message": f"Ha {pending_count} proposta(s) de rebalanceamento aguardando aprovacao.",
+                "since": None,
+            })
+    except Exception:
+        pass
+
+    return {
+        "alerts": alerts,
+        "healthy": all(a["severity"] != "critical" for a in alerts),
+        "checked_at": now.isoformat() + "Z",
+    }
