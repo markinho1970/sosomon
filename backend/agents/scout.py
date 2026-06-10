@@ -125,6 +125,29 @@ async def run_scout_for_index(index_id: str, theme: str, db):
         logger.warning(f"Scout: no tokens qualified for {theme}")
         return
 
+    # Cooldown pós-ejeção: ignora tokens ejetados nos últimos 90 dias
+    from datetime import timedelta
+    _cutoff = datetime.utcnow() - timedelta(days=90)
+    _recent_reports = db.query(ScoutReport).filter(
+        ScoutReport.index_id == index_id,
+        ScoutReport.run_at >= _cutoff,
+    ).all()
+    _ejected_symbols: set = set()
+    for _r in _recent_reports:
+        for _exc in (_r.exclusions or []):
+            _sym = _exc.get("symbol", "").upper()
+            if _sym:
+                _ejected_symbols.add(_sym)
+    # Não aplica cooldown a tokens que foram reincluídos depois da ejeção
+    for _r in _recent_reports:
+        for _inc in (_r.inclusions or []):
+            _ejected_symbols.discard(_inc.get("symbol", "").upper())
+    if _ejected_symbols:
+        _cooling = [t["symbol"] for t in qualified_tokens if t.get("symbol", "").upper() in _ejected_symbols]
+        if _cooling:
+            logger.info(f"Scout [{theme}]: cooldown 90d bloqueou {_cooling}")
+            qualified_tokens = [t for t in qualified_tokens if t.get("symbol", "").upper() not in _ejected_symbols]
+
     # 4. Enriquece com dados on-chain reais do SoDEX quando disponível
     for token in qualified_tokens:
         sym = token["symbol"].upper()
