@@ -47,6 +47,14 @@ THEME_UNIVERSE: Dict[str, List[str]] = {
     ],
 }
 
+# Tokens permanentemente excluídos de todos os índices, independente de market cap/volume.
+# Adicionar símbolo em maiúsculas para bloquear.
+TOKEN_BLACKLIST_SYMBOLS: set = {
+    "FARTCOIN",   # meme token — sem utilidade real nos temas
+    "PIEVERSE",   # meme/gaming token — sem fundamentos DePIN/AI/RWA
+    "SKYAI",      # meme token — sem utilidade real no tema AI
+}
+
 
 async def run_all_indexes():
     """Main entry point — runs Scout for all active indexes."""
@@ -106,6 +114,12 @@ async def run_scout_for_index(index_id: str, theme: str, db):
         min_market_cap_usd=50_000_000,
         min_volume_24h_usd=500_000,
     )
+
+    # Remove blacklisted tokens (meme/irrelevantes) antes de qualquer analise
+    _blacklisted = [t for t in qualified_tokens if t.get("symbol", "").upper() in TOKEN_BLACKLIST_SYMBOLS]
+    if _blacklisted:
+        logger.info(f"Scout [{theme}]: blacklist removeu {[t['symbol'] for t in _blacklisted]}")
+        qualified_tokens = [t for t in qualified_tokens if t.get("symbol", "").upper() not in TOKEN_BLACKLIST_SYMBOLS]
 
     if not qualified_tokens:
         logger.warning(f"Scout: no tokens qualified for {theme}")
