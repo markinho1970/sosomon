@@ -3,15 +3,17 @@ Faucet API — distribui 0.0001 ETH testnet para novos avaliadores/investidores.
 Completamente isolado do fluxo principal de investimento.
 """
 
-import os
-import json
 import logging
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 import httpx
 from eth_account import Account
 from eth_utils import to_checksum_address
+
+from database import get_db
+from models import FaucetClaim
 
 logger = logging.getLogger(__name__)
 
@@ -19,23 +21,8 @@ router = APIRouter(prefix="/api/faucet", tags=["faucet"])
 
 FAUCET_AMOUNT_ETH = 0.0001
 FAUCET_AMOUNT_WEI = int(FAUCET_AMOUNT_ETH * 1e18)
-CLAIMS_FILE = os.path.join(os.path.dirname(__file__), "..", "faucet_claims.json")
 GAS_LIMIT_ETH_TRANSFER = 21_000
-
-
-def _load_claims() -> dict:
-    if os.path.exists(CLAIMS_FILE):
-        try:
-            with open(CLAIMS_FILE) as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
-
-
-def _save_claims(claims: dict):
-    with open(CLAIMS_FILE, "w") as f:
-        json.dump(claims, f, indent=2)
+MAX_CLAIMS = 3
 
 
 class ClaimRequest(BaseModel):
@@ -43,24 +30,16 @@ class ClaimRequest(BaseModel):
 
 
 @router.post("/claim")
-async def claim_faucet(req: ClaimRequest):
-    """Envia 0.0001 ETH testnet para a carteira solicitante. Um claim por carteira."""
+async def claim_faucet(req: ClaimRequest, db: Session = Depends(get_db)):
+    """Envia 0.0001 ETH testnet para a carteira solicitante. Maximo 3 claims por carteira."""
     wallet = req.wallet_address.lower().strip()
     if not wallet.startswith("0x") or len(wallet) != 42:
         raise HTTPException(status_code=400, detail="Invalid wallet address")
 
-    MAX_CLAIMS = 3
-    claims = _load_claims()
-    wallet_claims = claims.get(wallet, [])
-    if not isinstance(wallet_claims, list):
-        wallet_claims = [wallet_claims]
-    if len(wallet_claims) >= MAX_CLAIMS:
-        raise HTTPException(
-            status_code=409,
-            detail="Claim limit reached (3/wallet)"
-        )
+    count = db.query(FaucetClaim).filter(FaucetClaim.wallet_address == wallet).count()
+    if count >= MAX_CLAIMS:
+        raise HTTPException(status_code=409, detail="Claim limit reached (3/wallet)")
 
-    # Configuracao testnet
     from services.deposit_monitor import NETWORKS
     from utils.crypto import get_private_key
 
@@ -108,18 +87,17 @@ async def claim_faucet(req: ClaimRequest):
         tx_hash = result.get("result", "")
         basescan_url = f"{net['basescan_tx']}{tx_hash}"
 
-        # Registrar claim
-        entry = {
-            "tx_hash": tx_hash,
-            "amount_eth": FAUCET_AMOUNT_ETH,
-            "claimed_at": datetime.now(timezone.utc).isoformat(),
-            "basescan": basescan_url,
-        }
-        wallet_claims.append(entry)
-        claims[wallet] = wallet_claims
-        _save_claims(claims)
+        claim = FaucetClaim(
+            wallet_address=wallet,
+            tx_hash=tx_hash,
+            amount_eth=FAUCET_AMOUNT_ETH,
+            claimed_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            basescan=basescan_url,
+        )
+        db.add(claim)
+        db.commit()
 
-        logger.info(f"faucet: {FAUCET_AMOUNT_ETH} ETH → {wallet[:10]}… tx={tx_hash[:16]}…")
+        logger.info(f"faucet: {FAUCET_AMOUNT_ETH} ETH para {wallet[:10]}... tx={tx_hash[:16]}...")
         return {
             "success": True,
             "amount_eth": FAUCET_AMOUNT_ETH,
@@ -135,14 +113,17 @@ async def claim_faucet(req: ClaimRequest):
 
 
 @router.get("/status/{wallet_address}")
-async def faucet_status(wallet_address: str):
+async def faucet_status(wallet_address: str, db: Session = Depends(get_db)):
     """Verifica se a carteira ja fez claim."""
     wallet = wallet_address.lower().strip()
-    claims = _load_claims()
-    wallet_claims = claims.get(wallet, [])
-    if not isinstance(wallet_claims, list):
-        wallet_claims = [wallet_claims]
-    count = len(wallet_claims)
-    if count >= 3:
-        return {"claimed": True, "count": count, "tx_hash": wallet_claims[-1].get("tx_hash"), "basescan": wallet_claims[-1].get("basescan")}
+    claims = (
+        db.query(FaucetClaim)
+        .filter(FaucetClaim.wallet_address == wallet)
+        .order_by(FaucetClaim.claimed_at.desc())
+        .all()
+    )
+    count = len(claims)
+    if count >= MAX_CLAIMS:
+        last = claims[0]
+        return {"claimed": True, "count": count, "tx_hash": last.tx_hash, "basescan": last.basescan}
     return {"claimed": False, "count": count}

@@ -163,3 +163,13 @@ class RebalanceProposal(Base):
     ai_rationale = Column(Text)
     execution_orders = Column(JSON, default=list)   # list of executed orders with IDs from SoDEX
     execution_error = Column(Text, nullable=True)   # error message if execution failed
+
+class FaucetClaim(Base):
+    __tablename__ = "faucet_claims"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    wallet_address = Column(String, nullable=False, index=True)
+    tx_hash = Column(String, nullable=False, unique=True)
+    amount_eth = Column(Float, default=0.0001)
+    claimed_at = Column(DateTime, default=datetime.utcnow)
+    basescan = Column(String, nullable=True)
