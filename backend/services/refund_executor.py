@@ -27,22 +27,18 @@ async def refund_deposit(
     Envia USDC de volta ao depositante.
     net = NETWORKS["mainnet"] ou NETWORKS["testnet"]
     """
-    import httpx
     from utils.crypto import get_private_key
+    from services.deposit_monitor import _rpc_resilient
 
     fund_wallet  = net["fund_wallet"]
-    rpc_url      = net["rpc"]
     usdc_address = net["usdc"]
     chain_id     = net["chain_id"]
     basescan_tx  = net["basescan_tx"]
     amount_units = int(round(amount_usd * 1_000_000))
+    network      = "testnet" if chain_id == 84532 else "mainnet"
 
     async def rpc(method, params):
-        payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
-        async with httpx.AsyncClient(timeout=15) as c:
-            r = await c.post(rpc_url, json=payload)
-            r.raise_for_status()
-            return r.json()
+        return await _rpc_resilient(network, method, params)
 
     try:
         # Nonce

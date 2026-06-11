@@ -53,7 +53,7 @@ async def _fetch_fund_usdc() -> float:
         net = NETWORKS["mainnet"]
         if not _configured(net):
             return 0.0
-        return await _usdc_balance(net["rpc"], net["usdc"], net["fund_wallet"])
+        return await _usdc_balance("mainnet", net["usdc"], net["fund_wallet"])
     except Exception as e:
         logger.warning(f"NAV Updater: erro ao buscar saldo fund wallet: {e}")
         return 0.0

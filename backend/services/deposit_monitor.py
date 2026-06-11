@@ -133,15 +133,15 @@ def _parse_amount(data_hex: str) -> float:
     return int(raw, 16) / 1_000_000
 
 
-async def _usdc_balance(rpc_url: str, usdc: str, address: str) -> float:
+async def _usdc_balance(network: str, usdc: str, address: str) -> float:
     data = "0x70a08231" + address.lower().removeprefix("0x").zfill(64)
-    res = await _rpc(rpc_url, "eth_call", [{"to": usdc, "data": data}, "latest"])
+    res = await _rpc_resilient(network, "eth_call", [{"to": usdc, "data": data}, "latest"])
     raw = res.get("result", "0x0")
     return int(raw or "0x0", 16) / 1_000_000
 
 
-async def _eth_balance(rpc_url: str, address: str) -> float:
-    res = await _rpc(rpc_url, "eth_getBalance", [address, "latest"])
+async def _eth_balance(network: str, address: str) -> float:
+    res = await _rpc_resilient(network, "eth_getBalance", [address, "latest"])
     raw = res.get("result", "0x0")
     return int(raw or "0x0", 16) / 1e18
 
@@ -373,18 +373,19 @@ async def check_deposits_testnet(db):
 
 async def get_fund_wallet_info(mode: str = "mainnet") -> dict:
     """Retorna endereço, saldo USDC e saldo ETH da fund wallet na rede especificada."""
-    net = NETWORKS.get(mode, NETWORKS["mainnet"])
+    network = mode if mode in NETWORKS else "mainnet"
+    net = NETWORKS[network]
     if not net["fund_wallet"]:
         return {"address": None, "usdc_balance": None, "eth_balance": None, "configured": False,
                 "network": net["label"], "network_mode": mode}
     usdc_bal = None
     eth_bal = None
     try:
-        usdc_bal = await _usdc_balance(net["rpc"], net["usdc"], net["fund_wallet"])
+        usdc_bal = await _usdc_balance(network, net["usdc"], net["fund_wallet"])
     except Exception as e:
         logger.error(f"deposit_monitor [{mode}]: erro ao buscar saldo USDC: {e}")
     try:
-        eth_bal = await _eth_balance(net["rpc"], net["fund_wallet"])
+        eth_bal = await _eth_balance(network, net["fund_wallet"])
     except Exception as e:
         logger.error(f"deposit_monitor [{mode}]: erro ao buscar saldo ETH: {e}")
 

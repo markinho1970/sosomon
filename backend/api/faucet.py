@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-import httpx
 from eth_account import Account
 from eth_utils import to_checksum_address
 
@@ -40,23 +39,18 @@ async def claim_faucet(req: ClaimRequest, db: Session = Depends(get_db)):
     if count >= MAX_CLAIMS:
         raise HTTPException(status_code=409, detail="Claim limit reached (3/wallet)")
 
-    from services.deposit_monitor import NETWORKS
+    from services.deposit_monitor import NETWORKS, _rpc_resilient
     from utils.crypto import get_private_key
 
     net = NETWORKS["testnet"]
     fund_wallet = net["fund_wallet"]
-    rpc_url = net["rpc"]
     chain_id = net["chain_id"]
 
     if not fund_wallet:
         raise HTTPException(status_code=503, detail="Faucet not configured")
 
     async def rpc(method, params):
-        payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
-        async with httpx.AsyncClient(timeout=15) as c:
-            r = await c.post(rpc_url, json=payload)
-            r.raise_for_status()
-            return r.json()
+        return await _rpc_resilient("testnet", method, params)
 
     try:
         nonce_res = await rpc("eth_getTransactionCount", [fund_wallet, "pending"])
