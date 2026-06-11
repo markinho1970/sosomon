@@ -242,6 +242,18 @@ async def update_all_navs():
 
                 new_nav, ret_7d, ret_30d = _weighted_return_from_prices(constituents, prices, old_nav)
 
+                # Guarda de sanidade — rejeita qualquer variação horária > 5%
+                # Isso é fisicamente impossível em condições normais de mercado.
+                # Protege contra preços corrompidos no DB contaminarem o NAV.
+                nav_change_pct = abs((new_nav - old_nav) / old_nav * 100) if old_nav > 0 else 0
+                if nav_change_pct > 5.0:
+                    logger.error(
+                        f"NAV Updater [{index.name}]: BLOQUEADO — variação de {nav_change_pct:.2f}% "
+                        f"em 1h é inválida (max 5%). NAV mantido em ${old_nav:.4f}. "
+                        f"Verifique price_at_nav_ref dos constituintes."
+                    )
+                    continue
+
                 portfolios = db.query(SubscriberPortfolio).filter(
                     SubscriberPortfolio.index_id == index.id
                 ).all()
