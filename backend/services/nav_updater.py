@@ -133,7 +133,11 @@ async def _fetch_sodex_portfolio() -> dict:
 
 
 def _weighted_return_from_prices(constituents: list, prices: dict, old_nav: float) -> tuple:
-    """Calcula retorno ponderado com base nos preços novos vs anteriores."""
+    """
+    Calcula retorno ponderado usando price_at_nav_ref como referência anterior.
+    price_at_nav_ref é atualizado EXCLUSIVAMENTE aqui — scripts externos não o tocam.
+    Isso garante que correções manuais de preço nunca contaminem o cálculo de NAV.
+    """
     weighted_change = 0.0
     return_7d = 0.0
     return_30d = 0.0
@@ -146,9 +150,11 @@ def _weighted_return_from_prices(constituents: list, prices: dict, old_nav: floa
         if not data:
             continue
         new_price = data.get("current_price_usd") or 0
-        old_price = c.current_price_usd or 0
-        if old_price > 0 and new_price > 0:
-            weighted_change += weight_frac * ((new_price - old_price) / old_price)
+        # Usa price_at_nav_ref como baseline — isolado de atualizações externas.
+        # Fallback para current_price_usd apenas se ref ainda não foi populado.
+        ref_price = c.price_at_nav_ref or c.current_price_usd or 0
+        if ref_price > 0 and new_price > 0:
+            weighted_change += weight_frac * ((new_price - ref_price) / ref_price)
         return_7d  += weight_frac * (data.get("price_change_7d")  or 0)
         return_30d += weight_frac * (data.get("price_change_30d") or 0)
 
@@ -157,15 +163,21 @@ def _weighted_return_from_prices(constituents: list, prices: dict, old_nav: floa
 
 
 def _update_constituent_prices(constituents: list, prices: dict):
-    """Aplica preços novos nos registros de constituintes."""
+    """
+    Atualiza current_price_usd (exibição) E price_at_nav_ref (baseline de cálculo).
+    Ambos avançam juntos a cada ciclo — garantindo que o próximo ciclo
+    calcule apenas o delta desde a última atualização, não desde o início.
+    """
     for c in constituents:
         if c.is_stablecoin:
             continue
         data = prices.get(c.symbol)
         if not data:
             continue
-        if data.get("current_price_usd"):
-            c.current_price_usd = data["current_price_usd"]
+        new_price = data.get("current_price_usd") or 0
+        if new_price > 0:
+            c.current_price_usd = new_price
+            c.price_at_nav_ref  = new_price   # avança o baseline para o próximo ciclo
         if data.get("volume_24h_usd"):
             c.volume_24h_usd = data["volume_24h_usd"]
         if data.get("price_change_7d"):

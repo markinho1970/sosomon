@@ -46,6 +46,7 @@ class IndexConstituent(Base):
     coingecko_id = Column(String)
     weight = Column(Float, nullable=False)          # percentage 0-100
     current_price_usd = Column(Float, default=0.0)
+    price_at_nav_ref  = Column(Float, default=0.0)   # atualizado APENAS pelo nav_updater — nunca por scripts externos
     market_cap_usd = Column(Float, default=0.0)
     volume_24h_usd = Column(Float, default=0.0)
     price_change_7d = Column(Float, default=0.0)
