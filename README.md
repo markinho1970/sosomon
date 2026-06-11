@@ -2,6 +2,8 @@
 
 > Built on SoSoValue ValueChain · Powered by SoDEX · Managed by AI
 
+> **100% SoSoValue + SoDEX** — all market data, price feeds, token universe, and trade execution come exclusively from SoSoValue and SoDEX. No third-party APIs.
+
 **SoSoMon** is a one-person on-chain financial business that runs three autonomous AI agents to manage thematic crypto index funds. Users deposit USDC, the platform allocates capital across curated token baskets, and AI agents handle everything — screening, rebalancing, and reporting — automatically.
 
 ---
@@ -241,6 +243,43 @@ npm start
 All secrets are set in `backend/.env` — see `backend/.env.example` for the list of required keys. **Never commit `.env` files.**
 
 Private keys are stored encrypted via AES-256-GCM. Use `backend/utils/crypto.py` to encrypt before storing. The `MASTER_ENCRYPTION_KEY` and all API keys must be set only in the server environment — never hardcoded.
+
+---
+
+## What's New — 2026-06-11
+
+### 100% SoSoValue + SoDEX — CoinGecko Fully Removed
+
+SoSoMon now runs exclusively on SoSoValue and SoDEX APIs across every agent. No third-party market data providers.
+
+**What changed:**
+
+| Agent | Before | After |
+|---|---|---|
+| Scout | SoSoValue SSI + CoinGecko (universe + prices) | SoSoValue SSI only (all data) |
+| Rebalancer | CoinGecko batch price refresh | SoDEX tickers + SoSoValue klines |
+| NAV Updater | CoinGecko batch price + BTC benchmark | SoDEX tickers + SoSoValue klines |
+
+**Why:** The SoSoMon stack is a product built on SoSoValue and SoDEX. Every token in the portfolio comes from SoSoValue SSI indexes — meaning SoSoValue already has price history (klines) for all of them. External providers were redundant and inconsistent with the product's identity.
+
+**Price resolution pattern:**
+1. **SoDEX** — spot price + 24h volume for listed markets (primary)
+2. **SoSoValue klines** — price history, 7d/30d returns, and fallback for unlisted tokens
+
+### Deposit Monitor — Block Persistence Across Restarts
+
+`_last_block` was previously in-memory only — a PM2 restart would reset it, risking missed deposits during downtime.
+
+Fixed: last scanned block is now persisted to the `system_state` DB table (`dm_last_block_mainnet`, `dm_last_block_testnet`) and restored on startup. Zero deposit loss risk.
+
+### DePIN Emergency Rebalance — Concentration Risk Fixed
+
+DePIN was 90% concentrated in 2 tokens (GRASS 45% + GEOD 45%). GEOD was also absent from the SoSoValue ssiDePIN index.
+
+- GEOD ejected (not in ssiDePIN)
+- 7 new tokens added: RENDER, AKT, AR, THETA, IOTA, GLM, ATH
+- **25% max weight cap** applied per token (iterative redistribution algorithm)
+- Scout now enforces `MAX_WEIGHT_PCT = 25.0` permanently on all indexes
 
 ---
 

@@ -21,7 +21,6 @@ from services.llm import generate
 from database import SessionLocal
 from models import AlphaIndex, IndexConstituent, AgentActivityLog, ScoutReport, RebalanceProposal
 from services.sosovalue import get_macro_context, get_stablecoin_buffer_from_sentiment
-from services.coingecko import get_market_data_batch
 from services.sodex import (
     get_all_tickers,
     get_portfolio_snapshot,
@@ -61,17 +60,34 @@ async def _process_index(idx: AlphaIndex, sentiment_score: float, target_buffer:
         logger.warning(f"Rebalancer: no constituents for {idx.id}")
         return
 
-    # Refresh prices
-    cg_ids = [c.coingecko_id for c in constituents if c.coingecko_id and not c.is_stablecoin]
-    if cg_ids:
-        fresh_data = await get_market_data_batch(cg_ids)
+    # Refresh prices via SoDEX + SoSoValue klines (sem CoinGecko)
+    try:
+        from services import sosovalue as _sv
+        await _sv._ensure_currency_cache()
+        _tickers = await get_all_tickers()
         for c in constituents:
-            if c.coingecko_id in fresh_data:
-                d = fresh_data[c.coingecko_id]
-                c.current_price_usd = d["current_price_usd"]
-                c.volume_24h_usd = d["volume_24h_usd"]
-                c.price_change_7d = d["price_change_7d"]
+            if c.is_stablecoin:
+                continue
+            sym = c.symbol
+            _t = _tickers.get(f"{sym}-USD") or _tickers.get(f"{sym}-USDC")
+            if _t:
+                _p = float(_t.get("lastPrice", _t.get("c", 0)) or 0)
+                if _p > 0:
+                    c.current_price_usd = _p
+                    c.volume_24h_usd = float(_t.get("volume24h", _t.get("v", 0)) or 0)
+            _cid = _sv._CURRENCY_CACHE.get(sym.upper())
+            if _cid:
+                _klines = await _sv.get_currency_klines(_cid, limit=8)
+                if _klines:
+                    _closes = [float(k.get("close", k.get("c", 0)) or 0) for k in _klines]
+                    _closes = [v for v in _closes if v > 0]
+                    if len(_closes) >= 2:
+                        c.price_change_7d = round((_closes[-1] - _closes[0]) / _closes[0] * 100, 2)
+                    if c.current_price_usd <= 0 and _closes:
+                        c.current_price_usd = _closes[-1]
         db.flush()
+    except Exception as _e:
+        logger.warning(f"Rebalancer: erro ao refreshar preços: {_e}")
 
     # Check risk overrides
     emergencies = _check_emergency_ejections(constituents)

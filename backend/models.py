@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from sqlalchemy import (
     Column, String, Float, Integer, Boolean, DateTime, Text, ForeignKey, JSON
@@ -173,3 +173,11 @@ class FaucetClaim(Base):
     amount_eth = Column(Float, default=0.0001)
     claimed_at = Column(DateTime, default=datetime.utcnow)
     basescan = Column(String, nullable=True)
+
+
+class SystemState(Base):
+    """Estado persistido do sistema — chave/valor sobrevive a restarts."""
+    __tablename__ = "system_state"
+    key        = Column(String, primary_key=True)
+    value      = Column(String, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow)

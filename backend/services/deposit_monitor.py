@@ -163,7 +163,18 @@ async def check_deposits(db, network: str = "mainnet"):
         return
 
     if _last_block[network] == 0:
-        _last_block[network] = latest - 100
+        from models import SystemState
+        try:
+            _state = db.query(SystemState).filter_by(key=f"dm_last_block_{network}").first()
+            if _state and int(_state.value) > 0:
+                _last_block[network] = int(_state.value)
+                logger.info(f"deposit_monitor [{network}]: retomando bloco {_last_block[network]} (DB)")
+            else:
+                _last_block[network] = latest - 300  # ~10 min na primeira execução
+                logger.info(f"deposit_monitor [{network}]: primeira execução, bloco {_last_block[network]}")
+        except Exception as _e:
+            _last_block[network] = latest - 300
+            logger.warning(f"deposit_monitor [{network}]: erro ao ler last_block do DB: {_e}")
 
     if latest <= _last_block[network]:
         return
@@ -176,6 +187,18 @@ async def check_deposits(db, network: str = "mainnet"):
         return
 
     _last_block[network] = latest
+    try:
+        from models import SystemState
+        _key = f"dm_last_block_{network}"
+        _st = db.query(SystemState).filter_by(key=_key).first()
+        if _st:
+            _st.value = str(latest)
+            _st.updated_at = datetime.utcnow()
+        else:
+            db.add(SystemState(key=_key, value=str(latest)))
+        db.commit()
+    except Exception as _e:
+        logger.warning(f"deposit_monitor [{network}]: erro ao persistir last_block: {_e}")
 
     if not logs:
         return

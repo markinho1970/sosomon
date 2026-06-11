@@ -68,21 +68,58 @@ async def get_sector_spotlight() -> Dict:
 
 
 async def search_currency_by_symbol(symbol: str) -> Optional[str]:
-    """
-    Busca currency_id pelo símbolo (ex: 'BTC' → '1673723677362319866').
-    Faz cache em memória para evitar chamadas repetidas.
-    """
+    """Busca currency_id pelo símbolo (ex: 'BTC' → '1673723677362319866')."""
     if symbol.upper() in _CURRENCY_CACHE:
         return _CURRENCY_CACHE[symbol.upper()]
+    await _ensure_currency_cache()
+    return _CURRENCY_CACHE.get(symbol.upper())
 
+_CURRENCY_CACHE: Dict[str, str] = {}     # ticker → currency_id
+_CURRENCY_ID_CACHE: Dict[str, str] = {}  # currency_id → ticker
+
+
+async def _ensure_currency_cache() -> None:
+    """Popula ambos os caches (lazy, executa apenas uma vez)."""
+    if _CURRENCY_CACHE:
+        return
     currencies = await get_currencies()
     for c in currencies:
         sym = c.get("symbol", "").upper()
-        _CURRENCY_CACHE[sym] = c.get("currency_id")
+        cid = str(c.get("currency_id", ""))
+        if sym and cid:
+            _CURRENCY_CACHE[sym] = cid
+            _CURRENCY_ID_CACHE[cid] = sym
 
-    return _CURRENCY_CACHE.get(symbol.upper())
 
-_CURRENCY_CACHE: Dict[str, str] = {}
+async def resolve_ticker(currency_id: str, fallback: str = "") -> str:
+    """Resolve currency_id para ticker (ex: '16737...' → 'FET'). Usa fallback se não encontrar."""
+    await _ensure_currency_cache()
+    return _CURRENCY_ID_CACHE.get(str(currency_id), fallback.upper())
+
+
+async def get_ssi_candidates_for_theme(theme: str) -> List[Dict]:
+    """
+    Retorna constituents do SSI com tickers resolvidos via get_currencies().
+    Substitui THEME_UNIVERSE + CoinGecko no Scout.
+    [{symbol, name, currency_id, ssi_weight}]
+    """
+    raw = await get_ssi_constituents_for_theme(theme)
+    if not raw:
+        return []
+    await _ensure_currency_cache()
+    result = []
+    for c in raw:
+        cid = str(c.get("currency_id", ""))
+        slug = c.get("symbol", "")
+        ticker = _CURRENCY_ID_CACHE.get(cid) or slug.upper().replace("-", "")
+        if ticker:
+            result.append({
+                "symbol": ticker,
+                "name": ticker,
+                "currency_id": cid,
+                "ssi_weight": float(c.get("weight", 0)),
+            })
+    return result
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
