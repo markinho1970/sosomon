@@ -125,23 +125,29 @@ async def run_scout_for_index(index_id: str, theme: str, db):
         logger.warning(f"Scout: no tokens qualified for {theme}")
         return
 
-    # Cooldown pós-ejeção: ignora tokens ejetados nos últimos 90 dias
+    # Cooldown pós-ejeção: tokens removidos do índice por proposta EXECUTADA nos
+    # últimos 90 dias ficam bloqueados de nova inclusão. Constituintes atuais
+    # nunca são bloqueados (se foi re-adicionado, o cooldown expira sozinho).
     from datetime import timedelta
+    from models import RebalanceProposal
     _cutoff = datetime.utcnow() - timedelta(days=90)
-    _recent_reports = db.query(ScoutReport).filter(
-        ScoutReport.index_id == index_id,
-        ScoutReport.run_at >= _cutoff,
+    _executed = db.query(RebalanceProposal).filter(
+        RebalanceProposal.index_id == index_id,
+        RebalanceProposal.status == "executed",
+        RebalanceProposal.proposed_at >= _cutoff,
     ).all()
     _ejected_symbols: set = set()
-    for _r in _recent_reports:
-        for _exc in (_r.exclusions or []):
-            _sym = _exc.get("symbol", "").upper()
-            if _sym:
-                _ejected_symbols.add(_sym)
-    # Não aplica cooldown a tokens que foram reincluídos depois da ejeção
-    for _r in _recent_reports:
-        for _inc in (_r.inclusions or []):
-            _ejected_symbols.discard(_inc.get("symbol", "").upper())
+    for _p in _executed:
+        for _ch in (_p.changes or []):
+            if _ch.get("action") in ("remove", "eject"):
+                _sym = (_ch.get("symbol") or "").upper()
+                if _sym:
+                    _ejected_symbols.add(_sym)
+    _current_syms = {
+        c.symbol.upper() for c in
+        db.query(IndexConstituent).filter(IndexConstituent.index_id == index_id).all()
+    }
+    _ejected_symbols -= _current_syms
     if _ejected_symbols:
         _cooling = [t["symbol"] for t in qualified_tokens if t.get("symbol", "").upper() in _ejected_symbols]
         if _cooling:
