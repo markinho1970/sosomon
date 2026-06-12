@@ -31,6 +31,7 @@ from services.sodex import (
 DRIFT_THRESHOLD = 5.0        # % deviation from target weight that triggers rebalance
 EJECTION_THRESHOLD = -40.0   # % 7-day loss that triggers emergency ejection
 MAX_SINGLE_WEIGHT = 25.0     # no single token > 25%
+DRIFT_COOLDOWN_HOURS = 48    # horas de cooldown após execução antes de novo drift trigger
 
 
 async def check_and_propose_rebalances():
@@ -127,6 +128,19 @@ async def _process_index(idx: AlphaIndex, sentiment_score: float, target_buffer:
         ).first()
         if existing:
             logger.info(f'Rebalancer: skipping {idx.id} — pending proposal #{existing.id} already exists')
+            return
+
+    # Cooldown de drift: não gerar nova proposta por drift dentro de DRIFT_COOLDOWN_HOURS
+    # após a última execução. Evita re-trigger imediato quando um token se valoriza após rebalance.
+    # risk_override e weekly ignoram o cooldown.
+    if trigger == 'drift' and idx.last_rebalanced_at:
+        hours_since = (datetime.utcnow() - idx.last_rebalanced_at).total_seconds() / 3600
+        if hours_since < DRIFT_COOLDOWN_HOURS:
+            logger.info(
+                f"Rebalancer [{idx.id}]: drift ignorado — cooldown ativo "
+                f"({hours_since:.1f}h desde último rebalance, mínimo {DRIFT_COOLDOWN_HOURS}h)"
+            )
+            _log_no_action(idx.id, db)
             return
 
     # Generate rebalance proposal using Claude
