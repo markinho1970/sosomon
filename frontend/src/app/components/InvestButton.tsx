@@ -163,25 +163,24 @@ export default function InvestButton({ indexId, indexName, navUsd }: Props) {
             <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto mb-4">
               <Clock size={28} className="text-amber-400" />
             </div>
-            <h2 className="text-white font-bold text-lg mb-2">Mainnet temporariamente indisponível</h2>
+            <h2 className="text-white font-bold text-lg mb-2">{t("mainnet_block_title")}</h2>
             <p className="text-white/50 text-sm leading-relaxed mb-6">
-              Os investimentos na Mainnet estão suspensos até o encerramento da Wave 2 do SoSoValue Buildathon.
-              A reabertura ocorrerá na Wave 3 com execução real de ordens no SoDEX.
+              {t("mainnet_block_body")}
             </p>
             <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 mb-6 text-left">
               <p className="text-blue-300 text-xs font-semibold mb-2 flex items-center gap-2">
-                <Info size={12} /> Wave 3 — O que está chegando
+                <Info size={12} /> {t("mainnet_block_wave3_title")}
               </p>
               <ul className="text-blue-200/60 text-xs space-y-1">
-                <li>• Compra e venda real de tokens no SoDEX</li>
-                <li>• Rentabilidade real com ganhos/perdas de mercado</li>
-                <li>• Rebalanceamento automático executado on-chain</li>
-                <li>• Fees de gestão e performance reais</li>
+                <li>• {t("mainnet_block_f1")}</li>
+                <li>• {t("mainnet_block_f2")}</li>
+                <li>• {t("mainnet_block_f3")}</li>
+                <li>• {t("mainnet_block_f4")}</li>
               </ul>
             </div>
-            <p className="text-white/30 text-xs mb-4">Quer testar agora? Use a <strong className="text-white/50">Testnet</strong> — funciona com USDC simulado.</p>
+            <p className="text-white/30 text-xs mb-4" dangerouslySetInnerHTML={{__html: t("mainnet_block_hint")}} />
             <button onClick={() => setShowMainnetBlock(false)} className="btn-primary w-full">
-              Entendi
+              {t("mainnet_block_ok")}
             </button>
           </Dialog.Content>
         </Dialog.Portal>
