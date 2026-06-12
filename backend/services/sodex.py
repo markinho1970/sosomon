@@ -29,17 +29,22 @@ _NET      = "testnet" if USE_TESTNET else "mainnet"
 BASE_SPOT = f"https://{_NET}-gw.sodex.dev/api/v1/spot"
 TIMEOUT   = 15
 
-_PUB  = lambda: get_public_headers(SODEX_API_KEY)
-_SIGN = lambda p: get_signed_headers(SODEX_API_KEY, p, get_private_key(), USE_TESTNET)
+# Lê API key em runtime (não no import) para suportar scripts com load_dotenv tardio
+def _api_key() -> str:
+    return os.getenv("SODEX_API_KEY", "") or SODEX_API_KEY
+
+_PUB  = lambda: get_public_headers(_api_key())
+_SIGN = lambda p: get_signed_headers(_api_key(), p, get_private_key(), USE_TESTNET)
 
 
 def _configured() -> bool:
-    return bool(SODEX_API_KEY)
+    # Endpoints públicos funcionam sem key — usados apenas para account/trading
+    return True
 
 
 def _can_trade() -> bool:
     try:
-        return bool(SODEX_API_KEY and get_private_key() and SODEX_WALLET_ADDR)
+        return bool(_api_key() and get_private_key() and (os.getenv("SODEX_WALLET_ADDRESS","") or SODEX_WALLET_ADDR))
     except Exception:
         return False
 
@@ -64,17 +69,38 @@ async def get_markets() -> List[Dict]:
 
 
 async def get_all_tickers() -> Dict[str, Dict]:
-    """Tickers de todos os mercados (24h stats). Retorna dict keyed por symbol name."""
-    if not _configured():
-        return {}
+    """
+    Tickers de todos os mercados (24h stats).
+    Retorna dict com múltiplos aliases por símbolo para facilitar lookup:
+      "BTC-USDC", "BTC-USD", "vBTC_vUSDC" todos apontam para o mesmo ticker.
+    Campos normalizados: lastPx -> lastPrice, volume -> volume24h
+    """
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as c:
             r = await c.get(f"{BASE_SPOT}/markets/tickers", headers=_PUB())
             r.raise_for_status()
             items = r.json().get("data", [])
-            if isinstance(items, list):
-                return {i.get("s", i.get("symbol", "")): i for i in items}
-            return {}
+            if not isinstance(items, list):
+                return {}
+        result = {}
+        for item in items:
+            raw_sym = item.get("symbol", "")  # ex: "vBTC_vUSDC"
+            # Normaliza para campos conhecidos
+            normalized = dict(item)
+            normalized["lastPrice"] = item.get("lastPx") or item.get("lastPrice") or item.get("c") or "0"
+            normalized["volume24h"] = item.get("quoteVolume") or item.get("volume24h") or item.get("v") or "0"
+            normalized["change24h"] = item.get("changePct") or item.get("change24h") or 0
+            # Remove prefixo "v" e converte underscore para dash: vBTC_vUSDC -> BTC-USDC
+            clean = raw_sym.replace("_vUSDC","").replace("_USDC","").lstrip("v")
+            # Trata casos especiais: vDEFIssi -> DEFIssi, WSOSO -> SOSO
+            if clean.endswith("ssi"):
+                clean = clean  # mantém: DEFIssi, MAG7ssi, MEMEssi
+            # Registra aliases
+            result[raw_sym] = normalized           # vBTC_vUSDC
+            result[clean + "-USDC"] = normalized   # BTC-USDC
+            result[clean + "-USD"] = normalized    # BTC-USD
+            result[clean] = normalized             # BTC
+        return result
     except Exception as e:
         logger.error(f"SoDEX get_all_tickers: {e}")
         return {}
@@ -316,7 +342,7 @@ async def get_portfolio_snapshot() -> Dict[str, Any]:
         else:
             sym    = f"{coin}-USDC"
             ticker = tickers.get(sym, {})
-            price  = float(ticker.get("c", ticker.get("price", 0)))
+            price  = float(ticker.get("lastPrice") or ticker.get("lastPx") or ticker.get("c") or 0)
             usd_value = available * price
 
         positions.append({
@@ -375,7 +401,7 @@ async def execute_rebalance_trades(
 
         sym    = f"{asset}-USDC"
         ticker = tickers.get(sym, {})
-        price  = float(ticker.get("c", ticker.get("price", 0)))
+        price  = float(ticker.get("lastPrice") or ticker.get("lastPx") or ticker.get("c") or 0)
 
         if price <= 0:
             logger.warning(f"SoDEX rebalance: sem preço para {sym}")
