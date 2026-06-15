@@ -236,7 +236,8 @@ SCOUT AGENT RECOMMENDATIONS (from last daily screening):
 CONSTRAINTS:
 - Target stablecoin buffer: {target_buffer:.0f}% (based on sentiment score {sentiment_score}/100)
 - Max single token weight: {MAX_SINGLE_WEIGHT}%
-- Base equal weight after buffer: {(100 - target_buffer) / 10:.1f}% per token (10 tokens target)
+- Base equal weight after buffer: {(100 - target_buffer) / max(len([c for c in constituents if not c.is_stablecoin]), 1):.2f}% per token ({len([c for c in constituents if not c.is_stablecoin])} non-stable tokens in index)
+- CRITICAL: all new_weight values MUST sum to exactly 100.0% — verify before responding
 - Momentum boost: +20% weight for tokens with positive 30d price trend
 
 Generate a rebalancing proposal. Respond ONLY with valid JSON:
@@ -274,7 +275,23 @@ Generate a rebalancing proposal. Respond ONLY with valid JSON:
         db.add(activity)
         db.commit()
 
-        return parsed.get("changes", [])
+        changes = parsed.get("changes", [])
+
+        # Validação: pesos devem somar 100%. Se não, normaliza proporcionalmente.
+        total = sum(c.get("new_weight", 0) for c in changes)
+        if total > 0 and abs(total - 100.0) > 0.5:
+            logger.warning(
+                f"Rebalancer [{idx.id}]: pesos somam {total:.2f}% — normalizando para 100%"
+            )
+            for c in changes:
+                c["new_weight"] = round(c.get("new_weight", 0) * 100.0 / total, 2)
+            # Ajuste de arredondamento no maior peso
+            total2 = sum(c.get("new_weight", 0) for c in changes)
+            if changes and abs(total2 - 100.0) > 0.01:
+                biggest = max(changes, key=lambda x: x.get("new_weight", 0))
+                biggest["new_weight"] = round(biggest["new_weight"] + (100.0 - total2), 2)
+
+        return changes
 
     except Exception as e:
         logger.error(f"Rebalancer Claude call failed: {e}")
