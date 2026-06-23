@@ -54,6 +54,7 @@ class IndexConstituent(Base):
     ai_rationale = Column(Text, default="")
     added_at = Column(DateTime, default=datetime.utcnow)
     is_stablecoin = Column(Boolean, default=False)
+    network_mode = Column(String, default="mainnet")   # "mainnet" | "testnet" — coluna adicionada por migrate_constituent_network_mode.py
 
     index = relationship("AlphaIndex", back_populates="constituents")
 
@@ -164,6 +165,7 @@ class RebalanceProposal(Base):
     ai_rationale = Column(Text)
     execution_orders = Column(JSON, default=list)   # list of executed orders with IDs from SoDEX
     execution_error = Column(Text, nullable=True)   # error message if execution failed
+    network_mode = Column(String, default="mainnet")  # "mainnet" | "testnet" — coluna adicionada por migrate_proposal_network_mode.py
 
 class FaucetClaim(Base):
     __tablename__ = "faucet_claims"

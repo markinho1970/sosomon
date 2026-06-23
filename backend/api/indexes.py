@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from database import get_db
-from models import AlphaIndex, SubscriberPortfolio
+from models import AlphaIndex, IndexConstituent, RebalanceProposal, SubscriberPortfolio
 from schemas import IndexOut, ApiResponse
 
 router = APIRouter(prefix="/api/indexes", tags=["indexes"])
@@ -34,3 +34,68 @@ def get_index(slug: str, network_mode: str = Query("mainnet"), db: Session = Dep
     ).scalar() or 0.0
     idx_out = IndexOut.model_validate(idx).model_copy(update={"aum_usd": round(aum, 2)})
     return ApiResponse(data=idx_out)
+
+
+@router.get("/{slug}/risk", response_model=ApiResponse)
+def get_index_risk(slug: str, network_mode: str = Query("mainnet"), db: Session = Depends(get_db)):
+    """Dados quantitativos de risco por índice — para auditoria pelo investidor."""
+    import json
+    idx = db.query(AlphaIndex).filter(AlphaIndex.slug == slug).first()
+    if not idx:
+        raise HTTPException(status_code=404, detail="Index not found")
+
+    constituents = db.query(IndexConstituent).filter(
+        IndexConstituent.index_id == idx.id,
+        IndexConstituent.network_mode == network_mode,
+    ).all()
+
+    tokens_at_risk = []
+    for c in constituents:
+        chg_7d = c.price_change_7d or 0.0
+        ejection_risk_pct = round(max(0.0, -chg_7d / 40.0 * 100.0), 1)
+        tokens_at_risk.append({
+            "symbol":            c.symbol,
+            "weight":            c.weight,
+            "price_usd":         c.current_price_usd,
+            "change_7d_pct":     round(chg_7d, 2),
+            "change_30d_pct":    round(c.price_change_30d or 0.0, 2),
+            "ejection_risk_pct": ejection_risk_pct,
+            "at_risk":           ejection_risk_pct >= 50,
+            "ai_rationale":      c.ai_rationale or "",
+        })
+
+    last_proposal = db.query(RebalanceProposal).filter(
+        RebalanceProposal.index_id == idx.id,
+        RebalanceProposal.network_mode == network_mode,
+    ).order_by(RebalanceProposal.id.desc()).first()
+
+    proposal_data = None
+    if last_proposal:
+        try:
+            changes = json.loads(last_proposal.changes) if isinstance(last_proposal.changes, str) else last_proposal.changes
+        except Exception:
+            changes = []
+        proposal_data = {
+            "status":      last_proposal.status,
+            "trigger":     last_proposal.trigger,
+            "proposed_at": last_proposal.proposed_at.isoformat() if last_proposal.proposed_at else None,
+            "changes":     changes or [],
+            "ai_rationale": last_proposal.ai_rationale or "",
+        }
+
+    return ApiResponse(data={
+        "index_id":              idx.id,
+        "network_mode":          network_mode,
+        "stablecoin_buffer_pct": idx.stablecoin_buffer_pct or 0.0,
+        "risk_rules": {
+            "ejection_threshold_7d_pct": -40,
+            "buffer_trigger_low_pct":    25,
+            "buffer_low_allocation_pct": 30,
+            "buffer_trigger_critical_pct": 15,
+            "buffer_critical_allocation_pct": 50,
+            "ejection_cooldown_days":    90,
+            "max_single_token_weight":   25,
+        },
+        "tokens": tokens_at_risk,
+        "last_proposal": proposal_data,
+    })

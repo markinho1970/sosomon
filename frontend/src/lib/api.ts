@@ -1,6 +1,7 @@
 import axios from "axios";
 import type {
   AlphaIndex,
+  IndexRiskData,
   AgentActivity,
   MacroData,
   DashboardData,
@@ -27,6 +28,11 @@ export const indexApi = {
 
   getBySlug: async (slug: string, networkMode: "mainnet" | "testnet" = "mainnet"): Promise<AlphaIndex> => {
     const { data } = await api.get<ApiResponse<AlphaIndex>>(`/api/indexes/${slug}?network_mode=${networkMode}`);
+    return data.data;
+  },
+
+  getRisk: async (slug: string, networkMode: "mainnet" | "testnet" = "mainnet"): Promise<IndexRiskData> => {
+    const { data } = await api.get<ApiResponse<IndexRiskData>>(`/api/indexes/${slug}/risk?network_mode=${networkMode}`);
     return data.data;
   },
 };

@@ -8,7 +8,7 @@ export interface TokenConstituent {
   symbol: string;
   name: string;
   coingecko_id: string;
-  weight: number; // 0-100 (percentage)
+  weight: number;
   current_price_usd: number;
   market_cap_usd: number;
   volume_24h_usd: number;
@@ -16,6 +16,41 @@ export interface TokenConstituent {
   price_change_30d: number;
   ai_rationale: string;
   added_at: string;
+  ejection_risk_pct: number; // 0-100: % do threshold de ejeção (-40% em 7d) atingido
+}
+
+export interface IndexRiskToken {
+  symbol: string;
+  weight: number;
+  price_usd: number;
+  change_7d_pct: number;
+  change_30d_pct: number;
+  ejection_risk_pct: number;
+  at_risk: boolean;
+  ai_rationale: string;
+}
+
+export interface IndexRiskData {
+  index_id: string;
+  network_mode: string;
+  stablecoin_buffer_pct: number;
+  risk_rules: {
+    ejection_threshold_7d_pct: number;
+    buffer_trigger_low_pct: number;
+    buffer_low_allocation_pct: number;
+    buffer_trigger_critical_pct: number;
+    buffer_critical_allocation_pct: number;
+    ejection_cooldown_days: number;
+    max_single_token_weight: number;
+  };
+  tokens: IndexRiskToken[];
+  last_proposal: {
+    status: string;
+    trigger: string;
+    proposed_at: string;
+    changes: Array<{ symbol: string; action: string; old_weight: number; new_weight: number; rationale: string }>;
+    ai_rationale: string;
+  } | null;
 }
 
 export interface AlphaIndex {

@@ -3,14 +3,14 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Users, RefreshCw, TrendingUp, Info, Copy, CheckCircle2, ExternalLink } from "lucide-react";
+import { ArrowLeft, Users, RefreshCw, TrendingUp, Info, Copy, CheckCircle2, ExternalLink, ShieldAlert, Activity } from "lucide-react";
 import Navbar from "../../components/Navbar";
 import InvestButton from "../../components/InvestButton";
 import { indexApi, investApi } from "@/lib/api";
 import { useLang } from "@/lib/LanguageContext";
 import { useNetworkMode } from "@/lib/NetworkModeContext";
 import { INDEX_I18N } from "@/lib/i18n/translations";
-import type { AlphaIndex } from "@/types";
+import type { AlphaIndex, IndexRiskData } from "@/types";
 
 const THEME_HEADER: Record<string, string> = {
   "ai-crypto": "from-purple-900/30 to-transparent",
@@ -99,6 +99,7 @@ export default function IndexDetailPage() {
   const { networkMode } = useNetworkMode();
 
   const [idx, setIdx] = useState<AlphaIndex | null>(null);
+  const [risk, setRisk] = useState<IndexRiskData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -107,8 +108,12 @@ export default function IndexDetailPage() {
     setLoading(true);
     setError(false);
     setIdx(null);
-    indexApi.getBySlug(slug, networkMode)
-      .then(setIdx)
+    setRisk(null);
+    Promise.all([
+      indexApi.getBySlug(slug, networkMode),
+      indexApi.getRisk(slug, networkMode).catch(() => null),
+    ])
+      .then(([idxData, riskData]) => { setIdx(idxData); setRisk(riskData); })
       .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, [slug, networkMode]);
@@ -182,55 +187,182 @@ export default function IndexDetailPage() {
         </div>
 
         <div className="grid lg:grid-cols-3 gap-6">
-          {/* Constituents */}
-          <div className="lg:col-span-2 card">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-white">{t("idx_constituents")}</h2>
-              {idx.last_rebalanced_at && (
-                <div className="flex items-center gap-1.5 text-xs text-white/30">
-                  <RefreshCw size={11} />
-                  {t("idx_last_rebalanced")} {new Date(idx.last_rebalanced_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+          {/* Constituents + Risk */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Composition card */}
+            <div className="card">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-semibold text-white">{t("idx_constituents")}</h2>
+                {idx.last_rebalanced_at && (
+                  <div className="flex items-center gap-1.5 text-xs text-white/30">
+                    <RefreshCw size={11} />
+                    {t("idx_last_rebalanced")} {new Date(idx.last_rebalanced_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  </div>
+                )}
+              </div>
+
+              {/* Column headers */}
+              <div className="flex items-center gap-3 px-3 mb-1 text-xs text-white/20 uppercase tracking-wider">
+                <div className="w-28 shrink-0">Token / Weight</div>
+                <div className="flex-1">Asset</div>
+                <div className="w-14 text-right shrink-0">7d</div>
+                <div className="w-14 text-right shrink-0">30d</div>
+                <div className="w-20 shrink-0 text-center">Ejection risk</div>
+                <div className="w-4 shrink-0" />
+              </div>
+
+              <div className="space-y-1">
+                {idx.constituents?.map((token) => {
+                  const ejRisk = token.ejection_risk_pct ?? 0;
+                  const ejColor = ejRisk >= 75 ? "bg-red-500" : ejRisk >= 50 ? "bg-orange-400" : ejRisk >= 25 ? "bg-yellow-400" : "bg-green-500/60";
+                  return (
+                    <div key={token.symbol} className="flex items-center gap-3 p-3 rounded-lg hover:bg-white/3 transition-colors group">
+                      {/* Symbol + weight bar */}
+                      <div className="w-28 shrink-0">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-xs font-mono text-white/70">{token.symbol}</span>
+                          <span className="text-xs text-white/40">{token.weight}%</span>
+                        </div>
+                        <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                          <div className="h-full bg-brand-blue/60 rounded-full" style={{ width: `${Math.min((token.weight / 40) * 100, 100)}%` }} />
+                        </div>
+                      </div>
+
+                      {/* Name + price */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-white/70 truncate">{token.name}</p>
+                        <p className="text-xs text-white/30">{fmt(token.current_price_usd ?? 0)}</p>
+                      </div>
+
+                      {/* 7d */}
+                      <div className={`w-14 text-right text-sm font-medium shrink-0 ${(token.price_change_7d ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
+                        {(token.price_change_7d ?? 0) >= 0 ? "+" : ""}{(token.price_change_7d ?? 0).toFixed(1)}%
+                      </div>
+
+                      {/* 30d */}
+                      <div className={`w-14 text-right text-xs shrink-0 ${(token.price_change_30d ?? 0) >= 0 ? "text-green-400/70" : "text-red-400/70"}`}>
+                        {(token.price_change_30d ?? 0) >= 0 ? "+" : ""}{(token.price_change_30d ?? 0).toFixed(1)}%
+                      </div>
+
+                      {/* Ejection risk bar */}
+                      <div className="w-20 shrink-0">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-xs text-white/20">{ejRisk.toFixed(0)}%</span>
+                          {ejRisk >= 50 && <ShieldAlert size={10} className="text-orange-400" />}
+                        </div>
+                        <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full transition-all ${ejColor}`} style={{ width: `${Math.min(ejRisk, 100)}%` }} />
+                        </div>
+                      </div>
+
+                      {/* Rationale tooltip */}
+                      {token.ai_rationale && (
+                        <div className="relative group/tip w-4 shrink-0">
+                          <Info size={13} className="text-white/20 hover:text-white/50 cursor-help transition-colors" />
+                          <div className="absolute right-0 top-6 w-72 bg-brand-gray border border-white/10 rounded-lg p-3 z-10 hidden group-hover/tip:block shadow-xl space-y-2">
+                            <p className="text-xs text-white/50 leading-relaxed">{token.ai_rationale}</p>
+                            <div className="pt-2 border-t border-white/5 grid grid-cols-2 gap-1 text-xs">
+                              <div>
+                                <span className="text-white/20">7d change</span>
+                                <p className={`font-medium ${(token.price_change_7d ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
+                                  {(token.price_change_7d ?? 0) >= 0 ? "+" : ""}{(token.price_change_7d ?? 0).toFixed(2)}%
+                                </p>
+                              </div>
+                              <div>
+                                <span className="text-white/20">30d change</span>
+                                <p className={`font-medium ${(token.price_change_30d ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
+                                  {(token.price_change_30d ?? 0) >= 0 ? "+" : ""}{(token.price_change_30d ?? 0).toFixed(2)}%
+                                </p>
+                              </div>
+                              <div>
+                                <span className="text-white/20">Weight</span>
+                                <p className="text-white font-medium">{token.weight}%</p>
+                              </div>
+                              <div>
+                                <span className="text-white/20">Ejection risk</span>
+                                <p className={`font-medium ${ejRisk >= 50 ? "text-orange-400" : "text-white/60"}`}>{ejRisk.toFixed(1)}% of threshold</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {idx.rebalance_summary && (
+                <div className="mt-4 pt-4 border-t border-white/5">
+                  <p className="text-xs text-white/30 uppercase tracking-wider mb-1.5">{t("idx_last_rebalanced")}</p>
+                  <p className="text-sm text-white/50 leading-relaxed">{idx.rebalance_summary}</p>
                 </div>
               )}
             </div>
-            <div className="space-y-2">
-              {idx.constituents?.map((token) => (
-                <div key={token.symbol} className="flex items-center gap-3 p-3 rounded-lg hover:bg-white/3 transition-colors group">
-                  <div className="w-24 shrink-0">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-xs font-mono text-white/60">{token.symbol}</span>
-                      <span className="text-xs text-white/30">{token.weight}%</span>
-                    </div>
-                    <div className="h-1 bg-white/5 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-brand-blue/60 rounded-full"
-                        style={{ width: `${Math.min((token.weight / 20) * 100, 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-white/70 truncate">{token.name}</p>
-                    <p className="text-xs text-white/30">{fmt(token.current_price_usd ?? 0)}</p>
-                  </div>
-                  <div className={`text-sm font-medium shrink-0 ${(token.price_change_7d ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
-                    {(token.price_change_7d ?? 0) >= 0 ? "+" : ""}{(token.price_change_7d ?? 0).toFixed(1)}%
-                  </div>
-                  {token.ai_rationale && (
-                    <div className="relative group/tip shrink-0">
-                      <Info size={13} className="text-white/20 hover:text-white/50 cursor-help transition-colors" />
-                      <div className="absolute right-0 top-6 w-64 bg-brand-gray border border-white/10 rounded-lg p-3 text-xs text-white/60 leading-relaxed z-10 hidden group-hover/tip:block shadow-xl">
-                        {token.ai_rationale}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
 
-            {idx.rebalance_summary && (
-              <div className="mt-4 pt-4 border-t border-white/5">
-                <p className="text-xs text-white/30 uppercase tracking-wider mb-1.5">{t("idx_last_rebalanced")}</p>
-                <p className="text-sm text-white/50 leading-relaxed">{idx.rebalance_summary}</p>
+            {/* Risk Controls card */}
+            {risk && (
+              <div className="card">
+                <div className="flex items-center gap-2 mb-4">
+                  <ShieldAlert size={14} className="text-brand-orange" />
+                  <h2 className="font-semibold text-white">Risk Controls</h2>
+                  <span className="ml-auto text-xs text-white/30">Active protection rules</span>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-3 mb-4">
+                  {[
+                    { label: "Ejection threshold", value: "−40% in 7 days", note: "Token auto-removed if breached" },
+                    { label: "Post-ejection cooldown", value: `${risk.risk_rules.ejection_cooldown_days} days`, note: "Token cannot re-enter index" },
+                    { label: "Max single-token weight", value: `${risk.risk_rules.max_single_token_weight}%`, note: "Excess redistributed to others" },
+                    { label: "Stablecoin buffer (current)", value: `${(risk.stablecoin_buffer_pct ?? 0).toFixed(1)}%`, note: "USDC retained from allocations" },
+                  ].map((r) => (
+                    <div key={r.label} className="bg-white/3 rounded-lg p-3">
+                      <p className="text-xs text-white/30 mb-0.5">{r.label}</p>
+                      <p className="text-sm font-medium text-white">{r.value}</p>
+                      <p className="text-xs text-white/20 mt-0.5">{r.note}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="bg-white/3 rounded-lg p-3 mb-3">
+                  <p className="text-xs text-white/30 mb-1.5">Sentiment-driven buffer triggers</p>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="w-2 h-2 rounded-full bg-yellow-400 shrink-0" />
+                      <span className="text-white/50">Sentiment &lt; {risk.risk_rules.buffer_trigger_low_pct}/100</span>
+                      <span className="ml-auto text-white font-medium">{risk.risk_rules.buffer_low_allocation_pct}% → USDC</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="w-2 h-2 rounded-full bg-red-400 shrink-0" />
+                      <span className="text-white/50">Sentiment &lt; {risk.risk_rules.buffer_trigger_critical_pct}/100</span>
+                      <span className="ml-auto text-white font-medium">{risk.risk_rules.buffer_critical_allocation_pct}% → USDC</span>
+                    </div>
+                  </div>
+                </div>
+
+                {risk.last_proposal && (
+                  <div className="pt-3 border-t border-white/5">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Activity size={12} className="text-white/30" />
+                      <p className="text-xs text-white/30">Last rebalance proposal · <span className="capitalize">{risk.last_proposal.trigger}</span> · <span className={`font-medium ${risk.last_proposal.status === "executed" ? "text-green-400" : risk.last_proposal.status === "pending" ? "text-yellow-400" : "text-white/40"}`}>{risk.last_proposal.status}</span></p>
+                    </div>
+                    <div className="space-y-1">
+                      {(risk.last_proposal.changes || []).slice(0, 4).map((ch, i) => (
+                        <div key={i} className="flex items-center gap-2 text-xs text-white/40">
+                          <span className={`w-12 shrink-0 font-mono font-medium ${ch.action === "add" ? "text-green-400" : ch.action === "remove" ? "text-red-400" : "text-yellow-400"}`}>
+                            {ch.action === "add" ? "ADD" : ch.action === "remove" ? "REM" : "REWT"}
+                          </span>
+                          <span className="font-mono text-white/60">{ch.symbol}</span>
+                          {ch.old_weight !== undefined && (
+                            <span className="ml-auto shrink-0">{ch.old_weight}% → {ch.new_weight}%</span>
+                          )}
+                        </div>
+                      ))}
+                      {(risk.last_proposal.changes || []).length > 4 && (
+                        <p className="text-xs text-white/20">+{risk.last_proposal.changes.length - 4} more changes</p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -243,11 +375,11 @@ export default function IndexDetailPage() {
               <div className="space-y-2 text-sm text-white/50 mb-4">
                 <div className="flex justify-between">
                   <span>{t("idx_mgmt_fee")}</span>
-                  <span className="text-white">{idx.management_fee_pct ?? 0.75}% /yr</span>
+                  <span className="text-white">{idx.management_fee_pct ?? 2}% /yr</span>
                 </div>
                 <div className="flex justify-between">
                   <span>{t("idx_perf_fee")}</span>
-                  <span className="text-white">15% on profits</span>
+                  <span className="text-white">20% on profits</span>
                 </div>
                 <div className="flex justify-between">
                   <span>{t("idx_protocol")}</span>

@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 # ─── Constituent ──────────────────────────────────────────────────────────────
@@ -17,6 +17,12 @@ class ConstituentOut(BaseModel):
     price_change_30d: float
     ai_rationale: str
     added_at: datetime
+    ejection_risk_pct: float = 0.0  # 0-100: % do threshold de -40% em 7d atingido
+
+    @model_validator(mode="after")
+    def compute_ejection_risk(self) -> "ConstituentOut":
+        self.ejection_risk_pct = round(max(0.0, -(self.price_change_7d or 0.0) / 40.0 * 100.0), 1)
+        return self
 
     class Config:
         from_attributes = True
