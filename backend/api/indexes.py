@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+from datetime import datetime, timedelta
 
 from database import get_db
-from models import AlphaIndex, IndexConstituent, RebalanceProposal, SubscriberPortfolio
+from models import AlphaIndex, IndexConstituent, RebalanceProposal, SubscriberPortfolio, AgentActivityLog
 from schemas import IndexOut, ApiResponse
 
 router = APIRouter(prefix="/api/indexes", tags=["indexes"])
@@ -64,6 +65,35 @@ def get_index_risk(slug: str, network_mode: str = Query("mainnet"), db: Session 
             "ai_rationale":      c.ai_rationale or "",
         })
 
+    # Gap 2: tokens em cooldown de ejeção (excluídos pelo scout nos últimos 90 dias)
+    cutoff = datetime.utcnow() - timedelta(days=90)
+    cooldown_logs = (
+        db.query(AgentActivityLog)
+        .filter(
+            AgentActivityLog.index_id == idx.id,
+            AgentActivityLog.agent == "scout",
+            AgentActivityLog.action == "exclusion",
+            AgentActivityLog.timestamp >= cutoff,
+        )
+        .order_by(AgentActivityLog.timestamp.desc())
+        .all()
+    )
+    cooldown_tokens = []
+    seen_symbols: set = set()
+    now = datetime.utcnow()
+    for log in cooldown_logs:
+        sym = log.token_symbol
+        if sym and sym not in seen_symbols:
+            seen_symbols.add(sym)
+            reentry = log.timestamp + timedelta(days=90)
+            cooldown_tokens.append({
+                "symbol":         sym,
+                "ejected_at":     log.timestamp.isoformat(),
+                "reentry_date":   reentry.isoformat(),
+                "days_remaining": max(0, (reentry - now).days),
+                "reason":         log.description,
+            })
+
     last_proposal = db.query(RebalanceProposal).filter(
         RebalanceProposal.index_id == idx.id,
         RebalanceProposal.network_mode == network_mode,
@@ -96,6 +126,7 @@ def get_index_risk(slug: str, network_mode: str = Query("mainnet"), db: Session 
             "ejection_cooldown_days":    90,
             "max_single_token_weight":   25,
         },
-        "tokens": tokens_at_risk,
-        "last_proposal": proposal_data,
+        "tokens":           tokens_at_risk,
+        "cooldown_tokens":  cooldown_tokens,
+        "last_proposal":    proposal_data,
     })

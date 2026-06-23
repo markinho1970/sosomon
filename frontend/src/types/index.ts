@@ -30,6 +30,14 @@ export interface IndexRiskToken {
   ai_rationale: string;
 }
 
+export interface IndexRiskCooldownToken {
+  symbol: string;
+  ejected_at: string;
+  reentry_date: string;
+  days_remaining: number;
+  reason: string;
+}
+
 export interface IndexRiskData {
   index_id: string;
   network_mode: string;
@@ -44,6 +52,7 @@ export interface IndexRiskData {
     max_single_token_weight: number;
   };
   tokens: IndexRiskToken[];
+  cooldown_tokens: IndexRiskCooldownToken[];
   last_proposal: {
     status: string;
     trigger: string;

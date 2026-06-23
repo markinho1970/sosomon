@@ -1,5 +1,8 @@
 import os
 import time
+import json
+import hashlib
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -8,6 +11,8 @@ from datetime import datetime
 import uuid
 from eth_account.messages import encode_defunct
 from eth_account import Account
+
+logger = logging.getLogger(__name__)
 
 from database import get_db
 from models import RebalanceProposal, AlphaIndex, AgentActivityLog, Subscriber, SubscriberPortfolio
@@ -162,6 +167,49 @@ async def run_rebalancer(req: RunRebalancerRequest, db: Session = Depends(get_db
         raise HTTPException(status_code=500, detail=str(e))
 
 
+_AUDIT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "audit", "proposals"))
+
+
+def _write_audit_record(proposal) -> dict:
+    """Persiste proposta executada em JSON com hash SHA-256 para auditoria externa."""
+    os.makedirs(_AUDIT_DIR, exist_ok=True)
+
+    changes = proposal.changes or []
+    if isinstance(changes, str):
+        try:
+            changes = json.loads(changes)
+        except Exception:
+            changes = []
+
+    record = {
+        "proposal_id": proposal.id,
+        "index_id":    proposal.index_id,
+        "trigger":     proposal.trigger,
+        "status":      proposal.status,
+        "proposed_at": proposal.proposed_at.isoformat() if proposal.proposed_at else None,
+        "approved_at": proposal.approved_at.isoformat() if proposal.approved_at else None,
+        "executed_at": proposal.executed_at.isoformat() if proposal.executed_at else None,
+        "changes":     changes,
+        "ai_rationale": proposal.ai_rationale or "",
+        "network_mode": proposal.network_mode or "mainnet",
+        "audited_at":  datetime.utcnow().isoformat(),
+    }
+
+    canonical = json.dumps(record, sort_keys=True, indent=2)
+    sha256    = hashlib.sha256(canonical.encode()).hexdigest()
+    record["sha256"] = sha256
+
+    ts       = proposal.executed_at.strftime("%Y%m%d_%H%M%S") if proposal.executed_at else "unknown"
+    filename = f"proposal_{proposal.id}_{ts}.json"
+    filepath = os.path.join(_AUDIT_DIR, filename)
+
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(record, f, indent=2)
+
+    logger.info(f"Audit record written: {filename} (sha256={sha256[:16]}…)")
+    return {"path": filepath, "sha256": sha256}
+
+
 class ExecuteProposalRequest(BaseModel):
     dry_run: bool = False
 
@@ -190,13 +238,33 @@ async def execute_proposal(
     try:
         await apply_proposal(proposal_id, db, dry_run=req.dry_run)
         db.refresh(proposal)
+
+        audit_record   = None
+        onchain_result = None
+
+        if not req.dry_run and proposal.status == "executed":
+            # Gap 3: escrever audit record com SHA-256
+            try:
+                audit_record = _write_audit_record(proposal)
+            except Exception as ae:
+                logger.warning(f"Audit record failed (non-critical): {ae}")
+
+            # Gap 4: emitir evento on-chain na rede Base
+            try:
+                from services.onchain_logger import emit_rebalance_event
+                onchain_result = await emit_rebalance_event(proposal)
+            except Exception as oe:
+                logger.warning(f"On-chain emission failed (non-critical): {oe}")
+
         return {
-            "success": True,
-            "proposal_id": proposal_id,
-            "status": proposal.status,
-            "dry_run": req.dry_run,
-            "orders_count": len(proposal.execution_orders or []),
+            "success":        True,
+            "proposal_id":    proposal_id,
+            "status":         proposal.status,
+            "dry_run":        req.dry_run,
+            "orders_count":   len(proposal.execution_orders or []),
             "execution_orders": proposal.execution_orders or [],
+            "audit":          audit_record,
+            "onchain":        onchain_result,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

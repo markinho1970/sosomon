@@ -339,6 +339,24 @@ export default function IndexDetailPage() {
                   </div>
                 </div>
 
+                {(risk.cooldown_tokens || []).length > 0 && (
+                  <div className="pt-3 border-t border-white/5">
+                    <p className="text-xs text-white/30 mb-2 flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
+                      Tokens in ejection cooldown ({risk.cooldown_tokens.length})
+                    </p>
+                    <div className="space-y-1.5">
+                      {risk.cooldown_tokens.map((ct) => (
+                        <div key={ct.symbol} className="bg-red-500/5 border border-red-500/10 rounded px-3 py-2 flex items-center gap-3 text-xs">
+                          <span className="font-mono font-semibold text-red-400 w-20 shrink-0">{ct.symbol}</span>
+                          <span className="text-white/30 flex-1 truncate">{ct.reason.slice(0, 60)}</span>
+                          <span className="text-white/50 shrink-0">re-entry in {ct.days_remaining}d</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {risk.last_proposal && (
                   <div className="pt-3 border-t border-white/5">
                     <div className="flex items-center gap-2 mb-2">
