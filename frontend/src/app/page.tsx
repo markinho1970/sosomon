@@ -147,7 +147,7 @@ export default function Home() {
                 {item.icon}
               </div>
               <p className="text-xs text-white/30 uppercase tracking-wider mb-1">{t(item.roleKey)}</p>
-              <h3 className="text-xl font-bold text-white mb-2">Agent: {item.name}</h3>
+              <h3 className="text-xl font-bold text-white mb-2">{t("home_agent_prefix")} {item.name}</h3>
               <p className="text-sm text-white/50 leading-relaxed">{t(item.descKey)}</p>
             </div>
           ))}

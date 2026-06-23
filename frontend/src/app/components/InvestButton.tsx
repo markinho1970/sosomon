@@ -315,7 +315,7 @@ export default function InvestButton({ indexId, indexName, navUsd }: Props) {
                     <span className="text-blue-300 text-sm font-medium">
                       {isTestnet ? "Base Sepolia (Testnet)" : "Base Network"} · Chain ID {ACTIVE_CHAIN_ID}
                     </span>
-                    <span className="ml-auto text-xs text-blue-400/60">USDC only</span>
+                    <span className="ml-auto text-xs text-blue-400/60">{t("invest_usdc_only")}</span>
                   </div>
 
                   <div className="bg-white/3 rounded-xl p-3">

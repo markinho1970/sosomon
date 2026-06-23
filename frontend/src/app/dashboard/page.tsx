@@ -161,10 +161,10 @@ export default function DashboardPage() {
         {pendingWalletChange && (
           <div className="mb-4 rounded-xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-medium text-sky-300">MetaMask account changed</p>
+              <p className="text-sm font-medium text-sky-300">{t("dash_wallet_changed")}</p>
               <p className="text-xs text-sky-400/70 mt-0.5">
-                Active: <span className="font-mono">{pendingWalletChange.slice(0,6)}…{pendingWalletChange.slice(-4)}</span>
-                {"· "}Viewing: <span className="font-mono">{viewingAddress?.slice(0,6)}…{viewingAddress?.slice(-4)}</span>
+                {t("dash_active_wallet")} <span className="font-mono">{pendingWalletChange.slice(0,6)}…{pendingWalletChange.slice(-4)}</span>
+                {"· "}{t("dash_viewing_wallet")} <span className="font-mono">{viewingAddress?.slice(0,6)}…{viewingAddress?.slice(-4)}</span>
               </p>
             </div>
             <div className="flex gap-2 shrink-0">
@@ -172,13 +172,13 @@ export default function DashboardPage() {
                 onClick={() => { setViewingAddress(pendingWalletChange); setPendingWalletChange(null); }}
                 className="px-3 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-black text-xs font-semibold transition-all"
               >
-                Switch to {pendingWalletChange.slice(0,6)}…
+                {t("dash_switch_to").replace("{a}", pendingWalletChange.slice(0,6))}
               </button>
               <button
                 onClick={() => setPendingWalletChange(null)}
                 className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 text-xs font-medium transition-all"
               >
-                Stay on {viewingAddress?.slice(0,6)}…
+                {t("dash_stay_on").replace("{a}", viewingAddress?.slice(0,6) ?? "")}
               </button>
             </div>
           </div>
@@ -196,13 +196,13 @@ export default function DashboardPage() {
             {(subscriber?.days_streak ?? 0) > 0 && (
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-medium">
                 <Award size={12} />
-                {subscriber!.days_streak}-day streak
+                {t("dash_day_streak").replace("{n}", String(subscriber!.days_streak))}
               </div>
             )}
             {subscriber?.is_pro && (
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand-blue/10 border border-brand-blue/20 text-brand-blue text-xs font-medium">
                 <Zap size={12} />
-                Pro Member
+                {t("dash_pro_member")}
               </div>
             )}
           </div>
@@ -394,22 +394,22 @@ export default function DashboardPage() {
                 <div className="card">
                   <div className="flex items-center gap-2 mb-4">
                     <AlertTriangle size={16} className="text-yellow-400" />
-                    <h2 className="font-semibold text-white">Macro Context</h2>
+                    <h2 className="font-semibold text-white">{t("dash_macro_title")}</h2>
                   </div>
                   <MacroWidget macro={macro} />
                 </div>
                 <div className="card">
                   <div className="flex items-center gap-2 mb-4">
                     <RefreshCw size={16} className="text-brand-blue" />
-                    <h2 className="font-semibold text-white">AI Risk Status</h2>
+                    <h2 className="font-semibold text-white">{t("dash_risk_status_title")}</h2>
                   </div>
                   <div className="space-y-3">
                     {[
-                      { label: "Sentiment Override", desc: `Triggered below score 25. Current: ${macro.sosovalue_sentiment_score}.`, ok: macro.sosovalue_sentiment_score > 25 },
-                      { label: "Capitulation Override", desc: "Triggered below score 15. 30% USDC buffer.", ok: macro.sosovalue_sentiment_score > 15 },
-                      { label: "Token Ejection Monitor", desc: "Monitoring all positions for >40% 7d drop.", ok: true },
-                      { label: "Liquidity Check", desc: "All positions above $500K 24h volume threshold.", ok: true },
-                      { label: "Drift Monitor", desc: "Next rebalance if >5% drift from target weight.", ok: true },
+                      { label: t("dash_risk_sentiment_override"), desc: t("dash_risk_sentiment_desc").replace("{score}", String(macro.sosovalue_sentiment_score)), ok: macro.sosovalue_sentiment_score > 25 },
+                      { label: t("dash_risk_cap_override"), desc: t("dash_risk_cap_desc"), ok: macro.sosovalue_sentiment_score > 15 },
+                      { label: t("dash_risk_ejection_monitor"), desc: t("dash_risk_ejection_desc"), ok: true },
+                      { label: t("dash_risk_liquidity"), desc: t("dash_risk_liquidity_desc"), ok: true },
+                      { label: t("dash_risk_drift"), desc: t("dash_risk_drift_desc"), ok: true },
                     ].map((r) => (
                       <div key={r.label} className="flex items-start gap-3 p-3 rounded-lg bg-white/3">
                         <span className={`text-xs font-medium mt-0.5 ${r.ok ? "text-green-400" : "text-red-400"}`}>{r.ok ? "✓" : "✗"}</span>

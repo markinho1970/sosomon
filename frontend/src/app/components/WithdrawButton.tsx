@@ -95,7 +95,7 @@ export default function WithdrawButton({ indexId, indexName, currentValueUsd, na
       setStep("preview");
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setErrorMsg(detail || "Failed to calculate preview");
+      setErrorMsg(detail || t("wd_preview_error"));
       setStep("error");
     } finally {
       setLoadingPreview(false);
@@ -114,7 +114,7 @@ export default function WithdrawButton({ indexId, indexName, currentValueUsd, na
       });
       setResult(data);
       if (!data.success) {
-        setErrorMsg(data.error || "Execution failed");
+        setErrorMsg(data.error || t("wd_exec_failed"));
         setStep("error");
       } else if (simulate) {
         setStep("simulated");
@@ -123,7 +123,7 @@ export default function WithdrawButton({ indexId, indexName, currentValueUsd, na
       }
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setErrorMsg(detail || "Withdrawal error");
+      setErrorMsg(detail || t("wd_withdrawal_error"));
       setStep("error");
     }
   }
@@ -214,9 +214,7 @@ export default function WithdrawButton({ indexId, indexName, currentValueUsd, na
 
                 <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/8 border border-amber-500/20">
                   <Info size={13} className="text-amber-400 shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-300/70">
-                    The next step shows the complete fee and P&L breakdown <strong>before</strong> any execution. You can also simulate without risk.
-                  </p>
+                  <p className="text-xs text-amber-300/70" dangerouslySetInnerHTML={{ __html: t("wd_before_exec_hint") }} />
                 </div>
 
                 <button
@@ -280,8 +278,8 @@ export default function WithdrawButton({ indexId, indexName, currentValueUsd, na
                     <p className="text-xs text-white/30">{t("wd_usdc_wallet")}</p>
                   </div>
                   <div className="text-right text-xs text-white/30">
-                    <p>in {address?.slice(0, 6)}…{address?.slice(-4)}</p>
-                    <p className="mt-0.5">~2-3 min after confirmation</p>
+                    <p>{t("wd_in_wallet").replace("{a}", address?.slice(0, 6) ?? "")}{address?.slice(-4)}</p>
+                    <p className="mt-0.5">{t("wd_time_estimate")}</p>
                   </div>
                 </div>
 
@@ -427,7 +425,7 @@ export default function WithdrawButton({ indexId, indexName, currentValueUsd, na
                 {result.basescan && (
                   <a href={result.basescan} target="_blank" rel="noopener noreferrer"
                     className="flex items-center gap-1.5 text-sm text-brand-blue hover:text-blue-300 transition-colors">
-                    <ExternalLink size={14} /> View on Basescan
+                    <ExternalLink size={14} /> {t("wd_view_basescan")}
                   </a>
                 )}
                 {result.warnings?.length > 0 && (
@@ -451,10 +449,10 @@ export default function WithdrawButton({ indexId, indexName, currentValueUsd, na
                 </div>
                 {errorMsg.includes("ETH") && (
                   <div className="text-xs text-yellow-400/70 bg-yellow-500/8 border border-yellow-500/20 rounded-lg p-3 text-left">
-                    <strong>Action required:</strong> The fund wallet needs ETH on Base network for gas. Contact support.
+                    {t("wd_eth_required")}
                   </div>
                 )}
-                <button onClick={() => setStep("input")} className="btn-ghost w-full">Try again</button>
+                <button onClick={() => setStep("input")} className="btn-ghost w-full">{t("wd_try_again")}</button>
               </div>
             )}
 

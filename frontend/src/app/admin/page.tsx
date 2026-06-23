@@ -109,12 +109,12 @@ function fmtUSD(v: number) {
   return `$${v.toFixed(2)}`;
 }
 
-function timeAgo(iso: string) {
+function timeAgo(iso: string, mAgo: string, hAgo: string, dAgo: string) {
   const diff = Date.now() - new Date(iso).getTime();
   const h = Math.floor(diff / 3_600_000);
-  if (h < 1) return `${Math.floor(diff / 60000)}m ago`;
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
+  if (h < 1) return mAgo.replace("{n}", String(Math.floor(diff / 60000)));
+  if (h < 24) return hAgo.replace("{n}", String(h));
+  return dAgo.replace("{n}", String(Math.floor(h / 24)));
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -385,11 +385,10 @@ export default function AdminPage() {
     setExecuteResult((prev) => ({ ...prev, [id]: "" }));
     try {
       const res = await adminApi.executeProposal(id, session.address, session.message, session.signature, dryRun);
-      const label = dryRun ? "Dry run" : "Executed";
-      setExecuteResult((prev) => ({
-        ...prev,
-        [id]: `${label}: ${res.orders_count ?? 0} orders ${dryRun ? "simulated" : "placed on SoDEX"}`,
-      }));
+      const resultMsg = dryRun
+        ? t("admin_dryrun_result").replace("{n}", String(res.orders_count ?? 0))
+        : t("admin_execute_result").replace("{n}", String(res.orders_count ?? 0));
+      setExecuteResult((prev) => ({ ...prev, [id]: resultMsg }));
       await loadAll(networkMode);
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Execution failed";
@@ -414,7 +413,7 @@ export default function AdminPage() {
     setRebalancerMsg("");
     try {
       const res = await adminApi.runRebalancer(session.address, session.message, session.signature, false);
-      setRebalancerMsg(`Rebalancer: ${res.pending_proposals ?? 0} propostas pendentes.`);
+      setRebalancerMsg(`Rebalancer: ${t("admin_pending_badge").replace("{n}", String(res.pending_proposals ?? 0))}.`);
       await loadAll(networkMode);
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Failed";
@@ -537,7 +536,7 @@ export default function AdminPage() {
         <div className="flex items-center gap-3">
           <span className="text-white font-bold">SoSoMon</span>
           <span className="text-white/20">·</span>
-          <span className="text-white/40 text-sm">Founder Admin</span>
+          <span className="text-white/40 text-sm">{t("admin_founder_label")}</span>
           <span className="text-xs text-white/20 font-mono">{session.address.slice(0, 6)}…{session.address.slice(-4)}</span>
         </div>
         <div className="flex items-center gap-2">
@@ -562,7 +561,7 @@ export default function AdminPage() {
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/60 hover:text-white text-xs transition-all disabled:opacity-40"
           >
             <BarChart3 size={12} className={loadingReport ? "animate-pulse" : ""} />
-            {loadingReport ? "…" : "Relatório"}
+            {loadingReport ? "…" : t("admin_report_btn")}
           </button>
           <button
             onClick={handleRunRebalancer}
@@ -620,7 +619,7 @@ export default function AdminPage() {
             {alerts.length === 0 ? (
               <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-green-500/20 bg-green-500/5">
                 <CheckCircle2 size={13} className="text-green-400 shrink-0" />
-                <p className="text-green-400/70 text-xs">Todos os sistemas operacionais</p>
+                <p className="text-green-400/70 text-xs">{t("admin_all_systems_ok")}</p>
                 {alertsCheckedAt && <span className="ml-auto text-white/20 text-xs">{alertsCheckedAt}</span>}
               </div>
             ) : (
@@ -688,7 +687,7 @@ export default function AdminPage() {
               <div className="flex items-center justify-between p-3 rounded-xl bg-white/3 border border-white/5">
                 <div className="flex items-center gap-2">
                   <DollarSign size={14} className="text-white/40" />
-                  <span className="text-white/60 text-sm">USDC {t("admin_proposals_label") === "propostas" ? "coletado" : "collected"}</span>
+                  <span className="text-white/60 text-sm">USDC {t("admin_usdc_collected")}</span>
                 </div>
                 <span className="text-white font-bold text-sm">
                   {fundWallet.usdc_balance !== null ? `$${fundWallet.usdc_balance.toFixed(2)}` : "—"}
@@ -700,7 +699,7 @@ export default function AdminPage() {
                 <div className="flex items-center gap-1.5 mb-3">
                   <Download size={12} className={isMainnet ? "text-green-400" : "text-yellow-400"} />
                   <span className={`text-xs font-semibold ${isMainnet ? "text-green-400" : "text-yellow-400"}`}>
-                    Depositar ETH para gas ({isMainnet ? "Base" : "Base Sepolia"})
+                    {t("admin_deposit_eth_gas")} ({isMainnet ? "Base" : "Base Sepolia"})
                   </span>
                 </div>
                 <div className="flex gap-4 items-center">
@@ -714,7 +713,7 @@ export default function AdminPage() {
                     />
                   </div>
                   <div className="flex-1 min-w-0 space-y-2">
-                    <p className="text-white/30 text-xs leading-tight">Envie ETH da sua carteira para este endereço para cobrir taxas de gas.</p>
+                    <p className="text-white/30 text-xs leading-tight">{t("admin_deposit_eth_instruction")}</p>
                     <div className="flex items-center gap-1.5">
                       <p className="text-white/50 font-mono text-xs truncate">{fundWallet.address}</p>
                     </div>
@@ -722,7 +721,7 @@ export default function AdminPage() {
                       <button onClick={copyFundAddress}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/60 hover:text-white text-xs transition-all">
                         <Copy size={11} />
-                        {copiedAddr ? "Copiado!" : "Copiar"}
+                        {copiedAddr ? t("invest_copied") : t("invest_copy")}
                       </button>
                       {fundWallet.basescan_url && (
                         <a href={fundWallet.basescan_url} target="_blank" rel="noopener noreferrer"
@@ -750,7 +749,7 @@ export default function AdminPage() {
                 </span>
               )}
               {!isMainnet && (
-                <span className="text-xs text-white/30 italic">SoDEX opera apenas na mainnet</span>
+                <span className="text-xs text-white/30 italic">{t("admin_sodex_mainnet_only")}</span>
               )}
             </div>
             <button onClick={() => { setLoadingPortfolio(true); adminApi.getPortfolio(session.address, session.message, session.signature).then(d => { setPortfolio(d); setLoadingPortfolio(false); }).catch(() => setLoadingPortfolio(false)); }} className="text-white/30 hover:text-white transition-colors">
@@ -1001,8 +1000,8 @@ export default function AdminPage() {
                       <div className="flex items-center gap-2 flex-wrap mb-1">
                         <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_BADGE[p.status] ?? STATUS_BADGE.pending}`}>{p.status}</span>
                         <span className="text-xs text-white/40 font-mono">{p.index_name}</span>
-                        <span className="text-xs text-white/20">trigger: {p.trigger}</span>
-                        <span className="text-xs text-white/20 flex items-center gap-1"><Clock size={10} /> {timeAgo(p.proposed_at)}</span>
+                        <span className="text-xs text-white/20">{t("admin_trigger_label")}: {p.trigger}</span>
+                        <span className="text-xs text-white/20 flex items-center gap-1"><Clock size={10} /> {timeAgo(p.proposed_at, t("time_m_ago"), t("time_h_ago"), t("time_d_ago"))}</span>
                       </div>
                       <p className="text-sm text-white/60 leading-relaxed">{p.ai_rationale}</p>
                       {executeResult[p.id] && (
@@ -1062,8 +1061,8 @@ export default function AdminPage() {
                       )}
                       {p.status !== "pending" && p.status !== "approved" && (
                         <div className="text-xs text-white/20">
-                          {p.approved_at && <p>Approved {timeAgo(p.approved_at)}</p>}
-                          {p.executed_at && <p>Executed {timeAgo(p.executed_at)}</p>}
+                          {p.approved_at && <p>{t("admin_approved_time").replace("{t}", timeAgo(p.approved_at, t("time_m_ago"), t("time_h_ago"), t("time_d_ago")))}</p>}
+                          {p.executed_at && <p>{t("admin_executed_time").replace("{t}", timeAgo(p.executed_at, t("time_m_ago"), t("time_h_ago"), t("time_d_ago")))}</p>}
                         </div>
                       )}
                     </div>
@@ -1097,12 +1096,12 @@ export default function AdminPage() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="text-white/20 border-b border-white/5">
-                    <th className="text-left pb-2 font-normal">Symbol</th>
-                    <th className="text-left pb-2 font-normal">Side</th>
-                    <th className="text-right pb-2 font-normal">Qty</th>
-                    <th className="text-right pb-2 font-normal">Price (USD)</th>
-                    <th className="text-right pb-2 font-normal">Status</th>
-                    <th className="text-right pb-2 font-normal">Time</th>
+                    <th className="text-left pb-2 font-normal">{t("admin_trade_symbol")}</th>
+                    <th className="text-left pb-2 font-normal">{t("admin_trade_side")}</th>
+                    <th className="text-right pb-2 font-normal">{t("admin_trade_qty")}</th>
+                    <th className="text-right pb-2 font-normal">{t("admin_trade_price")}</th>
+                    <th className="text-right pb-2 font-normal">{t("admin_trade_status")}</th>
+                    <th className="text-right pb-2 font-normal">{t("admin_trade_time")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/3">
@@ -1119,7 +1118,7 @@ export default function AdminPage() {
                           {String(tr.status ?? "—")}
                         </span>
                       </td>
-                      <td className="py-2 text-right text-white/30">{tr.created_at ? timeAgo(String(tr.created_at)) : "—"}</td>
+                      <td className="py-2 text-right text-white/30">{tr.created_at ? timeAgo(String(tr.created_at), t("time_m_ago"), t("time_h_ago"), t("time_d_ago")) : "—"}</td>
                     </tr>
                   ))}
                 </tbody>

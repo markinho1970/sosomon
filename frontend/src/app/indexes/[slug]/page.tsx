@@ -203,11 +203,11 @@ export default function IndexDetailPage() {
 
               {/* Column headers */}
               <div className="flex items-center gap-3 px-3 mb-1 text-xs text-white/20 uppercase tracking-wider">
-                <div className="w-28 shrink-0">Token / Weight</div>
-                <div className="flex-1">Asset</div>
+                <div className="w-28 shrink-0">{t("idx_col_token_weight")}</div>
+                <div className="flex-1">{t("idx_col_asset")}</div>
                 <div className="w-14 text-right shrink-0">7d</div>
                 <div className="w-14 text-right shrink-0">30d</div>
-                <div className="w-20 shrink-0 text-center">Ejection risk</div>
+                <div className="w-20 shrink-0 text-center">{t("idx_col_ejection_risk")}</div>
                 <div className="w-4 shrink-0" />
               </div>
 
@@ -263,24 +263,24 @@ export default function IndexDetailPage() {
                             <p className="text-xs text-white/50 leading-relaxed">{token.ai_rationale}</p>
                             <div className="pt-2 border-t border-white/5 grid grid-cols-2 gap-1 text-xs">
                               <div>
-                                <span className="text-white/20">7d change</span>
+                                <span className="text-white/20">{t("idx_tooltip_7d")}</span>
                                 <p className={`font-medium ${(token.price_change_7d ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
                                   {(token.price_change_7d ?? 0) >= 0 ? "+" : ""}{(token.price_change_7d ?? 0).toFixed(2)}%
                                 </p>
                               </div>
                               <div>
-                                <span className="text-white/20">30d change</span>
+                                <span className="text-white/20">{t("idx_tooltip_30d")}</span>
                                 <p className={`font-medium ${(token.price_change_30d ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
                                   {(token.price_change_30d ?? 0) >= 0 ? "+" : ""}{(token.price_change_30d ?? 0).toFixed(2)}%
                                 </p>
                               </div>
                               <div>
-                                <span className="text-white/20">Weight</span>
+                                <span className="text-white/20">{t("idx_weight")}</span>
                                 <p className="text-white font-medium">{token.weight}%</p>
                               </div>
                               <div>
-                                <span className="text-white/20">Ejection risk</span>
-                                <p className={`font-medium ${ejRisk >= 50 ? "text-orange-400" : "text-white/60"}`}>{ejRisk.toFixed(1)}% of threshold</p>
+                                <span className="text-white/20">{t("idx_col_ejection_risk")}</span>
+                                <p className={`font-medium ${ejRisk >= 50 ? "text-orange-400" : "text-white/60"}`}>{ejRisk.toFixed(1)}% {t("idx_pct_of_threshold")}</p>
                               </div>
                             </div>
                           </div>
@@ -304,16 +304,16 @@ export default function IndexDetailPage() {
               <div className="card">
                 <div className="flex items-center gap-2 mb-4">
                   <ShieldAlert size={14} className="text-brand-orange" />
-                  <h2 className="font-semibold text-white">Risk Controls</h2>
-                  <span className="ml-auto text-xs text-white/30">Active protection rules</span>
+                  <h2 className="font-semibold text-white">{t("idx_risk_controls_title")}</h2>
+                  <span className="ml-auto text-xs text-white/30">{t("idx_risk_controls_subtitle")}</span>
                 </div>
 
                 <div className="grid sm:grid-cols-2 gap-3 mb-4">
                   {[
-                    { label: "Ejection threshold", value: "−40% in 7 days", note: "Token auto-removed if breached" },
-                    { label: "Post-ejection cooldown", value: `${risk.risk_rules.ejection_cooldown_days} days`, note: "Token cannot re-enter index" },
-                    { label: "Max single-token weight", value: `${risk.risk_rules.max_single_token_weight}%`, note: "Excess redistributed to others" },
-                    { label: "Stablecoin buffer (current)", value: `${(risk.stablecoin_buffer_pct ?? 0).toFixed(1)}%`, note: "USDC retained from allocations" },
+                    { label: t("idx_risk_ejection_threshold"), value: t("idx_risk_ejection_value"), note: t("idx_risk_ejection_note") },
+                    { label: t("idx_risk_cooldown_label"), value: `${risk.risk_rules.ejection_cooldown_days}d`, note: t("idx_risk_cooldown_note") },
+                    { label: t("idx_risk_max_weight_label"), value: `${risk.risk_rules.max_single_token_weight}%`, note: t("idx_risk_max_weight_note") },
+                    { label: t("idx_risk_buffer_label"), value: `${(risk.stablecoin_buffer_pct ?? 0).toFixed(1)}%`, note: t("idx_risk_buffer_note") },
                   ].map((r) => (
                     <div key={r.label} className="bg-white/3 rounded-lg p-3">
                       <p className="text-xs text-white/30 mb-0.5">{r.label}</p>
@@ -328,13 +328,13 @@ export default function IndexDetailPage() {
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-2 text-xs">
                       <div className="w-2 h-2 rounded-full bg-yellow-400 shrink-0" />
-                      <span className="text-white/50">Sentiment &lt; {risk.risk_rules.buffer_trigger_low_pct}/100</span>
-                      <span className="ml-auto text-white font-medium">{risk.risk_rules.buffer_low_allocation_pct}% → USDC</span>
+                      <span className="text-white/50">{t("idx_risk_sentiment_below")} {risk.risk_rules.buffer_trigger_low_pct}/100</span>
+                      <span className="ml-auto text-white font-medium">{risk.risk_rules.buffer_low_allocation_pct}% {t("idx_risk_to_usdc")}</span>
                     </div>
                     <div className="flex items-center gap-2 text-xs">
                       <div className="w-2 h-2 rounded-full bg-red-400 shrink-0" />
-                      <span className="text-white/50">Sentiment &lt; {risk.risk_rules.buffer_trigger_critical_pct}/100</span>
-                      <span className="ml-auto text-white font-medium">{risk.risk_rules.buffer_critical_allocation_pct}% → USDC</span>
+                      <span className="text-white/50">{t("idx_risk_sentiment_below")} {risk.risk_rules.buffer_trigger_critical_pct}/100</span>
+                      <span className="ml-auto text-white font-medium">{risk.risk_rules.buffer_critical_allocation_pct}% {t("idx_risk_to_usdc")}</span>
                     </div>
                   </div>
                 </div>
@@ -343,14 +343,14 @@ export default function IndexDetailPage() {
                   <div className="pt-3 border-t border-white/5">
                     <p className="text-xs text-white/30 mb-2 flex items-center gap-1">
                       <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
-                      Tokens in ejection cooldown ({risk.cooldown_tokens.length})
+                      {t("idx_cooldown_tokens_title")} ({risk.cooldown_tokens.length})
                     </p>
                     <div className="space-y-1.5">
                       {risk.cooldown_tokens.map((ct) => (
                         <div key={ct.symbol} className="bg-red-500/5 border border-red-500/10 rounded px-3 py-2 flex items-center gap-3 text-xs">
                           <span className="font-mono font-semibold text-red-400 w-20 shrink-0">{ct.symbol}</span>
                           <span className="text-white/30 flex-1 truncate">{ct.reason.slice(0, 60)}</span>
-                          <span className="text-white/50 shrink-0">re-entry in {ct.days_remaining}d</span>
+                          <span className="text-white/50 shrink-0">{t("idx_cooldown_reentry").replace("{n}", String(ct.days_remaining))}</span>
                         </div>
                       ))}
                     </div>
@@ -361,7 +361,7 @@ export default function IndexDetailPage() {
                   <div className="pt-3 border-t border-white/5">
                     <div className="flex items-center gap-2 mb-2">
                       <Activity size={12} className="text-white/30" />
-                      <p className="text-xs text-white/30">Last rebalance proposal · <span className="capitalize">{risk.last_proposal.trigger}</span> · <span className={`font-medium ${risk.last_proposal.status === "executed" ? "text-green-400" : risk.last_proposal.status === "pending" ? "text-yellow-400" : "text-white/40"}`}>{risk.last_proposal.status}</span></p>
+                      <p className="text-xs text-white/30">{t("idx_last_proposal_label")} · <span className="capitalize">{risk.last_proposal.trigger}</span> · <span className={`font-medium ${risk.last_proposal.status === "executed" ? "text-green-400" : risk.last_proposal.status === "pending" ? "text-yellow-400" : "text-white/40"}`}>{risk.last_proposal.status}</span></p>
                     </div>
                     <div className="space-y-1">
                       {(risk.last_proposal.changes || []).slice(0, 4).map((ch, i) => (
@@ -376,7 +376,7 @@ export default function IndexDetailPage() {
                         </div>
                       ))}
                       {(risk.last_proposal.changes || []).length > 4 && (
-                        <p className="text-xs text-white/20">+{risk.last_proposal.changes.length - 4} more changes</p>
+                        <p className="text-xs text-white/20">{t("idx_more_changes").replace("{n}", String(risk.last_proposal.changes.length - 4))}</p>
                       )}
                     </div>
                   </div>
