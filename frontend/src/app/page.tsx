@@ -74,7 +74,7 @@ export default function Home() {
             {t("home_sub")}
           </p>
 
-          <div className="flex flex-col sm:flex-row gap-3 justify-center mb-16">
+          <div className="flex flex-col sm:flex-row gap-3 justify-center mb-8">
             <Link href="/indexes" className="flex items-center justify-center gap-2 text-base px-8 py-4 bg-brand-orange hover:bg-brand-orange-dark text-black font-semibold rounded-full transition-all">
               {t("home_explore")} <ArrowRight size={18} />
             </Link>
@@ -82,6 +82,39 @@ export default function Home() {
               {t("home_how")}
             </Link>
           </div>
+
+          {/* Network selector — pill compacta, some quando conectado */}
+          {!isConnected && (
+            <div className="flex flex-col items-center mb-8">
+              <p className="text-xs text-white/30 uppercase tracking-widest mb-2">{t("home_select_network")}</p>
+              <div className="flex items-center gap-0.5 p-1 rounded-full bg-white/5 border border-white/10">
+                <button
+                  onClick={() => { if (isTestnet) toggleMode(); }}
+                  className={`flex items-center gap-1.5 px-5 py-2 rounded-full text-xs font-semibold transition-all ${
+                    !isTestnet
+                      ? "bg-green-500/15 text-green-400 border border-green-500/25"
+                      : "text-white/30 hover:text-white/55"
+                  }`}
+                >
+                  <Globe size={12} />
+                  {t("nav_mainnet")}
+                  {!isTestnet && <span className="text-[10px] opacity-60 ml-1">{t("home_mainnet_desc")}</span>}
+                </button>
+                <button
+                  onClick={() => { if (!isTestnet) toggleMode(); }}
+                  className={`flex items-center gap-1.5 px-5 py-2 rounded-full text-xs font-semibold transition-all ${
+                    isTestnet
+                      ? "bg-orange-500/15 text-orange-400 border border-orange-500/25"
+                      : "text-white/30 hover:text-white/55"
+                  }`}
+                >
+                  <FlaskConical size={12} />
+                  {t("nav_testnet")}
+                  {isTestnet && <span className="text-[10px] opacity-60 ml-1">{t("home_testnet_desc")}</span>}
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto">
             {[
@@ -98,42 +131,6 @@ export default function Home() {
           </div>
         </div>
       </section>
-
-      {/* Network Selector — visível apenas quando desconectado */}
-      {!isConnected && (
-        <section className="max-w-2xl mx-auto px-4 pb-16">
-          <div className="border border-white/10 rounded-2xl p-6 bg-white/3">
-            <p className="text-center text-xs text-white/40 uppercase tracking-widest mb-1">{t("home_select_network")}</p>
-            <p className="text-center text-xs text-white/25 mb-5">{t("home_select_network_sub")}</p>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => { if (isTestnet) toggleMode(); }}
-                className={`flex flex-col items-center gap-2 py-4 px-3 rounded-xl border transition-all ${
-                  !isTestnet
-                    ? "border-green-500/60 bg-green-500/10 text-green-400"
-                    : "border-white/10 bg-transparent text-white/35 hover:border-white/20 hover:text-white/55"
-                }`}
-              >
-                <Globe size={20} />
-                <span className="font-semibold text-sm">{t("nav_mainnet")}</span>
-                <span className="text-xs opacity-70 text-center">{t("home_mainnet_desc")}</span>
-              </button>
-              <button
-                onClick={() => { if (!isTestnet) toggleMode(); }}
-                className={`flex flex-col items-center gap-2 py-4 px-3 rounded-xl border transition-all ${
-                  isTestnet
-                    ? "border-orange-500/60 bg-orange-500/10 text-orange-400"
-                    : "border-white/10 bg-transparent text-white/35 hover:border-white/20 hover:text-white/55"
-                }`}
-              >
-                <FlaskConical size={20} />
-                <span className="font-semibold text-sm">{t("nav_testnet")}</span>
-                <span className="text-xs opacity-70 text-center">{t("home_testnet_desc")}</span>
-              </button>
-            </div>
-          </div>
-        </section>
-      )}
 
       {/* Index Cards */}
       <section className="max-w-7xl mx-auto px-4 pb-24">
