@@ -1,8 +1,8 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { useChainId, useAccount } from "wagmi";
-import { baseSepolia } from "wagmi/chains";
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
+import { useChainId, useAccount, useSwitchChain } from "wagmi";
+import { base, baseSepolia } from "wagmi/chains";
 
 const STORAGE_KEY = "sosomon_network_mode";
 
@@ -22,20 +22,35 @@ export function NetworkModeProvider({ children }: { children: React.ReactNode })
   const [isTestnet, setIsTestnet] = useState(false);
   const chainId = useChainId();
   const { isConnected } = useAccount();
+  const { switchChain } = useSwitchChain();
+
+  // Ref para evitar stale closure no efeito de conexão
+  const isTestnetRef = useRef(false);
+  const wasConnected = useRef(false);
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === "testnet") setIsTestnet(true);
+    if (stored === "testnet") {
+      setIsTestnet(true);
+      isTestnetRef.current = true;
+    }
   }, []);
 
-  // Ao conectar carteira ou trocar de rede, sincroniza o modo automaticamente
+  // Mantém ref sincronizada com o estado
   useEffect(() => {
-    if (isConnected) {
-      const onTestnet = chainId === baseSepolia.id;
-      setIsTestnet(onTestnet);
-      localStorage.setItem(STORAGE_KEY, onTestnet ? "testnet" : "mainnet");
+    isTestnetRef.current = isTestnet;
+  }, [isTestnet]);
+
+  // Quando conecta pela primeira vez, força a chain correta conforme o modo escolhido
+  useEffect(() => {
+    if (isConnected && !wasConnected.current) {
+      const targetChain = isTestnetRef.current ? baseSepolia.id : base.id;
+      if (chainId !== targetChain) {
+        switchChain({ chainId: targetChain });
+      }
     }
-  }, [chainId, isConnected]);
+    wasConnected.current = isConnected;
+  }, [isConnected, chainId, switchChain]);
 
   useEffect(() => {
     // CSS data-attribute usado pelo globals.css para ajustar padding das páginas
