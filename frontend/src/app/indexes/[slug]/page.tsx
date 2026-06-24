@@ -169,7 +169,7 @@ export default function IndexDetailPage() {
         </div>
       </div>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
+      <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Stats grid */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
           {[
@@ -421,7 +421,7 @@ export default function IndexDetailPage() {
             </div>
           </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 }
