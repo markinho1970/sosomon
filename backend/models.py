@@ -31,6 +31,7 @@ class AlphaIndex(Base):
     last_rebalanced_at = Column(DateTime)
     rebalance_summary = Column(Text, default="")
     is_active = Column(Boolean, default=True)
+    min_deposit_usd = Column(Float, default=50.0)
 
     constituents = relationship("IndexConstituent", back_populates="index", cascade="all, delete-orphan")
     activities = relationship("AgentActivityLog", back_populates="index")

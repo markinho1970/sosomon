@@ -48,6 +48,7 @@ class IndexOut(BaseModel):
     management_fee_pct: float
     last_rebalanced_at: Optional[datetime]
     rebalance_summary: str
+    min_deposit_usd: float = 50.0
     constituents: List[ConstituentOut] = []
 
     class Config:

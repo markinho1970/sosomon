@@ -389,7 +389,9 @@ export default function IndexDetailPage() {
           <div className="space-y-4">
             <div id="invest" className="card border-brand-blue/20 bg-brand-blue/5">
               <h3 className="font-semibold text-white mb-1">{t("idx_invest")}</h3>
-              <p className="text-xs text-white/40 mb-4">{t("idx_min_invest")} · {t("idx_receive")}</p>
+              <p className="text-xs text-white/40 mb-4">
+                {t("idx_min_invest_prefix")} <span className="text-white font-semibold">${idx.min_deposit_usd ?? 50}</span> · {t("idx_receive")}
+              </p>
               <div className="space-y-2 text-sm text-white/50 mb-4">
                 <div className="flex justify-between">
                   <span>{t("idx_mgmt_fee")}</span>

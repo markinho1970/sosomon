@@ -81,6 +81,7 @@ export interface AlphaIndex {
   rebalance_summary: string; // AI-generated, what changed
   subscriber_count: number;
   management_fee_pct: number; // e.g. 0.75
+  min_deposit_usd: number; // minimum deposit — ceil($5 / min_weight)
 }
 
 // ─── Agent Activity ───────────────────────────────────────────────────────────

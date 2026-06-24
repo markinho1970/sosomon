@@ -237,7 +237,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     idx_send_instr: "Send USDC on Base to the address below. Your position is registered automatically after deposit is detected.",
 
-    idx_invest: "Invest in this Index", idx_min_invest: "Minimum $5",
+    idx_invest: "Invest in this Index", idx_min_invest: "Minimum $5", idx_min_invest_prefix: "Minimum",
 
     idx_receive: "Receive index tokens · Withdraw anytime",
 
@@ -887,7 +887,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     idx_send_instr: "Envie USDC na rede Base para o endereço abaixo. Sua posição é registrada automaticamente após o depósito ser detectado.",
 
-    idx_invest: "Investir neste Índice", idx_min_invest: "Mínimo $5",
+    idx_invest: "Investir neste Índice", idx_min_invest: "Mínimo $5", idx_min_invest_prefix: "Mínimo",
 
     idx_receive: "Receba tokens do índice · Saque a qualquer momento",
 
@@ -1485,7 +1485,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     idx_nav_token: "每代币净值", idx_constituents: "成分股", idx_weight: "权重", idx_price: "价格",
 
-    idx_invest: "投资此指数", idx_min_invest: "最低 $5", idx_not_found: "未找到指数。", idx_back: "← 返回指数",
+    idx_invest: "投资此指数", idx_min_invest: "最低 $5", idx_min_invest_prefix: "最低", idx_not_found: "未找到指数。", idx_back: "← 返回指数",
 
     wd_btn: "提取", wd_deposited: "已存入", wd_current: "当前价值", wd_preview_btn: "预览提取",
 
@@ -1870,7 +1870,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     idx_nav_token: "トークンあたりNAV", idx_constituents: "構成銘柄", idx_weight: "ウェイト", idx_price: "価格",
 
-    idx_invest: "このインデックスに投資", idx_min_invest: "最低 $5", idx_not_found: "インデックスが見つかりません。", idx_back: "← インデックスに戻る",
+    idx_invest: "このインデックスに投資", idx_min_invest: "最低 $5", idx_min_invest_prefix: "最低", idx_not_found: "インデックスが見つかりません。", idx_back: "← インデックスに戻る",
 
     wd_btn: "引き出し", wd_deposited: "預入済み", wd_current: "現在価値", wd_preview_btn: "引き出しプレビュー",
 
@@ -2251,7 +2251,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     transp_filter_all: "सभी एजेंट", transp_no_decisions: "अभी तक कोई निर्णय दर्ज नहीं।", transp_loading: "लोड हो रहा है…",
 
-    idx_invest: "इस इंडेक्स में निवेश करें", idx_not_found: "इंडेक्स नहीं मिला।", idx_back: "← इंडेक्स पर वापस",
+    idx_invest: "इस इंडेक्स में निवेश करें", idx_min_invest_prefix: "न्यूनतम", idx_not_found: "इंडेक्स नहीं मिला।", idx_back: "← इंडेक्स पर वापस",
 
     wd_btn: "निकासी", wd_preview_btn: "निकासी पूर्वावलोकन", wd_execute: "निकासी करें →",
 
@@ -2630,7 +2630,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     transp_filter_all: "Semua agen", transp_no_decisions: "Belum ada keputusan tercatat.", transp_loading: "Memuat…",
 
-    idx_invest: "Investasi di Indeks Ini", idx_not_found: "Indeks tidak ditemukan.", idx_back: "← Kembali ke Indeks",
+    idx_invest: "Investasi di Indeks Ini", idx_min_invest_prefix: "Minimum", idx_not_found: "Indeks tidak ditemukan.", idx_back: "← Kembali ke Indeks",
 
     wd_btn: "Tarik", wd_preview_btn: "Pratinjau penarikan", wd_execute: "Jalankan penarikan →",
 
@@ -3009,7 +3009,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     transp_filter_all: "모든 에이전트", transp_no_decisions: "아직 결정이 기록되지 않았습니다.", transp_loading: "로딩 중…",
 
-    idx_invest: "이 인덱스에 투자", idx_not_found: "인덱스를 찾을 수 없습니다.", idx_back: "← 인덱스로 돌아가기",
+    idx_invest: "이 인덱스에 투자", idx_min_invest_prefix: "최소", idx_not_found: "인덱스를 찾을 수 없습니다.", idx_back: "← 인덱스로 돌아가기",
 
     wd_btn: "출금", wd_preview_btn: "출금 미리보기", wd_execute: "출금 실행 →",
 
