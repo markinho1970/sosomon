@@ -16,6 +16,7 @@ const config: Config = {
           black: "#000000",
           dark: "#0A0A0A",
           card: "#111111",
+          gray: "#161616",
           border: "rgba(249,115,22,0.2)",
           white: "#FFFFFF",
           muted: "#9CA3AF",
