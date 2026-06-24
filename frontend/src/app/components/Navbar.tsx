@@ -4,22 +4,18 @@ import Link from "next/link";
 import Image from "next/image";
 import { useState, useRef, useEffect } from "react";
 import { usePathname } from "next/navigation";
-import { Menu, X, FlaskConical, Globe, ChevronDown, Lock } from "lucide-react";
+import { Menu, X, FlaskConical, ChevronDown } from "lucide-react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useNetworkMode } from "@/lib/NetworkModeContext";
 import { useLang } from "@/lib/LanguageContext";
 import { LANGUAGES, type Lang } from "@/lib/i18n/translations";
-import { useAccount, useSwitchChain } from "wagmi";
-import { base, baseSepolia } from "wagmi/chains";
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
   const langRef = useRef<HTMLDivElement>(null);
-  const { isTestnet, toggleMode } = useNetworkMode();
+  const { isTestnet } = useNetworkMode();
   const { lang, setLang, t } = useLang();
-  const { switchChain } = useSwitchChain();
-  const { isConnected } = useAccount();
   const pathname = usePathname();
 
   const isFaucetPage = pathname === "/faucet-sepolia";
@@ -33,12 +29,6 @@ export default function Navbar() {
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
-
-  function handleToggle() {
-    if (isFaucetPage || isConnected) return;
-    toggleMode();
-    switchChain({ chainId: isTestnet ? base.id : baseSepolia.id });
-  }
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-brand-border bg-black/80 backdrop-blur-md">
@@ -111,25 +101,6 @@ export default function Navbar() {
             )}
           </div>
 
-          {/* Rede — travado enquanto conectado ou na página do faucet */}
-          <button
-            onClick={handleToggle}
-            disabled={isFaucetPage || isConnected}
-            title={isConnected ? t("nav_network_locked") : isFaucetPage ? "Network locked: Faucet requires Base Sepolia" : undefined}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-semibold transition-all ${
-              isConnected || isFaucetPage
-                ? isTestnet
-                  ? "border-orange-500/30 bg-orange-500/8 text-orange-400/60 cursor-not-allowed"
-                  : "border-green-500/30 bg-green-500/8 text-green-400/60 cursor-not-allowed"
-                : isTestnet
-                  ? "border-orange-500/50 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20"
-                  : "border-green-500/50 bg-green-500/10 text-green-400 hover:bg-green-500/20"
-            }`}
-          >
-            {isConnected ? <Lock size={12} /> : isFaucetPage ? <Lock size={12} /> : isTestnet ? <FlaskConical size={13} /> : <Globe size={13} />}
-            {isTestnet ? t("nav_testnet") : t("nav_mainnet")}
-          </button>
-
           <ConnectButton accountStatus="avatar" chainStatus="none" showBalance={false} />
         </div>
 
@@ -160,28 +131,6 @@ export default function Navbar() {
               </button>
             ))}
           </div>
-          <button
-            onClick={() => { if (!isFaucetPage && !isConnected) { handleToggle(); setOpen(false); } }}
-            disabled={isFaucetPage || isConnected}
-            className={`text-sm text-center rounded-lg px-4 py-2 border font-semibold transition-all ${
-              isFaucetPage || isConnected
-                ? isTestnet
-                  ? "border-orange-500/20 text-orange-400/40 cursor-not-allowed"
-                  : "border-green-500/20 text-green-400/40 cursor-not-allowed"
-                : isTestnet
-                  ? "border-orange-500/40 text-orange-400"
-                  : "border-green-500/40 text-green-400"
-            }`}
-          >
-            {isConnected
-              ? `🔒 ${isTestnet ? t("nav_testnet") : t("nav_mainnet")} — ${t("nav_network_locked_short")}`
-              : isFaucetPage
-                ? `🔒 ${t("nav_testnet")} — locked`
-                : isTestnet
-                  ? `${t("nav_testnet")} — ${t("nav_switch_to_mainnet")}`
-                  : `${t("nav_mainnet")} — ${t("nav_switch_to_testnet")}`
-            }
-          </button>
           <div className="flex justify-center">
             <ConnectButton accountStatus="full" chainStatus="none" showBalance={false} />
           </div>

@@ -1,6 +1,8 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { useChainId, useAccount } from "wagmi";
+import { baseSepolia } from "wagmi/chains";
 
 const STORAGE_KEY = "sosomon_network_mode";
 
@@ -18,11 +20,22 @@ const NetworkModeContext = createContext<NetworkModeContextType>({
 
 export function NetworkModeProvider({ children }: { children: React.ReactNode }) {
   const [isTestnet, setIsTestnet] = useState(false);
+  const chainId = useChainId();
+  const { isConnected } = useAccount();
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored === "testnet") setIsTestnet(true);
   }, []);
+
+  // Ao conectar carteira ou trocar de rede, sincroniza o modo automaticamente
+  useEffect(() => {
+    if (isConnected) {
+      const onTestnet = chainId === baseSepolia.id;
+      setIsTestnet(onTestnet);
+      localStorage.setItem(STORAGE_KEY, onTestnet ? "testnet" : "mainnet");
+    }
+  }, [chainId, isConnected]);
 
   useEffect(() => {
     // CSS data-attribute usado pelo globals.css para ajustar padding das páginas
