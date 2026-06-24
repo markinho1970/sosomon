@@ -9,7 +9,7 @@ import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useNetworkMode } from "@/lib/NetworkModeContext";
 import { useLang } from "@/lib/LanguageContext";
 import { LANGUAGES, type Lang } from "@/lib/i18n/translations";
-import { useSwitchChain } from "wagmi";
+import { useAccount, useSwitchChain } from "wagmi";
 import { base, baseSepolia } from "wagmi/chains";
 
 export default function Navbar() {
@@ -19,6 +19,7 @@ export default function Navbar() {
   const { isTestnet, toggleMode } = useNetworkMode();
   const { lang, setLang, t } = useLang();
   const { switchChain } = useSwitchChain();
+  const { isConnected } = useAccount();
   const pathname = usePathname();
 
   const isFaucetPage = pathname === "/faucet-sepolia";
@@ -34,7 +35,7 @@ export default function Navbar() {
   }, []);
 
   function handleToggle() {
-    if (isFaucetPage) return;
+    if (isFaucetPage || isConnected) return;
     toggleMode();
     switchChain({ chainId: isTestnet ? base.id : baseSepolia.id });
   }
@@ -110,20 +111,22 @@ export default function Navbar() {
             )}
           </div>
 
-          {/* Toggle Mainnet/Testnet — locked on faucet page */}
+          {/* Rede — travado enquanto conectado ou na página do faucet */}
           <button
             onClick={handleToggle}
-            disabled={isFaucetPage}
-            title={isFaucetPage ? "Network locked: Faucet requires Base Sepolia" : undefined}
+            disabled={isFaucetPage || isConnected}
+            title={isConnected ? t("nav_network_locked") : isFaucetPage ? "Network locked: Faucet requires Base Sepolia" : undefined}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-semibold transition-all ${
-              isFaucetPage
-                ? "border-orange-500/30 bg-orange-500/8 text-orange-400/50 cursor-not-allowed"
+              isConnected || isFaucetPage
+                ? isTestnet
+                  ? "border-orange-500/30 bg-orange-500/8 text-orange-400/60 cursor-not-allowed"
+                  : "border-green-500/30 bg-green-500/8 text-green-400/60 cursor-not-allowed"
                 : isTestnet
                   ? "border-orange-500/50 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20"
                   : "border-green-500/50 bg-green-500/10 text-green-400 hover:bg-green-500/20"
             }`}
           >
-            {isFaucetPage ? <Lock size={12} /> : isTestnet ? <FlaskConical size={13} /> : <Globe size={13} />}
+            {isConnected ? <Lock size={12} /> : isFaucetPage ? <Lock size={12} /> : isTestnet ? <FlaskConical size={13} /> : <Globe size={13} />}
             {isTestnet ? t("nav_testnet") : t("nav_mainnet")}
           </button>
 
@@ -158,21 +161,25 @@ export default function Navbar() {
             ))}
           </div>
           <button
-            onClick={() => { if (!isFaucetPage) { handleToggle(); setOpen(false); } }}
-            disabled={isFaucetPage}
+            onClick={() => { if (!isFaucetPage && !isConnected) { handleToggle(); setOpen(false); } }}
+            disabled={isFaucetPage || isConnected}
             className={`text-sm text-center rounded-lg px-4 py-2 border font-semibold transition-all ${
-              isFaucetPage
-                ? "border-orange-500/20 text-orange-400/40 cursor-not-allowed"
+              isFaucetPage || isConnected
+                ? isTestnet
+                  ? "border-orange-500/20 text-orange-400/40 cursor-not-allowed"
+                  : "border-green-500/20 text-green-400/40 cursor-not-allowed"
                 : isTestnet
                   ? "border-orange-500/40 text-orange-400"
                   : "border-green-500/40 text-green-400"
             }`}
           >
-            {isFaucetPage
-              ? `🔒 ${t("nav_testnet")} — locked`
-              : isTestnet
-                ? `${t("nav_testnet")} — trocar para Mainnet`
-                : `${t("nav_mainnet")} — trocar para Testnet`
+            {isConnected
+              ? `🔒 ${isTestnet ? t("nav_testnet") : t("nav_mainnet")} — ${t("nav_network_locked_short")}`
+              : isFaucetPage
+                ? `🔒 ${t("nav_testnet")} — locked`
+                : isTestnet
+                  ? `${t("nav_testnet")} — ${t("nav_switch_to_mainnet")}`
+                  : `${t("nav_mainnet")} — ${t("nav_switch_to_testnet")}`
             }
           </button>
           <div className="flex justify-center">

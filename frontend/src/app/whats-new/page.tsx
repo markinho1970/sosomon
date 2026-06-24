@@ -162,10 +162,10 @@ export default function WhatsNewPage() {
             <div className="h-px flex-1 bg-gradient-to-l from-amber-400/40 to-transparent" />
           </div>
 
-          {/* Destaque especial: Mainnet/Testnet Toggle */}
+          {/* Destaque especial: Network Lock on Connect */}
           <div className="mb-4 rounded-2xl border border-orange-500/40 bg-gradient-to-br from-orange-500/10 via-orange-500/5 to-transparent p-5">
             <div className="flex items-center gap-2 mb-2">
-              <ToggleLeft size={20} className="text-orange-400" />
+              <Lock size={20} className="text-orange-400" />
               <span className="text-orange-300 font-bold text-base">{t("wn2_toggle_title")}</span>
               <span className="ml-auto text-xs font-bold px-2 py-0.5 rounded bg-orange-500/20 text-orange-400 ring-1 ring-orange-500/40">TESTNET</span>
             </div>

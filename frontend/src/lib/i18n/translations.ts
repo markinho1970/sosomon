@@ -29,6 +29,8 @@ export const T: Record<Lang, Record<string, string>> = {
     nav_indexes: "Indexes", nav_transparency: "Transparency", nav_whats_new: "What's New",
 
     nav_dashboard: "Dashboard", nav_mainnet: "Mainnet", nav_testnet: "Testnet",
+    nav_network_locked: "Disconnect wallet to switch networks",
+    nav_network_locked_short: "locked", nav_switch_to_mainnet: "switch to Mainnet", nav_switch_to_testnet: "switch to Testnet",
 
     testnet_banner: "TESTNET MODE — Base Sepolia — Test USDC, no real value",
     mainnet_banner: "MAINNET — Base Mainnet — Real USDC",
@@ -340,9 +342,9 @@ export const T: Record<Lang, Record<string, string>> = {
 
     wn_toggle_free: "Full flow testable at no cost",
 
-    wn_toggle_eval: "Evaluators can test freely",
+    wn_toggle_eval: "Select network before connecting",
 
-    wn_toggle_safe: "No risk of losing real funds",
+    wn_toggle_safe: "Disconnect wallet to change networks",
 
     // Dashboard extra
 
@@ -476,9 +478,9 @@ export const T: Record<Lang, Record<string, string>> = {
 
     wn2_session_desc: "Following financial platform security standards (Binance, Nubank), the session automatically disconnects after 30 minutes of inactivity. A countdown warning appears 5 minutes before expiry, allowing the investor to extend the session.",
 
-    wn2_toggle_title: "Mainnet / Testnet Toggle",
+    wn2_toggle_title: "Network Lock on Connect",
 
-    wn2_toggle_desc: "The entire platform can switch between Base Mainnet (real USDC) and Base Sepolia Testnet (test USDC) via a single environment variable. In testnet mode, a prominent orange banner is shown across all pages and MetaMask is guided to switch to Base Sepolia automatically.",
+    wn2_toggle_desc: "Select your network (Mainnet or Testnet) before connecting your wallet. Once connected, the network is locked — you cannot switch between real and test funds accidentally. Disconnect your wallet to change networks.",
 
     // Coming Soon
 
@@ -680,6 +682,8 @@ export const T: Record<Lang, Record<string, string>> = {
     nav_indexes: "Índices", nav_transparency: "Transparência", nav_whats_new: "Novidades",
 
     nav_dashboard: "Painel", nav_mainnet: "Mainnet", nav_testnet: "Testnet",
+    nav_network_locked: "Desconecte a carteira para trocar de rede",
+    nav_network_locked_short: "travado", nav_switch_to_mainnet: "trocar para Mainnet", nav_switch_to_testnet: "trocar para Testnet",
 
     testnet_banner: "MODO TESTNET — Base Sepolia — USDC de teste, sem valor real",
     mainnet_banner: "MAINNET — Base Mainnet — USDC real",
@@ -973,9 +977,9 @@ export const T: Record<Lang, Record<string, string>> = {
 
     wn_toggle_free: "Fluxo completo testável sem custo",
 
-    wn_toggle_eval: "Avaliadores podem testar livremente",
+    wn_toggle_eval: "Escolha a rede antes de conectar",
 
-    wn_toggle_safe: "Sem risco de perda de fundos reais",
+    wn_toggle_safe: "Desconecte a carteira para trocar de rede",
 
     dash_connect_wallet: "Conecte sua Carteira",
 
@@ -1105,9 +1109,9 @@ export const T: Record<Lang, Record<string, string>> = {
 
     wn2_session_desc: "Seguindo padrões de segurança de plataformas financeiras (Binance, Nubank), a sessão desconecta automaticamente após 30 minutos de inatividade. Um aviso de contagem regressiva aparece 5 minutos antes.",
 
-    wn2_toggle_title: "Toggle Mainnet / Testnet",
+    wn2_toggle_title: "Lock de Rede ao Conectar",
 
-    wn2_toggle_desc: "A plataforma inteira pode alternar entre Base Mainnet (USDC real) e Base Sepolia Testnet (USDC de teste) via uma única variável de ambiente. No modo testnet, um banner laranja aparece em todas as páginas e o MetaMask é guiado automaticamente para a rede correta.",
+    wn2_toggle_desc: "Selecione sua rede (Mainnet ou Testnet) antes de conectar a carteira. Uma vez conectado, a rede fica travada — não é possível alternar entre fundos reais e de teste por acidente. Desconecte a carteira para trocar de rede.",
 
     // Coming Soon
 
@@ -1300,6 +1304,8 @@ export const T: Record<Lang, Record<string, string>> = {
     nav_indexes: "指数", nav_transparency: "透明度", nav_whats_new: "新功能",
 
     nav_dashboard: "仪表板", nav_mainnet: "主网", nav_testnet: "测试网",
+    nav_network_locked: "断开钱包以切换网络",
+    nav_network_locked_short: "已锁定", nav_switch_to_mainnet: "切换到主网", nav_switch_to_testnet: "切换到测试网",
 
     testnet_banner: "测试网模式 — Base Sepolia — 测试USDC，无实际价值",
     mainnet_banner: "主网模式 — Base Mainnet — 真实USDC",
@@ -1359,7 +1365,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     wn_link_transparency: "查看透明度日志", wn_link_indexes: "浏览指数", wn_link_dashboard: "我的仪表板",
 
-    wn_toggle_free: "完整流程可免费测试", wn_toggle_eval: "评估者可自由测试", wn_toggle_safe: "无丢失真实资金的风险",
+    wn_toggle_free: "完整流程可免费测试", wn_toggle_eval: "连接前选择网络", wn_toggle_safe: "断开钱包以切换网络",
 
     wn1_agents_title: "3个AI代理上线",
 
@@ -1441,9 +1447,9 @@ export const T: Record<Lang, Record<string, string>> = {
 
     wn2_session_desc: "遵循金融平台安全标准（Binance、Nubank），会话在30分钟不活动后自动断开。",
 
-    wn2_toggle_title: "主网/测试网切换",
+    wn2_toggle_title: "连接时锁定网络",
 
-    wn2_toggle_desc: "整个平台可在Base主网（真实USDC）和Base Sepolia测试网（测试USDC）之间切换。测试网模式下，所有页面显示醒目橙色横幅。",
+    wn2_toggle_desc: "连接钱包前选择网络（主网或测试网）。连接后网络锁定，防止真实资金和测试资金间的意外切换。断开钱包以更改网络。",
 
     wn_cs_backup: "每日数据库备份自动化",
 
@@ -1680,6 +1686,8 @@ export const T: Record<Lang, Record<string, string>> = {
     nav_indexes: "インデックス", nav_transparency: "透明性", nav_whats_new: "新機能",
 
     nav_dashboard: "ダッシュボード", nav_mainnet: "メインネット", nav_testnet: "テストネット",
+    nav_network_locked: "ウォレットを切断してネットワークを切り替えてください",
+    nav_network_locked_short: "ロック中", nav_switch_to_mainnet: "メインネットに切替", nav_switch_to_testnet: "テストネットに切替",
 
     testnet_banner: "テストネットモード — Base Sepolia — テストUSDC、実際の価値なし",
     mainnet_banner: "メインネットモード — Base Mainnet — 実際のUSDC",
@@ -1739,7 +1747,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     wn_link_transparency: "透明性ログを見る", wn_link_indexes: "インデックスを探す", wn_link_dashboard: "マイダッシュボード",
 
-    wn_toggle_free: "完全なフローをコストなしでテスト可能", wn_toggle_eval: "評価者は自由にテスト可能", wn_toggle_safe: "実際の資金を失うリスクなし",
+    wn_toggle_free: "完全なフローをコストなしでテスト可能", wn_toggle_eval: "接続前にネットワークを選択", wn_toggle_safe: "ネットワーク変更はウォレット切断後",
 
     wn1_agents_title: "3つのAIエージェント起動",
 
@@ -1821,9 +1829,9 @@ export const T: Record<Lang, Record<string, string>> = {
 
     wn2_session_desc: "金融プラットフォームのセキュリティ基準（Binance、Nubank）に従い、30分の不活動後にセッションが自動的に切断。",
 
-    wn2_toggle_title: "メインネット / テストネット切替",
+    wn2_toggle_title: "接続時のネットワークロック",
 
-    wn2_toggle_desc: "プラットフォーム全体がBase メインネット（実際のUSDC）とBase Sepoliaテストネット（テストUSDC）を切り替え可能。テストネットモードでは全ページに橙色バナーを表示。",
+    wn2_toggle_desc: "ウォレット接続前にネットワーク（メインネット/テストネット）を選択してください。接続後はネットワークがロックされ、誤切り替えを防止します。ネットワーク変更にはウォレットを切断してください。",
 
     wn_cs_backup: "毎日のDBバックアップ自動化",
 
@@ -2060,6 +2068,8 @@ export const T: Record<Lang, Record<string, string>> = {
     nav_indexes: "सूचकांक", nav_transparency: "पारदर्शिता", nav_whats_new: "नया क्या है",
 
     nav_dashboard: "डैशबोर्ड", nav_mainnet: "मेननेट", nav_testnet: "टेस्टनेट",
+    nav_network_locked: "नेटवर्क बदलने के लिए वॉलेट डिस्कनेक्ट करें",
+    nav_network_locked_short: "लॉक्ड", nav_switch_to_mainnet: "Mainnet पर जाएं", nav_switch_to_testnet: "Testnet पर जाएं",
 
     testnet_banner: "टेस्टनेट मोड — Base Sepolia — टेस्ट USDC, कोई वास्तविक मूल्य नहीं",
     mainnet_banner: "मेननेट मोड — Base Mainnet — वास्तविक USDC",
@@ -2119,7 +2129,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     wn_link_transparency: "पारदर्शिता लॉग देखें", wn_link_indexes: "इंडेक्स देखें", wn_link_dashboard: "मेरा डैशबोर्ड",
 
-    wn_toggle_free: "पूर्ण प्रवाह बिना लागत के परीक्षण योग्य", wn_toggle_eval: "मूल्यांकनकर्ता स्वतंत्र रूप से परीक्षण कर सकते हैं", wn_toggle_safe: "वास्तविक धन खोने का कोई जोखिम नहीं",
+    wn_toggle_free: "पूर्ण प्रवाह बिना लागत के परीक्षण योग्य", wn_toggle_eval: "कनेक्ट से पहले नेटवर्क चुनें", wn_toggle_safe: "नेटवर्क बदलने के लिए डिस्कनेक्ट करें",
 
     wn1_agents_title: "3 AI एजेंट लॉन्च",
 
@@ -2201,9 +2211,9 @@ export const T: Record<Lang, Record<string, string>> = {
 
     wn2_session_desc: "30 मिनट की निष्क्रियता के बाद सत्र स्वचालित रूप से डिस्कनेक्ट होता है। समाप्ति से 5 मिनट पहले चेतावनी दिखती है।",
 
-    wn2_toggle_title: "Mainnet / Testnet Toggle",
+    wn2_toggle_title: "Network Lock on Connect",
 
-    wn2_toggle_desc: "पूरा प्लेटफॉर्म Base Mainnet (वास्तविक USDC) और Base Sepolia Testnet (टेस्ट USDC) के बीच स्विच कर सकता है।",
+    wn2_toggle_desc: "वॉलेट कनेक्ट करने से पहले नेटवर्क चुनें। कनेक्ट होने के बाद नेटवर्क लॉक हो जाता है। नेटवर्क बदलने के लिए वॉलेट डिस्कनेक्ट करें।",
 
     wn_cs_backup: "दैनिक DB बैकअप ऑटोमेशन",
 
@@ -2434,6 +2444,8 @@ export const T: Record<Lang, Record<string, string>> = {
     nav_indexes: "Indeks", nav_transparency: "Transparansi", nav_whats_new: "Apa yang Baru",
 
     nav_dashboard: "Dasbor", nav_mainnet: "Mainnet", nav_testnet: "Testnet",
+    nav_network_locked: "Putuskan dompet untuk mengganti jaringan",
+    nav_network_locked_short: "terkunci", nav_switch_to_mainnet: "ganti ke Mainnet", nav_switch_to_testnet: "ganti ke Testnet",
 
     testnet_banner: "MODE TESTNET — Base Sepolia — USDC uji coba, tanpa nilai nyata",
     mainnet_banner: "MODE MAINNET — Base Mainnet — USDC nyata",
@@ -2493,7 +2505,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     wn_link_transparency: "Lihat Log Transparansi", wn_link_indexes: "Jelajahi Indeks", wn_link_dashboard: "Dasbor Saya",
 
-    wn_toggle_free: "Alur lengkap dapat diuji tanpa biaya", wn_toggle_eval: "Evaluator dapat menguji secara bebas", wn_toggle_safe: "Tidak ada risiko kehilangan dana nyata",
+    wn_toggle_free: "Alur lengkap dapat diuji tanpa biaya", wn_toggle_eval: "Pilih jaringan sebelum menghubungkan", wn_toggle_safe: "Putuskan dompet untuk mengganti jaringan",
 
     wn1_agents_title: "3 Agen AI diluncurkan",
 
@@ -2575,9 +2587,9 @@ export const T: Record<Lang, Record<string, string>> = {
 
     wn2_session_desc: "Mengikuti standar keamanan platform keuangan (Binance, Nubank), sesi secara otomatis terputus setelah 30 menit tidak aktif.",
 
-    wn2_toggle_title: "Toggle Mainnet / Testnet",
+    wn2_toggle_title: "Lock de Rede ao Conectar",
 
-    wn2_toggle_desc: "Seluruh platform dapat beralih antara Base Mainnet (USDC nyata) dan Base Sepolia Testnet (USDC uji). Mode testnet menampilkan banner oranye di semua halaman.",
+    wn2_toggle_desc: "Pilih jaringan (Mainnet atau Testnet) sebelum menghubungkan dompet. Setelah terhubung, jaringan dikunci untuk mencegah perpindahan tidak sengaja. Putuskan dompet untuk mengganti jaringan.",
 
     wn_cs_backup: "Otomatisasi backup DB harian",
 
@@ -2808,6 +2820,8 @@ export const T: Record<Lang, Record<string, string>> = {
     nav_indexes: "인덱스", nav_transparency: "투명성", nav_whats_new: "새로운 기능",
 
     nav_dashboard: "대시보드", nav_mainnet: "메인넷", nav_testnet: "테스트넷",
+    nav_network_locked: "네트워크 전환을 위해 지갑 연결을 해제하세요",
+    nav_network_locked_short: "잠김", nav_switch_to_mainnet: "메인넷으로 전환", nav_switch_to_testnet: "테스트넷으로 전환",
 
     testnet_banner: "테스트넷 모드 — Base Sepolia — 테스트 USDC, 실제 가치 없음",
     mainnet_banner: "메인넷 모드 — Base Mainnet — 실제 USDC",
@@ -2867,7 +2881,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     wn_link_transparency: "투명성 로그 보기", wn_link_indexes: "인덱스 찾아보기", wn_link_dashboard: "내 대시보드",
 
-    wn_toggle_free: "비용 없이 전체 흐름 테스트 가능", wn_toggle_eval: "평가자가 자유롭게 테스트 가능", wn_toggle_safe: "실제 자금 손실 위험 없음",
+    wn_toggle_free: "비용 없이 전체 흐름 테스트 가능", wn_toggle_eval: "연결 전 네트워크 선택", wn_toggle_safe: "네트워크 변경은 지갑 해제 후",
 
     wn1_agents_title: "3개의 AI 에이전트 출시",
 
@@ -2949,9 +2963,9 @@ export const T: Record<Lang, Record<string, string>> = {
 
     wn2_session_desc: "금융 플랫폼 보안 기준 (Binance, Nubank)에 따라 30분 비활성 후 세션이 자동으로 끊깁니다.",
 
-    wn2_toggle_title: "메인넷 / 테스트넷 전환",
+    wn2_toggle_title: "연결 시 네트워크 잠금",
 
-    wn2_toggle_desc: "전체 플랫폼이 Base 메인넷 (실제 USDC)과 Base Sepolia 테스트넷 (테스트 USDC) 사이를 전환할 수 있습니다. 테스트넷 모드에서 모든 페이지에 주황색 배너 표시.",
+    wn2_toggle_desc: "지갑 연결 전에 네트워크(메인넷 또는 테스트넷)를 선택하세요. 연결 후 네트워크가 잠겨 실수로 전환되는 것을 방지합니다. 네트워크를 변경하려면 지갑 연결을 해제하세요.",
 
     wn_cs_backup: "일일 DB 백업 자동화",
 
