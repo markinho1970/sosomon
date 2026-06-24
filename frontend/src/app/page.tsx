@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ArrowRight, Bot, Zap, RefreshCw } from "lucide-react";
+import { ArrowRight, Bot, Zap, RefreshCw, Globe, FlaskConical } from "lucide-react";
 import Navbar from "./components/Navbar";
 import { indexApi, statsApi } from "@/lib/api";
 import { useLang } from "@/lib/LanguageContext";
 import { useNetworkMode } from "@/lib/NetworkModeContext";
+import { useAccount } from "wagmi";
 import { INDEX_I18N } from "@/lib/i18n/translations";
 import type { AlphaIndex } from "@/types";
 
@@ -32,7 +33,8 @@ function formatUSD(v: number) {
 
 export default function Home() {
   const { t, lang } = useLang();
-  const { networkMode } = useNetworkMode();
+  const { networkMode, isTestnet, toggleMode } = useNetworkMode();
+  const { isConnected } = useAccount();
   const [indexes, setIndexes] = useState<AlphaIndex[]>([]);
   const [stats, setStats] = useState({ total_aum_usd: 0, active_indexes: 0, total_subscribers: 0, avg_return_30d_pct: 0 });
 
@@ -96,6 +98,42 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Network Selector — visível apenas quando desconectado */}
+      {!isConnected && (
+        <section className="max-w-2xl mx-auto px-4 pb-16">
+          <div className="border border-white/10 rounded-2xl p-6 bg-white/3">
+            <p className="text-center text-xs text-white/40 uppercase tracking-widest mb-1">{t("home_select_network")}</p>
+            <p className="text-center text-xs text-white/25 mb-5">{t("home_select_network_sub")}</p>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => { if (isTestnet) toggleMode(); }}
+                className={`flex flex-col items-center gap-2 py-4 px-3 rounded-xl border transition-all ${
+                  !isTestnet
+                    ? "border-green-500/60 bg-green-500/10 text-green-400"
+                    : "border-white/10 bg-transparent text-white/35 hover:border-white/20 hover:text-white/55"
+                }`}
+              >
+                <Globe size={20} />
+                <span className="font-semibold text-sm">{t("nav_mainnet")}</span>
+                <span className="text-xs opacity-70 text-center">{t("home_mainnet_desc")}</span>
+              </button>
+              <button
+                onClick={() => { if (!isTestnet) toggleMode(); }}
+                className={`flex flex-col items-center gap-2 py-4 px-3 rounded-xl border transition-all ${
+                  isTestnet
+                    ? "border-orange-500/60 bg-orange-500/10 text-orange-400"
+                    : "border-white/10 bg-transparent text-white/35 hover:border-white/20 hover:text-white/55"
+                }`}
+              >
+                <FlaskConical size={20} />
+                <span className="font-semibold text-sm">{t("nav_testnet")}</span>
+                <span className="text-xs opacity-70 text-center">{t("home_testnet_desc")}</span>
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Index Cards */}
       <section className="max-w-7xl mx-auto px-4 pb-24">

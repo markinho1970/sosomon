@@ -186,6 +186,9 @@ export const T: Record<Lang, Record<string, string>> = {
 
     admin_network_mainnet: "Mainnet", admin_network_testnet: "Testnet",
 
+    home_select_network: "Choose your environment", home_select_network_sub: "Select before connecting. Disconnect wallet to switch.",
+    home_mainnet_desc: "Real USDC — Base mainnet", home_testnet_desc: "Test USDC — Base Sepolia",
+
     home_footer: "Not financial advice. Built on SoSoValue ValueChain. Powered by SoDEX.",
     disclaimer: "SoSoMon is for informational purposes only. Not financial advice. Crypto assets involve significant risk of loss. Past performance does not guarantee future results.",
     intellectual_credit: "Intellectual creation of Khamalmoney Inc.",
@@ -836,6 +839,9 @@ export const T: Record<Lang, Record<string, string>> = {
     admin_nav_update: "Atualizar NAV", admin_refreshing: "Atualizando…",
 
     admin_network_mainnet: "Mainnet", admin_network_testnet: "Testnet",
+
+    home_select_network: "Escolha seu ambiente", home_select_network_sub: "Selecione antes de conectar. Desconecte a carteira para trocar.",
+    home_mainnet_desc: "USDC real — Base mainnet", home_testnet_desc: "USDC de teste — Base Sepolia",
 
     home_footer: "Não é conselho financeiro. Construído na SoSoValue ValueChain. Powered by SoDEX.",
     disclaimer: "SoSoMon é apenas para fins informativos. Não é consultoria financeira. Ativos cripto envolvem riscos significativos de perda. Desempenho passado não garante resultados futuros.",
@@ -1576,6 +1582,9 @@ export const T: Record<Lang, Record<string, string>> = {
 
     admin_network_mainnet: "主网", admin_network_testnet: "测试网",
 
+    home_select_network: "选择您的环境", home_select_network_sub: "连接前请选择。断开钱包以切换。",
+    home_mainnet_desc: "真实USDC — Base主网", home_testnet_desc: "测试USDC — Base Sepolia",
+
     home_footer: "非财务建议。基于SoSoValue ValueChain。由SoDEX驱动。",
     disclaimer: "SoSoMon仅供参考。非财务建议。加密资产存在重大亏损风险。过去表现不代表未来结果。",
     intellectual_credit: "Khamalmoney Inc. 的智识创作",
@@ -1958,6 +1967,9 @@ export const T: Record<Lang, Record<string, string>> = {
 
     admin_network_mainnet: "メインネット", admin_network_testnet: "テストネット",
 
+    home_select_network: "環境を選択してください", home_select_network_sub: "接続前に選択してください。切替はウォレットを切断してから。",
+    home_mainnet_desc: "実USDC — Baseメインネット", home_testnet_desc: "テストUSDC — Base Sepolia",
+
     home_footer: "投資アドバイスではありません。SoSoValue ValueChain上に構築。SoDEXで駆動。",
     disclaimer: "SoSoMonは情報提供のみを目的としています。投資アドバイスではありません。暗号資産には重大な損失リスクが伴います。過去の実績は将来の結果を保証しません。",
     intellectual_credit: "Khamalmoney Inc. の知的創造物",
@@ -2333,6 +2345,9 @@ export const T: Record<Lang, Record<string, string>> = {
     admin_nav_update: "NAV अपडेट करें", admin_refreshing: "अपडेट हो रहा है…",
 
     admin_network_mainnet: "मेननेट", admin_network_testnet: "टेस्टनेट",
+
+    home_select_network: "अपना परिवेश चुनें", home_select_network_sub: "कनेक्ट करने से पहले चुनें। बदलने के लिए वॉलेट डिस्कनेक्ट करें।",
+    home_mainnet_desc: "असली USDC — Base mainnet", home_testnet_desc: "टेस्ट USDC — Base Sepolia",
 
     home_footer: "वित्तीय सलाह नहीं। SoSoValue ValueChain पर निर्मित। SoDEX द्वारा संचालित।",
     disclaimer: "SoSoMon केवल सूचना के उद्देश्यों के लिए है। वित्तीय सलाह नहीं। क्रिप्टो संपत्तियों में महत्वपूर्ण जोखिम है। पिछला प्रदर्शन भविष्य के परिणामों की गारंटी नहीं देता।",
@@ -2710,6 +2725,9 @@ export const T: Record<Lang, Record<string, string>> = {
 
     admin_network_mainnet: "mainnet", admin_network_testnet: "testnet",
 
+    home_select_network: "Pilih lingkungan Anda", home_select_network_sub: "Pilih sebelum menghubungkan. Putuskan dompet untuk beralih.",
+    home_mainnet_desc: "USDC nyata — Base mainnet", home_testnet_desc: "USDC uji coba — Base Sepolia",
+
     home_footer: "Bukan saran keuangan. Dibangun di SoSoValue ValueChain. Didukung oleh SoDEX.",
     disclaimer: "SoSoMon hanya untuk tujuan informasi. Bukan saran keuangan. Aset kripto melibatkan risiko kerugian yang signifikan. Kinerja masa lalu tidak menjamin hasil di masa depan.",
     intellectual_credit: "Kreasi intelektual dari Khamalmoney Inc.",
@@ -3085,6 +3103,9 @@ export const T: Record<Lang, Record<string, string>> = {
     admin_nav_update: "NAV 업데이트", admin_refreshing: "업데이트 중…",
 
     admin_network_mainnet: "메인넷", admin_network_testnet: "테스트넷",
+
+    home_select_network: "환경을 선택하세요", home_select_network_sub: "연결 전에 선택하세요. 전환하려면 지갑을 해제하세요.",
+    home_mainnet_desc: "실제 USDC — Base 메인넷", home_testnet_desc: "테스트 USDC — Base Sepolia",
 
     home_footer: "재무 조언이 아닙니다. SoSoValue ValueChain 기반. SoDEX 제공.",
     disclaimer: "SoSoMon은 정보 제공 목적으로만 제공됩니다. 금융 조언이 아닙니다. 암호화폐 자산은 상당한 손실 위험을 수반합니다. 과거 실적이 미래 결과를 보장하지 않습니다.",
