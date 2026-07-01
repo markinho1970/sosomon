@@ -17,6 +17,7 @@ class ConstituentOut(BaseModel):
     price_change_30d: float
     ai_rationale: str
     added_at: datetime
+    in_basket: bool = True
     ejection_risk_pct: float = 0.0  # 0-100: % do threshold de -40% em 7d atingido
 
     @model_validator(mode="after")
@@ -49,6 +50,7 @@ class IndexOut(BaseModel):
     last_rebalanced_at: Optional[datetime]
     rebalance_summary: str
     min_deposit_usd: float = 50.0
+    target_constituents: int = 5
     constituents: List[ConstituentOut] = []
 
     class Config:

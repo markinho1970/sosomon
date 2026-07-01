@@ -5,9 +5,17 @@ from datetime import datetime, timedelta
 
 from database import get_db
 from models import AlphaIndex, IndexConstituent, RebalanceProposal, SubscriberPortfolio, AgentActivityLog
-from schemas import IndexOut, ApiResponse
+from schemas import IndexOut, ConstituentOut, ApiResponse
 
 router = APIRouter(prefix="/api/indexes", tags=["indexes"])
+
+
+def _filter_constituents(idx, network_mode: str) -> list:
+    return [
+        ConstituentOut.model_validate(c)
+        for c in idx.constituents
+        if c.network_mode == network_mode
+    ]
 
 
 @router.get("", response_model=ApiResponse)
@@ -19,7 +27,10 @@ def list_indexes(network_mode: str = Query("mainnet"), db: Session = Depends(get
             SubscriberPortfolio.index_id == idx.id,
             SubscriberPortfolio.network_mode == network_mode,
         ).scalar() or 0.0
-        idx_out = IndexOut.model_validate(idx).model_copy(update={"aum_usd": round(aum, 2)})
+        idx_out = IndexOut.model_validate(idx).model_copy(update={
+            "aum_usd": round(aum, 2),
+            "constituents": _filter_constituents(idx, network_mode),
+        })
         results.append(idx_out)
     return ApiResponse(data=results)
 
@@ -33,7 +44,10 @@ def get_index(slug: str, network_mode: str = Query("mainnet"), db: Session = Dep
         SubscriberPortfolio.index_id == idx.id,
         SubscriberPortfolio.network_mode == network_mode,
     ).scalar() or 0.0
-    idx_out = IndexOut.model_validate(idx).model_copy(update={"aum_usd": round(aum, 2)})
+    idx_out = IndexOut.model_validate(idx).model_copy(update={
+        "aum_usd": round(aum, 2),
+        "constituents": _filter_constituents(idx, network_mode),
+    })
     return ApiResponse(data=idx_out)
 
 

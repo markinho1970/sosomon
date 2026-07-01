@@ -45,15 +45,13 @@ _last_block = {"mainnet": 0, "testnet": 0}
 
 _RPC_FALLBACKS = {
     "mainnet": [
-        os.getenv("BASE_RPC_URL", "https://mainnet.base.org"),
-        "https://base.llamarpc.com",
-        "https://rpc.ankr.com/base",
+        os.getenv("BASE_RPC_URL", "https://base.drpc.org"),
+        "https://mainnet.base.org",
         "https://base-rpc.publicnode.com",
+        "https://1rpc.io/base",
     ],
     "testnet": [
         os.getenv("BASE_SEPOLIA_RPC_URL", "https://sepolia.base.org"),
-        "https://base-sepolia.llamarpc.com",
-        "https://rpc.ankr.com/base_sepolia",
         "https://base-sepolia-rpc.publicnode.com",
     ],
 }
@@ -170,32 +168,36 @@ async def check_deposits(db, network: str = "mainnet"):
                 _last_block[network] = int(_state.value)
                 logger.info(f"deposit_monitor [{network}]: retomando bloco {_last_block[network]} (DB)")
             else:
-                _last_block[network] = latest - 300  # ~10 min na primeira execução
+                _last_block[network] = latest - 30  # ~1 min na primeira execução (evita range largo)
                 logger.info(f"deposit_monitor [{network}]: primeira execução, bloco {_last_block[network]}")
         except Exception as _e:
-            _last_block[network] = latest - 300
+            _last_block[network] = latest - 30
             logger.warning(f"deposit_monitor [{network}]: erro ao ler last_block do DB: {_e}")
 
     if latest <= _last_block[network]:
         return
 
+    # Limita o range por ciclo a 100 blocos — evita timeout em RPCs públicos.
+    # Se houver acúmulo, atualiza em múltiplos ciclos de 2min.
+    scan_to = min(latest, _last_block[network] + 100)
+
     try:
         logs = await _get_logs(network, net["usdc"], net["fund_wallet"],
-                               _last_block[network] + 1, latest)
+                               _last_block[network] + 1, scan_to)
     except Exception as e:
         logger.error(f"deposit_monitor [{network}]: eth_getLogs falhou: {e}")
         return
 
-    _last_block[network] = latest
+    _last_block[network] = scan_to
     try:
         from models import SystemState
         _key = f"dm_last_block_{network}"
         _st = db.query(SystemState).filter_by(key=_key).first()
         if _st:
-            _st.value = str(latest)
+            _st.value = str(scan_to)
             _st.updated_at = datetime.utcnow()
         else:
-            db.add(SystemState(key=_key, value=str(latest)))
+            db.add(SystemState(key=_key, value=str(scan_to)))
         db.commit()
     except Exception as _e:
         logger.warning(f"deposit_monitor [{network}]: erro ao persistir last_block: {_e}")
@@ -382,6 +384,50 @@ async def check_deposits(db, network: str = "mainnet"):
                 "chain_id": net["chain_id"], "network_mode": network,
             },
         ))
+        db.commit()
+
+        # Compra tokens no SoDEX proporcional aos pesos da cesta
+        try:
+            from models import IndexConstituent
+            from services.sodex import execute_buy_for_deposit
+            is_testnet = (network == "testnet")
+            basket = db.query(IndexConstituent).filter(
+                IndexConstituent.index_id == target_index.id,
+                IndexConstituent.in_basket == True,
+                IndexConstituent.network_mode == network,
+            ).all()
+            buy_result = await execute_buy_for_deposit(
+                amount_usd=amount_usd,
+                constituents=basket,
+                dry_run=False,
+                testnet=is_testnet,
+            )
+            placed   = [o for o in buy_result["orders"] if o.get("status") == "placed"]
+            skipped  = buy_result["skipped_usd"]
+            logger.info(
+                f"deposit_monitor [{network}]: compra executada — "
+                f"{len(placed)} ordens colocadas, ${skipped:.2f} em stablecoin buffer"
+            )
+            # Atualiza stablecoin_buffer_pct se houve skipped — limitado a 100%
+            if skipped > 0 and amount_usd > 0:
+                extra_pct = round((skipped / amount_usd) * 100, 2)
+                target_index.stablecoin_buffer_pct = min(100.0, (target_index.stablecoin_buffer_pct or 0) + extra_pct)
+            db.add(AgentActivityLog(
+                id=str(uuid.uuid4()),
+                index_id=target_index.id,
+                agent="deposit_monitor",
+                action="tokens_purchased",
+                token_symbol="USDC",
+                description=(
+                    f"[{network.upper()}] Compra de tokens após depósito de ${amount_usd:.2f} — "
+                    f"{len(placed)} ordens no SoDEX | buffer: ${skipped:.2f}"
+                ),
+                timestamp=datetime.now(timezone.utc),
+                data=buy_result,
+            ))
+            db.commit()
+        except Exception as e:
+            logger.error(f"deposit_monitor [{network}]: erro na compra de tokens: {e}")
 
     db.commit()
 

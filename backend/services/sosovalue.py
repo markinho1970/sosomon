@@ -6,6 +6,8 @@ Rate limit: 20 req/min, 100k/mês
 """
 
 import os
+import asyncio
+import time
 import httpx
 from typing import Optional, Dict, Any, List
 from loguru import logger
@@ -14,6 +16,15 @@ BASE_URL = "https://openapi.sosovalue.com/openapi/v1"
 API_KEY  = os.getenv("SOSOVALUE_API_KEY", "")
 HEADERS  = {"x-soso-api-key": API_KEY}
 TIMEOUT  = 15
+
+# Rate limit: 20 req/min → mínimo 3s entre requests (3.5s com margem)
+_RATE_LOCK = asyncio.Lock()
+_LAST_REQUEST_AT: float = 0.0
+_MIN_INTERVAL = 3.5
+
+# Cache de klines: evita re-requisitar dados diários dentro da mesma hora
+_KLINES_CACHE: Dict[str, tuple] = {}  # key → (data, timestamp)
+_KLINES_CACHE_TTL = 3600  # 1 hora
 
 
 def _d(response: dict) -> Any:
@@ -24,6 +35,12 @@ def _d(response: dict) -> Any:
 
 
 async def _get(path: str, params: dict = None) -> Any:
+    global _LAST_REQUEST_AT
+    async with _RATE_LOCK:
+        gap = time.monotonic() - _LAST_REQUEST_AT
+        if gap < _MIN_INTERVAL:
+            await asyncio.sleep(_MIN_INTERVAL - gap)
+        _LAST_REQUEST_AT = time.monotonic()
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
             r = await client.get(f"{BASE_URL}{path}", headers=HEADERS, params=params)
@@ -51,8 +68,17 @@ async def get_currency_market_snapshot(currency_id: str) -> Optional[Dict]:
 
 async def get_currency_klines(currency_id: str, limit: int = 30) -> List[Dict]:
     """Histórico diário OHLCV de um token (últimos 3 meses, interval=1d)."""
+    cache_key = f"{currency_id}:{limit}"
+    cached = _KLINES_CACHE.get(cache_key)
+    if cached:
+        data, ts = cached
+        if time.monotonic() - ts < _KLINES_CACHE_TTL:
+            return data
     data = await _get(f"/currencies/{currency_id}/klines", {"interval": "1d", "limit": limit})
-    return data if isinstance(data, list) else []
+    result = data if isinstance(data, list) else []
+    if result:
+        _KLINES_CACHE[cache_key] = (result, time.monotonic())
+    return result
 
 
 async def get_sector_spotlight() -> Dict:

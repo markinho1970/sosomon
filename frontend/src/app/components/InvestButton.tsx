@@ -18,6 +18,7 @@ interface Props {
   indexId: string;
   indexName: string;
   navUsd: number;
+  minDepositUsd?: number;
 }
 
 const TERMS_VERSION = "v1.0";
@@ -35,7 +36,7 @@ const RISK_KEYS = [
 
 type Step = "disclaimer" | "signing" | "wallet" | "sent";
 
-export default function InvestButton({ indexId, indexName, navUsd }: Props) {
+export default function InvestButton({ indexId, indexName, navUsd, minDepositUsd = 50 }: Props) {
   const { address, isConnected } = useAccount();
   const { openConnectModal } = useConnectModal();
   const { signMessageAsync } = useSignMessage();
@@ -298,7 +299,7 @@ export default function InvestButton({ indexId, indexName, navUsd }: Props) {
                   <div className="flex items-center gap-3 p-3 rounded-xl bg-red-500/10 border border-red-500/30">
                     <AlertTriangle size={16} className="text-red-400 shrink-0" />
                     <div>
-                      <p className="text-red-300 text-sm font-bold">{t("invest_minimum_title")}</p>
+                      <p className="text-red-300 text-sm font-bold">{t("invest_minimum_title")} ${minDepositUsd} USDC</p>
                       <p className="text-red-400/70 text-xs">{t("invest_minimum_desc")}</p>
                     </div>
                   </div>
@@ -387,7 +388,7 @@ export default function InvestButton({ indexId, indexName, navUsd }: Props) {
                       isTestnet ? t("invest_step1_testnet") : t("invest_step1_mainnet"),
                       t("invest_step2"),
                       t("invest_step3", { nav: navUsd.toFixed(4) }),
-                      t("invest_min"),
+                      `${t("invest_min_prefix")} $${minDepositUsd} USDC`,
                     ].map((line, i) => (
                       <div key={i} className="flex items-start gap-2 text-sm text-white/50">
                         <span className="text-brand-blue font-bold shrink-0">{i + 1}.</span>

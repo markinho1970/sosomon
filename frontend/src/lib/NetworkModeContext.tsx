@@ -10,12 +10,14 @@ interface NetworkModeContextType {
   isTestnet: boolean;
   networkMode: "mainnet" | "testnet";
   toggleMode: () => void;
+  resetToMainnet: () => void;
 }
 
 const NetworkModeContext = createContext<NetworkModeContextType>({
   isTestnet: false,
   networkMode: "mainnet",
   toggleMode: () => {},
+  resetToMainnet: () => {},
 });
 
 export function NetworkModeProvider({ children }: { children: React.ReactNode }) {
@@ -41,13 +43,17 @@ export function NetworkModeProvider({ children }: { children: React.ReactNode })
     isTestnetRef.current = isTestnet;
   }, [isTestnet]);
 
-  // Quando conecta pela primeira vez, força a chain correta conforme o modo escolhido
+  // Quando conecta: força a chain correta. Quando desconecta: reseta para mainnet.
   useEffect(() => {
     if (isConnected && !wasConnected.current) {
       const targetChain = isTestnetRef.current ? baseSepolia.id : base.id;
       if (chainId !== targetChain) {
         switchChain({ chainId: targetChain });
       }
+    } else if (!isConnected && wasConnected.current) {
+      setIsTestnet(false);
+      isTestnetRef.current = false;
+      localStorage.removeItem(STORAGE_KEY);
     }
     wasConnected.current = isConnected;
   }, [isConnected, chainId, switchChain]);
@@ -65,8 +71,14 @@ export function NetworkModeProvider({ children }: { children: React.ReactNode })
     });
   }, []);
 
+  const resetToMainnet = useCallback(() => {
+    setIsTestnet(false);
+    isTestnetRef.current = false;
+    localStorage.removeItem(STORAGE_KEY);
+  }, []);
+
   return (
-    <NetworkModeContext.Provider value={{ isTestnet, networkMode: isTestnet ? "testnet" : "mainnet", toggleMode }}>
+    <NetworkModeContext.Provider value={{ isTestnet, networkMode: isTestnet ? "testnet" : "mainnet", toggleMode, resetToMainnet }}>
       {children}
     </NetworkModeContext.Provider>
   );

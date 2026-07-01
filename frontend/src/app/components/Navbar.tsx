@@ -6,6 +6,8 @@ import { useState, useRef, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { Menu, X, FlaskConical, ChevronDown } from "lucide-react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { useAccount } from "wagmi";
+import { useRouter } from "next/navigation";
 import { useNetworkMode } from "@/lib/NetworkModeContext";
 import { useLang } from "@/lib/LanguageContext";
 import { LANGUAGES, type Lang } from "@/lib/i18n/translations";
@@ -14,9 +16,13 @@ export default function Navbar() {
   const [open, setOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
   const langRef = useRef<HTMLDivElement>(null);
-  const { isTestnet } = useNetworkMode();
+  const { isTestnet, resetToMainnet } = useNetworkMode();
+  const { isConnected } = useAccount();
   const { lang, setLang, t } = useLang();
   const pathname = usePathname();
+  const router = useRouter();
+
+  const isHome = pathname === "/";
 
   const isFaucetPage = pathname === "/faucet-sepolia";
 
@@ -101,7 +107,16 @@ export default function Navbar() {
             )}
           </div>
 
-          <ConnectButton accountStatus="avatar" chainStatus="none" showBalance={false} />
+          {isConnected || isHome ? (
+            <ConnectButton accountStatus="avatar" chainStatus="none" showBalance={false} />
+          ) : (
+            <button
+              onClick={() => { resetToMainnet(); router.push("/"); }}
+              className="btn-primary px-5 py-2 text-sm"
+            >
+              {t("nav_login")}
+            </button>
+          )}
         </div>
 
         <button className="md:hidden text-white/60 hover:text-white" onClick={() => setOpen(!open)}>
@@ -132,7 +147,16 @@ export default function Navbar() {
             ))}
           </div>
           <div className="flex justify-center">
-            <ConnectButton accountStatus="full" chainStatus="none" showBalance={false} />
+            {isConnected || isHome ? (
+              <ConnectButton accountStatus="full" chainStatus="none" showBalance={false} />
+            ) : (
+              <button
+                onClick={() => { resetToMainnet(); router.push("/"); setOpen(false); }}
+                className="btn-primary px-6 py-2 text-sm w-full"
+              >
+                {t("nav_login")}
+              </button>
+            )}
           </div>
         </div>
       )}

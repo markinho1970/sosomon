@@ -11,11 +11,12 @@ A cada hora:
 5. Atualiza métricas de retorno e high-water mark
 """
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 
 from database import SessionLocal
-from models import AlphaIndex, IndexConstituent, SubscriberPortfolio
+from models import AlphaIndex, IndexConstituent, SubscriberPortfolio, PortfolioSnapshot
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ async def _fetch_prices() -> dict:
     try:
         constituents = db.query(IndexConstituent).filter(
             IndexConstituent.is_stablecoin == False,
+            IndexConstituent.network_mode == 'mainnet',
         ).all()
         symbols = list({c.symbol for c in constituents if c.symbol})
     finally:
@@ -46,7 +48,9 @@ async def _fetch_prices() -> dict:
 
     # ── 1. SoDEX spot prices ──────────────────────────────────────────────────
     try:
-        tickers = await get_all_tickers()
+        # NAV sempre usa preços mainnet — decisão arquitetural.
+        # Ganhos/perdas testnet são calculados sobre preços reais mainnet.
+        tickers = await get_all_tickers(testnet=False)
         for sym in symbols:
             t = tickers.get(f"{sym}-USD") or tickers.get(f"{sym}-USDC")
             if t:
@@ -69,6 +73,7 @@ async def _fetch_prices() -> dict:
             if not cid:
                 continue
             try:
+                await asyncio.sleep(3.5)  # 20 req/min rate limit — 3.5s gap
                 klines = await sosovalue.get_currency_klines(cid, limit=31)
                 if not klines:
                     continue
@@ -155,8 +160,11 @@ def _weighted_return_from_prices(constituents: list, prices: dict, old_nav: floa
         ref_price = c.price_at_nav_ref or c.current_price_usd or 0
         if ref_price > 0 and new_price > 0:
             weighted_change += weight_frac * ((new_price - ref_price) / ref_price)
-        return_7d  += weight_frac * (data.get("price_change_7d")  or 0)
-        return_30d += weight_frac * (data.get("price_change_30d") or 0)
+        # Fallback para valor armazenado no constituent quando SoSoValue retorna 401
+        ch_7d  = data.get("price_change_7d")  or (c.price_change_7d  or 0)
+        ch_30d = data.get("price_change_30d") or (c.price_change_30d or 0)
+        return_7d  += weight_frac * ch_7d
+        return_30d += weight_frac * ch_30d
 
     new_nav = round(old_nav * (1 + weighted_change), 6)
     return max(new_nav, 0.0001), round(return_7d, 2), round(return_30d, 2)
@@ -237,7 +245,8 @@ async def update_all_navs():
             try:
                 old_nav = index.nav_usd or 1.0
                 constituents = db.query(IndexConstituent).filter(
-                    IndexConstituent.index_id == index.id
+                    IndexConstituent.index_id == index.id,
+                    IndexConstituent.network_mode == 'mainnet',
                 ).all()
 
                 new_nav, ret_7d, ret_30d = _weighted_return_from_prices(constituents, prices, old_nav)
@@ -283,6 +292,21 @@ async def update_all_navs():
                         p.days_invested = max(delta.days, 0)
                     if p.current_value_usd > (p.high_water_mark_usd or 0):
                         p.high_water_mark_usd = p.current_value_usd
+
+                    # Store hourly snapshot for value evolution chart
+                    try:
+                        snapshot = PortfolioSnapshot(
+                            portfolio_id=p.id,
+                            index_id=p.index_id,
+                            network_mode=getattr(p, "network_mode", "mainnet"),
+                            snapshot_at=datetime.now(timezone.utc),
+                            value_usd=p.current_value_usd,
+                            deposited_usd=p.deposited_usd,
+                            nav_per_token=new_nav,
+                        )
+                        db.add(snapshot)
+                    except Exception:
+                        pass
 
                 nav_chg = (new_nav - old_nav) / old_nav * 100 if old_nav > 0 else 0
                 logger.info(

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAccount } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
@@ -51,10 +53,22 @@ interface Portfolio {
   accrued_performance_fee_usd: number;
 }
 
+interface TokenHolding {
+  symbol: string; name: string; weight: number;
+  usd_value: number; quantity: number; price: number;
+  change_7d: number; change_30d: number;
+}
+interface BreakdownIndex { index_id: string; index_name: string; total_value: number; tokens: TokenHolding[]; }
+interface HistoryPoint { date: string; value: number; deposited: number; }
+interface HistoryIndex { index_id: string; index_name: string; theme: string; current_value: number; deposited: number; points: HistoryPoint[]; }
+interface Transaction { type: "deposit"|"withdrawal"; index_id: string; amount_usd: number; net_usd?: number; tx_hash: string; timestamp: string; status: string; }
+
 export default function DashboardPage() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, status } = useAccount();
   const { networkMode, isTestnet } = useNetworkMode();
   const { t } = useLang();
+  const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<"portfolio" | "performance" | "activity" | "macro">("portfolio");
   const [selectedIndexForPerf, setSelectedIndexForPerf] = useState<string | null>(null);
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
@@ -62,9 +76,21 @@ export default function DashboardPage() {
   const [macro, setMacro] = useState<MacroData | null>(null);
   const [subscriber, setSubscriber] = useState<{ is_pro: boolean; days_streak: number } | null>(null);
   const [loading, setLoading] = useState(false);
-  const [refundNotices, setRefundNotices] = useState<Array<{amount_usd: number; minimum_usd: number; tx_hash: string}>>([]); 
+  const [refundNotices, setRefundNotices] = useState<Array<{amount_usd: number; minimum_usd: number; tx_hash: string}>>([]);
   const [viewingAddress, setViewingAddress] = useState<string | null>(null);
   const [pendingWalletChange, setPendingWalletChange] = useState<string | null>(null);
+  const [breakdown, setBreakdown] = useState<BreakdownIndex[]>([]);
+  const [history, setHistory] = useState<HistoryIndex[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+
+  useEffect(() => { setMounted(true); }, []);
+
+  // Redireciona para home só após hydration e quando realmente desconectado
+  useEffect(() => {
+    if (!mounted) return;
+    if (status === "reconnecting" || status === "connecting") return;
+    if (!isConnected) router.replace("/");
+  }, [mounted, isConnected, status, router]);
 
   // Efeito 1: detecta desconexao e troca de conta no MetaMask
   useEffect(() => {
@@ -92,6 +118,9 @@ export default function DashboardPage() {
     setPortfolios([]);
     setSubscriber(null);
     setRefundNotices([]);
+    setBreakdown([]);
+    setHistory([]);
+    setTransactions([]);
     let cancelled = false;
     setLoading(true);
     Promise.all([
@@ -99,14 +128,20 @@ export default function DashboardPage() {
       agentApi.getRecentActivity(20),
       macroApi.get(),
       investApi.getRefunds(viewingAddress, networkMode),
+      investApi.getBreakdown(viewingAddress, networkMode),
+      investApi.getHistory(viewingAddress, networkMode, 30),
+      investApi.getTransactions(viewingAddress, networkMode),
     ])
-      .then(([portfolioData, activityData, macroData, refundsData]: any[]) => {
+      .then(([portfolioData, activityData, macroData, refundsData, bkd, hist, txs]: any[]) => {
         if (cancelled) return;
         setPortfolios(portfolioData.portfolios ?? []);
         setSubscriber(portfolioData.subscriber ?? null);
         setActivities(activityData ?? []);
         setMacro(macroData ?? null);
         setRefundNotices(refundsData ?? []);
+        setBreakdown(bkd || []);
+        setHistory(hist || []);
+        setTransactions(txs || []);
       })
       .catch(console.error)
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -118,24 +153,8 @@ export default function DashboardPage() {
   const totalReturnPct = totalDeposited > 0 ? ((totalValue - totalDeposited) / totalDeposited) * 100 : 0;
   const totalFees = portfolios.reduce((s, p) => s + p.accrued_performance_fee_usd, 0);
 
-  if (!isConnected) {
-    return (
-      <div className="min-h-screen bg-brand-dark">
-        <Navbar />
-        <main className="max-w-7xl mx-auto px-4 pt-32 pb-16 flex flex-col items-center justify-center text-center gap-6">
-          <Wallet size={48} className="text-white/20" />
-          <div>
-            <h1 className="text-3xl font-bold text-white mb-2">{t("dash_connect_wallet")}</h1>
-            <p className="text-white/40 max-w-sm mx-auto">{t("dash_connect_desc")}</p>
-          </div>
-          <ConnectButton />
-          <Link href="/indexes" className="text-sm text-white/30 hover:text-white transition-colors">
-            {t("dash_browse_no_connect")}
-          </Link>
-        </main>
-      </div>
-    );
-  }
+  if (!mounted || status === "reconnecting" || status === "connecting") return null;
+  if (!isConnected) return null;
 
   return (
     <div className="min-h-screen bg-brand-dark">
@@ -334,47 +353,128 @@ export default function DashboardPage() {
                         <BarChart3 size={16} /> Browse Indexes
                       </Link>
                     </div>
+                    {breakdown.length > 0 && (
+                      <div className="mt-6">
+                        <h3 className="text-white/60 text-xs uppercase tracking-widest mb-3">Token Holdings</h3>
+                        {breakdown.map(b => (
+                          <div key={b.index_id} className="bg-white/5 rounded-xl border border-white/10 overflow-hidden mb-4">
+                            <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+                              <span className="text-white text-sm font-medium">{b.index_name}</span>
+                              <span className="text-white/60 text-xs">{fmtUSD(b.total_value)}</span>
+                            </div>
+                            <div className="divide-y divide-white/5">
+                              {b.tokens.map(tok => (
+                                <div key={tok.symbol} className="px-4 py-3 flex items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
+                                      <span className="text-white/70 text-xs font-bold">{tok.symbol.slice(0,2)}</span>
+                                    </div>
+                                    <div>
+                                      <p className="text-white text-sm font-medium">{tok.symbol}</p>
+                                      <p className="text-white/40 text-xs">{tok.quantity.toFixed(4)} tokens @ ${tok.price < 1 ? tok.price.toFixed(4) : tok.price.toFixed(2)}</p>
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-white text-sm font-medium">{fmtUSD(tok.usd_value)}</p>
+                                    <p className={`text-xs ${tok.change_7d >= 0 ? "text-green-400" : "text-red-400"}`}>
+                                      {tok.change_7d >= 0 ? "+" : ""}{tok.change_7d.toFixed(1)}% 7d
+                                    </p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {transactions.length > 0 && (
+                      <div className="mt-4">
+                        <h3 className="text-white/60 text-xs uppercase tracking-widest mb-3">Transaction History</h3>
+                        <div className="bg-white/5 rounded-xl border border-white/10 overflow-hidden">
+                          <div className="divide-y divide-white/5">
+                            {transactions.map((tx, i) => (
+                              <div key={i} className="px-4 py-3 flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${tx.type === "deposit" ? "bg-green-500/10" : "bg-orange-500/10"}`}>
+                                    <span className={`text-xs font-bold ${tx.type === "deposit" ? "text-green-400" : "text-orange-400"}`}>
+                                      {tx.type === "deposit" ? "↓" : "↑"}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <p className="text-white text-sm font-medium capitalize">{tx.type}</p>
+                                    <p className="text-white/40 text-xs">{tx.index_id?.replace(/-/g, " ")} · {new Date(tx.timestamp).toLocaleDateString()}</p>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <p className={`text-sm font-medium ${tx.type === "deposit" ? "text-green-400" : "text-orange-400"}`}>
+                                    {tx.type === "deposit" ? "+" : "-"}{fmtUSD(tx.amount_usd)}
+                                  </p>
+                                  {tx.tx_hash && (
+                                    <p className="text-white/30 text-xs truncate max-w-[120px]">{tx.tx_hash.slice(0,10)}...</p>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
             )}
 
             {activeTab === "performance" && (
-              <div className="space-y-4">
-                {portfolios.length === 0 ? (
-                  <div className="card text-center py-12 border-dashed border-white/10">
-                    <p className="text-white/40 text-sm mb-4">No investments yet — performance chart will appear after your first deposit.</p>
-                    <Link href="/indexes" className="btn-primary inline-flex items-center gap-2">
-                      <BarChart3 size={16} /> Browse Indexes
-                    </Link>
-                  </div>
-                ) : (
-                  <>
-                    {portfolios.length > 1 && (
-                      <div className="flex gap-2 flex-wrap">
-                        {portfolios.map((p) => (
-                          <button
-                            key={p.index_id}
-                            onClick={() => setSelectedIndexForPerf(p.index_id)}
-                            className={`text-xs px-3 py-1.5 rounded-lg border transition-all ${
-                              selectedIndexForPerf === p.index_id
-                                ? "border-brand-blue bg-brand-blue/10 text-white"
-                                : "border-white/10 text-white/40 hover:text-white"
-                            }`}
-                          >
-                            {p.index_name}
-                          </button>
-                        ))}
+              <div className="space-y-6">
+                {history.length === 0 ? (
+                  <div className="text-center text-white/40 py-16">No performance data yet — chart fills in hourly.</div>
+                ) : history.map(h => {
+                  const chartData = h.points.map(p => ({
+                    date: new Date(p.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+                    value: p.value,
+                    deposited: p.deposited,
+                  }));
+                  const pnl = h.current_value - h.deposited;
+                  const pnlPct = h.deposited > 0 ? (pnl / h.deposited * 100) : 0;
+                  return (
+                    <div key={h.index_id} className="bg-white/5 rounded-xl p-5 border border-white/10">
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <p className="text-white font-semibold">{h.index_name}</p>
+                          <p className={`text-sm font-medium ${pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+                            {pnl >= 0 ? "+" : ""}{fmtUSD(pnl)} ({pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(2)}%) all-time
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-white font-bold text-lg">{fmtUSD(h.current_value)}</p>
+                          <p className="text-white/40 text-xs">current value</p>
+                        </div>
                       </div>
-                    )}
-                    {selectedIndexForPerf && (
-                      <PerformancePanel
-                        indexId={selectedIndexForPerf}
-                        walletAddress={viewingAddress ?? address}
-                      />
-                    )}
-                  </>
-                )}
+                      <ResponsiveContainer width="100%" height={200}>
+                        <AreaChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                          <defs>
+                            <linearGradient id={`grad-${h.index_id}`} x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#f97316" stopOpacity={0.3} />
+                              <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                          <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 11 }} axisLine={false} tickLine={false} />
+                          <YAxis tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v.toFixed(0)}`} width={48} />
+                          <Tooltip
+                            contentStyle={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#fff" }}
+                            formatter={(v: number) => [`$${v.toFixed(2)}`, ""]}
+                          />
+                          <Area type="monotone" dataKey="value" stroke="#f97316" strokeWidth={2} fill={`url(#grad-${h.index_id})`} dot={false} name="Value" />
+                          <Area type="monotone" dataKey="deposited" stroke="rgba(255,255,255,0.2)" strokeWidth={1} strokeDasharray="4 4" fill="none" dot={false} name="Invested" />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                      {chartData.length <= 1 && (
+                        <p className="text-white/30 text-xs text-center mt-2">Chart accumulates hourly — check back later for the full curve.</p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
 

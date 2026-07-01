@@ -60,6 +60,10 @@ async def run_scout_for_index(index_id: str, theme: str, db, macro: dict = None)
     """Roda o Scout para um índice: SSI → filtros → rationale → relatório."""
     logger.info(f"Scout [{theme}]: iniciando run index={index_id}")
 
+    # 0. Configuração do índice (número alvo de tokens)
+    idx_obj = db.query(AlphaIndex).filter(AlphaIndex.id == index_id).first()
+    target_n = int(idx_obj.target_constituents) if idx_obj and idx_obj.target_constituents else 5
+
     # 1. Contexto macro (compartilhado via run_all_indexes; fallback se chamado isolado)
     if macro is None:
         macro = await get_macro_context()
@@ -134,8 +138,14 @@ async def run_scout_for_index(index_id: str, theme: str, db, macro: dict = None)
     # 8. Enriquece com dados on-chain do SoDEX
     for token in candidates:
         sym = token["symbol"]
-        market_key = f"{sym}-USD"
-        if market_key in sodex_tickers:
+        # Tenta múltiplos aliases: "ETH-USD", "MAG7.ssi-USD" (para MAG7ssi), etc.
+        sym_dot = sym.replace("ssi", ".ssi") if sym.endswith("ssi") else sym
+        market_key = None
+        for candidate_key in [f"{sym}-USD", f"{sym_dot}-USD", sym, sym_dot]:
+            if candidate_key in sodex_tickers:
+                market_key = candidate_key
+                break
+        if market_key:
             t = sodex_tickers[market_key]
             token["current_price_usd"] = float(t.get("lastPrice", t.get("price", 0)) or 0)
             token["volume_24h_usd"] = float(t.get("volume24h", t.get("volume", 0)) or 0)
@@ -171,6 +181,7 @@ async def run_scout_for_index(index_id: str, theme: str, db, macro: dict = None)
         current_symbols=current_symbols,
         sentiment_score=sentiment_score,
         theme=theme,
+        target_n=target_n,
     )
 
     # 13. Salva ScoutReport
@@ -302,36 +313,49 @@ def _compute_changes(
     current_symbols: Dict,
     sentiment_score: float,
     theme: str = "",
+    target_n: int = 5,
 ) -> tuple:
     """Determina inclusões/exclusões/mudanças de peso vs composição atual.
+    Respeita target_n: número alvo de tokens na cesta (fixo por índice).
     Cap de MAX_WEIGHT_PCT por token para evitar concentração.
     """
     from services.sosovalue import get_stablecoin_buffer_from_sentiment
 
-    top_10 = candidates[:10]
-    top_10_symbols = {t["symbol"] for t in top_10}
+    # Apenas os top N candidatos entram na cesta alvo
+    top_n = candidates[:target_n]
+    top_n_symbols = {t["symbol"] for t in top_n}
     current_symbol_set = set(current_symbols.keys()) - {"USDC", "USDT"}
 
+    # Inclusões: candidatos no top N que ainda não estão na cesta E confirmados no SoDEX TRADING
+    not_on_sodex_new = [t["symbol"] for t in top_n if t["symbol"] not in current_symbol_set and not t.get("on_sodex")]
+    if not_on_sodex_new:
+        from loguru import logger as _log
+        _log.warning(f"Scout [{theme}]: bloqueando {not_on_sodex_new} — não listados no SoDEX TRADING")
     inclusions = [
         {"symbol": t["symbol"], "name": t["name"], "rationale": t.get("ai_rationale", "")}
-        for t in top_10
-        if t["symbol"] not in current_symbol_set
+        for t in top_n
+        if t["symbol"] not in current_symbol_set and t.get("on_sodex", False)
     ]
 
-    exclusions = [
-        {"symbol": sym, "reason": f"Removed from SoSoValue SSI {theme} index"}
-        for sym in current_symbol_set
-        if sym not in top_10_symbols
-    ]
+    # Exclusões: tokens atuais que saíram do top N
+    # Só propõe exclusão se a entrada de um novo token for necessária para respeitar target_n
+    # (evita excluir sem ter substituto qualificado)
+    current_count = len(current_symbol_set)
+    slots_to_fill = target_n - (current_count - len([s for s in current_symbol_set if s not in top_n_symbols]))
+    tokens_to_remove = [sym for sym in current_symbol_set if sym not in top_n_symbols]
 
-    # Pesos SSI normalizados com cap de MAX_WEIGHT_PCT
+    exclusions = []
+    for sym in tokens_to_remove:
+        exclusions.append({"symbol": sym, "reason": f"Replaced by better-ranked token — outside top {target_n} for {theme}"})
+
+    # Pesos SSI normalizados com cap de MAX_WEIGHT_PCT sobre os top N
     target_buffer = get_stablecoin_buffer_from_sentiment(sentiment_score)
     usable_pct = 100.0 - target_buffer
-    total_ssi = sum(t.get("ssi_weight", 1.0) for t in top_10) or 1.0
+    total_ssi = sum(t.get("ssi_weight", 1.0) for t in top_n) or 1.0
 
     raw_weights = {
         t["symbol"]: (t.get("ssi_weight", 1.0) / total_ssi) * usable_pct
-        for t in top_10
+        for t in top_n
     }
     # Aplica cap iterativamente redistribuindo excesso
     for _ in range(5):
@@ -347,7 +371,7 @@ def _compute_changes(
                 raw_weights[s] += excess * (raw_weights[s] / uncapped_total)
 
     weight_changes = []
-    for token in top_10:
+    for token in top_n:
         new_w = round(raw_weights[token["symbol"]], 1)
         current = current_symbols.get(token["symbol"])
         if current and abs(new_w - current.weight) > 2:

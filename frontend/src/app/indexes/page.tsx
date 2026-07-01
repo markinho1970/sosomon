@@ -97,14 +97,14 @@ export default function IndexesPage() {
                         </div>
                         <div>
                           <p className="stat-label text-xs">{t("idx_30d")}</p>
-                          <p className={`font-bold text-lg ${(idx.return_30d_pct ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
-                            {(idx.return_30d_pct ?? 0) >= 0 ? "+" : ""}{(idx.return_30d_pct ?? 0).toFixed(1)}%
+                          <p className={`font-bold text-lg ${(idx.return_30d_pct ?? 0) > 0 ? "text-green-400" : (idx.return_30d_pct ?? 0) < 0 ? "text-red-400" : "text-white"}`}>
+                            {(idx.return_30d_pct ?? 0) > 0 ? "+" : ""}{(idx.return_30d_pct ?? 0).toFixed(1)}%
                           </p>
                         </div>
                         <div>
                           <p className="stat-label text-xs">{t("idx_alltime")}</p>
-                          <p className={`font-semibold ${(idx.total_return_pct ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
-                            {(idx.total_return_pct ?? 0) >= 0 ? "+" : ""}{(idx.total_return_pct ?? 0).toFixed(1)}%
+                          <p className={`font-semibold ${(idx.total_return_pct ?? 0) > 0 ? "text-green-400" : (idx.total_return_pct ?? 0) < 0 ? "text-red-400" : "text-white"}`}>
+                            {(idx.total_return_pct ?? 0) > 0 ? "+" : ""}{(idx.total_return_pct ?? 0).toFixed(1)}%
                           </p>
                         </div>
                       </div>

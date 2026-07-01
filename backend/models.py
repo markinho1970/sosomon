@@ -32,6 +32,7 @@ class AlphaIndex(Base):
     rebalance_summary = Column(Text, default="")
     is_active = Column(Boolean, default=True)
     min_deposit_usd = Column(Float, default=50.0)
+    target_constituents = Column(Integer, default=5)   # número alvo de tokens na cesta
 
     constituents = relationship("IndexConstituent", back_populates="index", cascade="all, delete-orphan")
     activities = relationship("AgentActivityLog", back_populates="index")
@@ -56,6 +57,7 @@ class IndexConstituent(Base):
     added_at = Column(DateTime, default=datetime.utcnow)
     is_stablecoin = Column(Boolean, default=False)
     network_mode = Column(String, default="mainnet")   # "mainnet" | "testnet" — coluna adicionada por migrate_constituent_network_mode.py
+    in_basket = Column(Boolean, default=True)          # True = token da cesta ativa; False = candidato do universo temático
 
     index = relationship("AlphaIndex", back_populates="constituents")
 
@@ -108,6 +110,19 @@ class SubscriberPortfolio(Base):
     network_mode = Column(String, default="mainnet")  # "mainnet" | "testnet"
 
     subscriber = relationship("Subscriber", back_populates="portfolios")
+
+
+class PortfolioSnapshot(Base):
+    __tablename__ = "portfolio_snapshots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=False)
+    index_id = Column(String, nullable=False)
+    network_mode = Column(String, default="mainnet")
+    snapshot_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    value_usd = Column(Float, nullable=False)
+    deposited_usd = Column(Float, nullable=True)
+    nav_per_token = Column(Float, nullable=True)
 
 
 class ScoutReport(Base):

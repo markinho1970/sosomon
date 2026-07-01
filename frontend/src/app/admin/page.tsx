@@ -7,11 +7,14 @@ import {
   CheckCircle2, XCircle, RefreshCw, Clock, BarChart3, Users,
   DollarSign, AlertTriangle, ShieldCheck, Play, Zap, Wallet, ArrowRightLeft,
   Fuel, ExternalLink, ChevronDown, Copy, Download,
+  Home, Bell, Layers, Cpu, Menu, Activity, Server,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { adminApi, type SystemAlert } from "@/lib/api";
 import { useLang } from "@/lib/LanguageContext";
 import { LANGUAGES, type Lang } from "@/lib/i18n/translations";
+
+type AdminTab = "overview" | "proposals" | "indexes" | "treasury" | "investors" | "trades" | "agents";
 
 interface Proposal {
   id: number;
@@ -99,9 +102,8 @@ interface FundWalletInfo {
 
 const CHAIN_BASE_MAINNET = 8453;
 const CHAIN_BASE_SEPOLIA = 84532;
-
 const ADMIN_SESSION_KEY = "sosomon_admin_session";
-const ADMIN_SESSION_MAX_AGE_S = 3600; // 1 hora
+const ADMIN_SESSION_MAX_AGE_S = 3600;
 
 function fmtUSD(v: number) {
   if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
@@ -109,12 +111,12 @@ function fmtUSD(v: number) {
   return `$${v.toFixed(2)}`;
 }
 
-function timeAgo(iso: string, mAgo: string, hAgo: string, dAgo: string) {
+function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
   const h = Math.floor(diff / 3_600_000);
-  if (h < 1) return mAgo.replace("{n}", String(Math.floor(diff / 60000)));
-  if (h < 24) return hAgo.replace("{n}", String(h));
-  return dAgo.replace("{n}", String(Math.floor(h / 24)));
+  if (h < 1) return `${Math.floor(diff / 60000)}m ago`;
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -141,47 +143,58 @@ export default function AdminPage() {
   const [accessDenied, setAccessDenied] = useState(false);
   const [signing, setSigning] = useState(false);
 
-  // Selected network — controls ALL data on screen (persisted)
   const [networkMode, setNetworkMode] = useState<"mainnet" | "testnet">("mainnet");
+  const [activeTab, setActiveTab] = useState<AdminTab>("overview");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [langOpen, setLangOpen] = useState(false);
   const langRef = useRef<HTMLDivElement>(null);
+  const loadKeyRef = useRef("");
 
+  // Data state
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
-  const [loadingMovements, setLoadingMovements] = useState(false);
-  const [expandedMovement, setExpandedMovement] = useState<string | null>(null);
   const [fundWallet, setFundWallet] = useState<FundWalletInfo | null>(null);
+  const [alerts, setAlerts] = useState<SystemAlert[]>([]);
+  const [alertsCheckedAt, setAlertsCheckedAt] = useState("");
+  const [report, setReport] = useState<Record<string, unknown> | null>(null);
+  const [showReport, setShowReport] = useState(false);
 
+  // Loading state
   const [loading, setLoading] = useState(false);
   const [loadingPortfolio, setLoadingPortfolio] = useState(false);
   const [loadingTrades, setLoadingTrades] = useState(false);
   const [loadingFundWallet, setLoadingFundWallet] = useState(false);
-  const [runningRebalancer, setRunningRebalancer] = useState(false);
-  const [rebalancerMsg, setRebalancerMsg] = useState("");
-  const [report, setReport] = useState<Record<string, unknown> | null>(null);
+  const [loadingMovements, setLoadingMovements] = useState(false);
   const [loadingReport, setLoadingReport] = useState(false);
-  const [showReport, setShowReport] = useState(false);
 
+  // Action state
   const [actionId, setActionId] = useState<number | null>(null);
   const [executingId, setExecutingId] = useState<number | null>(null);
   const [executeResult, setExecuteResult] = useState<Record<number, string>>({});
   const [expanded, setExpanded] = useState<number | null>(null);
-
+  const [expandedMovement, setExpandedMovement] = useState<string | null>(null);
   const [copiedAddr, setCopiedAddr] = useState(false);
-  const loadKeyRef = useRef("");
 
-  const [alerts, setAlerts] = useState<SystemAlert[]>([]);
-  const [alertsCheckedAt, setAlertsCheckedAt] = useState("");
+  // Agent run state
+  const [runningRebalancer, setRunningRebalancer] = useState(false);
+  const [rebalancerMsg, setRebalancerMsg] = useState("");
+  const [runningScout, setRunningScout] = useState(false);
+  const [scoutMsg, setScoutMsg] = useState("");
+  const [runningNavUpdate, setRunningNavUpdate] = useState(false);
+  const [navUpdateMsg, setNavUpdateMsg] = useState("");
 
-  // Restaura sessão E rede do localStorage de forma síncrona (antes do primeiro paint = sem flash)
+  // Filters
+  const [movFilter, setMovFilter] = useState<"all" | "deposit" | "refund" | "withdrawal">("all");
+  const [propFilter, setPropFilter] = useState<"all" | "pending" | "approved" | "executed" | "rejected">("pending");
+
+  // ── Session restore ──────────────────────────────────────────────────────────
   useLayoutEffect(() => {
     const savedNet = localStorage.getItem("sosomon_admin_network");
     if (savedNet === "testnet" || savedNet === "mainnet") setNetworkMode(savedNet);
-
     try {
       const raw = localStorage.getItem(ADMIN_SESSION_KEY);
       if (raw) {
@@ -198,14 +211,12 @@ export default function AdminPage() {
     setSessionChecked(true);
   }, []);
 
-  // Quando wagmi confirma o endereço, verifica se bate com a sessão salva
   useEffect(() => {
     if (!address || !session) return;
     if (session.address.toLowerCase() !== address.toLowerCase()) expireSession();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address]);
 
-  // Quando wagmi desconecta definitivamente (sem sessão no localStorage)
   useEffect(() => {
     if (wagmiStatus === "disconnected" && !localStorage.getItem(ADMIN_SESSION_KEY)) {
       setSession(null);
@@ -213,7 +224,6 @@ export default function AdminPage() {
     }
   }, [wagmiStatus]);
 
-  // Força Base Mainnet ao conectar — só para novas sessões (sem sessão salva)
   useEffect(() => {
     if (isConnected && !session && chainId !== CHAIN_BASE_MAINNET) {
       const hasStored = !!localStorage.getItem(ADMIN_SESSION_KEY);
@@ -222,13 +232,10 @@ export default function AdminPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected, chainId]);
 
-  // Força a rede correspondente ao trocar o toggle de ambiente
   useEffect(() => {
     if (!session) return;
     const requiredChain = networkMode === "mainnet" ? CHAIN_BASE_MAINNET : CHAIN_BASE_SEPOLIA;
-    if (chainId !== requiredChain) {
-      switchChain({ chainId: requiredChain });
-    }
+    if (chainId !== requiredChain) switchChain({ chainId: requiredChain });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [networkMode, session]);
 
@@ -241,7 +248,7 @@ export default function AdminPage() {
   }, []);
 
   function changeNetwork(mode: "mainnet" | "testnet") {
-    loadKeyRef.current = ""; // força reload ao trocar rede manualmente
+    loadKeyRef.current = "";
     setNetworkMode(mode);
     localStorage.setItem("sosomon_admin_network", mode);
     setReport(null);
@@ -270,21 +277,14 @@ export default function AdminPage() {
       localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(newSession));
     } catch (e: unknown) {
       const status = (e as { response?: { status?: number } })?.response?.status;
-      if (status === 403) {
-        setAccessDenied(true);
-      } else if (status === 401) {
-        setAuthError(t("admin_sig_expired"));
-      } else if ((e as { name?: string })?.name === "UserRejectedRequestError") {
-        setAuthError(t("admin_sig_cancelled"));
-      } else {
-        setAuthError(t("admin_auth_error"));
-      }
-    } finally {
-      setSigning(false);
-    }
+      if (status === 403) setAccessDenied(true);
+      else if (status === 401) setAuthError(t("admin_sig_expired"));
+      else if ((e as { name?: string })?.name === "UserRejectedRequestError") setAuthError(t("admin_sig_cancelled"));
+      else setAuthError(t("admin_auth_error"));
+    } finally { setSigning(false); }
   }
 
-  // Load all data for current network
+  // ── Data loading ─────────────────────────────────────────────────────────────
   const loadAll = useCallback(async (net: "mainnet" | "testnet") => {
     if (!session) return;
     setLoading(true);
@@ -302,37 +302,25 @@ export default function AdminPage() {
       setFundWallet(fw ?? null);
     } catch (e: unknown) {
       const status = (e as { response?: { status?: number } })?.response?.status;
-      if (status === 401) {
-        expireSession(); // sessão expirada no backend → volta ao login
-        return;
-      }
-      console.error(e);
+      if (status === 401) { expireSession(); return; }
     } finally {
       setLoading(false);
       setLoadingFundWallet(false);
     }
-
     try {
-      const port = await adminApi.getPortfolio(session.address, session.message, session.signature);
-      setPortfolio(port);
-    } catch { /* SoDEX may not be configured */ }
-    finally { setLoadingPortfolio(false); }
-
+      setPortfolio(await adminApi.getPortfolio(session.address, session.message, session.signature));
+    } catch { /**/ } finally { setLoadingPortfolio(false); }
     try {
       const tr = await adminApi.getTrades(session.address, session.message, session.signature, 20);
       setTrades(Array.isArray(tr) ? tr : []);
-    } catch { /**/ }
-    finally { setLoadingTrades(false); }
-
+    } catch { /**/ } finally { setLoadingTrades(false); }
     setLoadingMovements(true);
     try {
       const mv = await adminApi.getMovements(session.address, session.message, session.signature, net);
       setMovements((mv?.movements ?? []) as Movement[]);
-    } catch { /**/ }
-    finally { setLoadingMovements(false); }
+    } catch { /**/ } finally { setLoadingMovements(false); }
   }, [session]);
 
-  // Carrega dados: dispara quando session ou networkMode muda, com deduplicação para evitar double-load
   useEffect(() => {
     if (!session) { loadKeyRef.current = ""; return; }
     const key = `${session.address}:${networkMode}`;
@@ -347,9 +335,7 @@ export default function AdminPage() {
     try {
       const data = await adminApi.alerts(session.address, session.message, session.signature);
       setAlerts(data.alerts ?? []);
-      setAlertsCheckedAt(
-        new Date(data.checked_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-      );
+      setAlertsCheckedAt(new Date(data.checked_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }));
     } catch { /**/ }
   }, [session]);
 
@@ -361,50 +347,40 @@ export default function AdminPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
+  // ── Action handlers ──────────────────────────────────────────────────────────
   async function handleApprove(id: number) {
     if (!session) return;
     setActionId(id);
-    try {
-      await adminApi.approve(id, session.address, session.message, session.signature);
-      await loadAll(networkMode);
-    } finally { setActionId(null); }
+    try { await adminApi.approve(id, session.address, session.message, session.signature); await loadAll(networkMode); }
+    finally { setActionId(null); }
   }
 
   async function handleReject(id: number) {
     if (!session) return;
     setActionId(id);
-    try {
-      await adminApi.reject(id, session.address, session.message, session.signature);
-      await loadAll(networkMode);
-    } finally { setActionId(null); }
+    try { await adminApi.reject(id, session.address, session.message, session.signature); await loadAll(networkMode); }
+    finally { setActionId(null); }
   }
 
   async function handleExecute(id: number, dryRun: boolean) {
     if (!session) return;
     setExecutingId(id);
-    setExecuteResult((prev) => ({ ...prev, [id]: "" }));
+    setExecuteResult(prev => ({ ...prev, [id]: "" }));
     try {
       const res = await adminApi.executeProposal(id, session.address, session.message, session.signature, dryRun);
-      const resultMsg = dryRun
-        ? t("admin_dryrun_result").replace("{n}", String(res.orders_count ?? 0))
-        : t("admin_execute_result").replace("{n}", String(res.orders_count ?? 0));
-      setExecuteResult((prev) => ({ ...prev, [id]: resultMsg }));
+      setExecuteResult(prev => ({ ...prev, [id]: dryRun ? `Dry run: ${res.orders_count ?? 0} orders simulated` : `Executed: ${res.orders_count ?? 0} orders placed` }));
       await loadAll(networkMode);
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Execution failed";
-      setExecuteResult((prev) => ({ ...prev, [id]: `Error: ${msg}` }));
+      setExecuteResult(prev => ({ ...prev, [id]: `Error: ${msg}` }));
     } finally { setExecutingId(null); }
   }
 
   async function handleReport() {
     if (!session) return;
     setLoadingReport(true);
-    try {
-      const r = await adminApi.getReport(session.address, session.message, session.signature, networkMode);
-      setReport(r);
-      setShowReport(true);
-    } catch { /**/ }
-    finally { setLoadingReport(false); }
+    try { const r = await adminApi.getReport(session.address, session.message, session.signature, networkMode); setReport(r); setShowReport(true); }
+    catch { /**/ } finally { setLoadingReport(false); }
   }
 
   async function handleRunRebalancer() {
@@ -413,12 +389,39 @@ export default function AdminPage() {
     setRebalancerMsg("");
     try {
       const res = await adminApi.runRebalancer(session.address, session.message, session.signature, false);
-      setRebalancerMsg(`Rebalancer: ${t("admin_pending_badge").replace("{n}", String(res.pending_proposals ?? 0))}.`);
+      setRebalancerMsg(`Rebalancer: ${res.pending_proposals ?? 0} proposals pending.`);
       await loadAll(networkMode);
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Failed";
       setRebalancerMsg(`Erro: ${msg}`);
     } finally { setRunningRebalancer(false); }
+  }
+
+  async function handleRunScout() {
+    if (!session) return;
+    setRunningScout(true);
+    setScoutMsg("");
+    try {
+      const res = await adminApi.runScout(session.address, session.message, session.signature);
+      setScoutMsg(res.message || "Scout concluído.");
+      await loadAll(networkMode);
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Failed";
+      setScoutMsg(`Erro: ${msg}`);
+    } finally { setRunningScout(false); }
+  }
+
+  async function handleRunNavUpdate() {
+    if (!session) return;
+    setRunningNavUpdate(true);
+    setNavUpdateMsg("");
+    try {
+      const res = await adminApi.runNavUpdate(session.address, session.message, session.signature);
+      setNavUpdateMsg(res.message || "NAV atualizado.");
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Failed";
+      setNavUpdateMsg(`Erro: ${msg}`);
+    } finally { setRunningNavUpdate(false); }
   }
 
   function copyFundAddress() {
@@ -428,21 +431,21 @@ export default function AdminPage() {
     setTimeout(() => setCopiedAddr(false), 2000);
   }
 
-  // ─── Lang picker ─────────────────────────────────────────────────────────────
-  const currentLang = LANGUAGES.find(l => l.code === lang) ?? LANGUAGES[0];
+  // ── Lang picker (EN + PT only for admin) ────────────────────────────────────
+  const ADMIN_LANGS = LANGUAGES.filter(l => l.code === "en" || l.code === "pt");
+  const currentLang = ADMIN_LANGS.find(l => l.code === lang) ?? ADMIN_LANGS[1]; // default PT
 
   function LangPicker() {
     return (
       <div ref={langRef} className="relative z-20">
-        <button onClick={() => setLangOpen(v => !v)}
-          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-white/10 bg-white/5 text-white/50 hover:text-white text-xs transition-all">
+        <button onClick={() => setLangOpen(v => !v)} className="flex items-center gap-1 px-2 py-1.5 rounded-lg border border-white/10 bg-white/5 text-white/50 hover:text-white text-xs transition-all">
           <span>{currentLang.flag}</span>
           <span>{currentLang.code.toUpperCase()}</span>
           <ChevronDown size={10} className={`transition-transform ${langOpen ? "rotate-180" : ""}`} />
         </button>
         {langOpen && (
           <div className="absolute right-0 top-full mt-1 w-36 bg-[#0d1117] border border-white/10 rounded-xl shadow-2xl py-1 z-50">
-            {LANGUAGES.map(l => (
+            {ADMIN_LANGS.map(l => (
               <button key={l.code} onClick={() => { setLang(l.code as Lang); setLangOpen(false); }}
                 className={`w-full text-left flex items-center gap-2 px-3 py-2 text-xs transition-all ${lang === l.code ? "text-white bg-white/8" : "text-white/50 hover:text-white hover:bg-white/5"}`}>
                 <span>{l.flag}</span><span>{l.label}</span>
@@ -455,12 +458,9 @@ export default function AdminPage() {
     );
   }
 
-  // ─── Aguardando wagmi reconectar (evita flash do login no reload) ───────────
-  if (!sessionChecked) {
-    return <div className="min-h-screen bg-brand-dark" />;
-  }
+  // ── Guards ───────────────────────────────────────────────────────────────────
+  if (!sessionChecked) return <div className="min-h-screen bg-brand-dark" />;
 
-  // ─── Not connected ────────────────────────────────────────────────────────────
   if (!isConnected) {
     return (
       <div className="min-h-screen bg-brand-dark flex items-center justify-center px-4">
@@ -469,15 +469,12 @@ export default function AdminPage() {
           <ShieldCheck size={36} className="text-brand-blue mx-auto mb-4" />
           <h1 className="text-xl font-bold text-white mb-1">{t("admin_title")}</h1>
           <p className="text-white/40 text-sm mb-6">{t("admin_connect_wallet")}</p>
-          <button onClick={() => openConnectModal?.()} className="btn-primary w-full">
-            {t("admin_connect_wallet")}
-          </button>
+          <button onClick={() => openConnectModal?.()} className="btn-primary w-full">{t("admin_connect_wallet")}</button>
         </div>
       </div>
     );
   }
 
-  // ─── Auth screen ──────────────────────────────────────────────────────────────
   if (!session) {
     return (
       <div className="min-h-screen bg-brand-dark flex items-center justify-center px-4">
@@ -493,10 +490,7 @@ export default function AdminPage() {
                 <p className="text-red-300/80 text-sm">{t("admin_not_authorized_desc")}</p>
                 <p className="text-white/30 font-mono text-xs mt-2">{address?.slice(0, 6)}…{address?.slice(-4)}</p>
               </div>
-              <button onClick={() => { expireSession(); disconnect(); }}
-                className="text-white/40 hover:text-white text-sm transition-colors">
-                {t("admin_disconnect")}
-              </button>
+              <button onClick={() => { expireSession(); disconnect(); }} className="text-white/40 hover:text-white text-sm">{t("admin_disconnect")}</button>
             </>
           ) : (
             <>
@@ -510,10 +504,7 @@ export default function AdminPage() {
                 {signing ? t("admin_signing") : t("admin_sign_to_auth")}
               </button>
               <div className="mt-3">
-                <button onClick={() => disconnect()}
-                  className="text-white/30 hover:text-white/60 text-xs transition-colors">
-                  {t("admin_disconnect")}
-                </button>
+                <button onClick={() => disconnect()} className="text-white/30 hover:text-white/60 text-xs">{t("admin_disconnect")}</button>
               </div>
             </>
           )}
@@ -522,634 +513,813 @@ export default function AdminPage() {
     );
   }
 
-  const pending  = proposals.filter((p) => p.status === "pending");
-  const approved = proposals.filter((p) => p.status === "approved");
+  // ── Main admin UI ─────────────────────────────────────────────────────────────
+  const pendingCount = proposals.filter(p => p.status === "pending").length;
+  const criticalAlerts = alerts.filter(a => a.severity === "critical");
   const isMainnet = networkMode === "mainnet";
   const ethBal = fundWallet?.eth_balance ?? 0;
   const ethColor = ethBal >= 0.05 ? "text-green-400" : ethBal >= 0.01 ? "text-amber-400" : "text-red-400";
+  const showBanner = pendingCount > 0 && activeTab !== "proposals";
+
+  const NAV_ITEMS: { id: AdminTab; icon: React.ElementType; label: string; badge: number }[] = [
+    { id: "overview",   icon: Home,            label: t("admin_tab_overview"),      badge: criticalAlerts.length },
+    { id: "proposals",  icon: Bell,            label: t("admin_tab_proposals"),     badge: pendingCount },
+    { id: "indexes",    icon: Layers,          label: t("admin_tab_indexes"),       badge: 0 },
+    { id: "treasury",   icon: Wallet,          label: t("admin_tab_treasury"),      badge: ethBal < 0.01 && fundWallet ? 1 : 0 },
+    { id: "investors",  icon: Users,           label: t("admin_tab_investors_tab"), badge: 0 },
+    { id: "trades",     icon: ArrowRightLeft,  label: t("admin_tab_trades"),        badge: 0 },
+    { id: "agents",     icon: Cpu,             label: t("admin_tab_agents"),        badge: 0 },
+  ];
+
+  function goTab(tab: AdminTab) { setActiveTab(tab); setSidebarOpen(false); }
 
   return (
-    <div className="min-h-screen bg-brand-dark pt-14">
+    <div className="min-h-screen bg-brand-dark">
 
-      {/* Header */}
-      <div className="fixed top-0 left-0 right-0 z-30 border-b border-white/5 bg-black/90 backdrop-blur-sm px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-white font-bold">SoSoMon</span>
-          <span className="text-white/20">·</span>
-          <span className="text-white/40 text-sm">{t("admin_founder_label")}</span>
-          <span className="text-xs text-white/20 font-mono">{session.address.slice(0, 6)}…{session.address.slice(-4)}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* Network toggle — controls ALL data */}
-          <div className="flex items-center rounded-lg border border-white/10 overflow-hidden text-xs mr-1">
-            <button
-              onClick={() => changeNetwork("mainnet")}
-              className={`px-3 py-1.5 font-semibold transition-all ${isMainnet ? "bg-green-500/20 text-green-400" : "text-white/30 hover:text-white/60"}`}
-            >
-              🟢 Mainnet
+      {/* ── Fixed top header ─────────────────────────────────────────────── */}
+      <header className="fixed top-0 left-0 right-0 z-40 h-12 border-b border-white/5 bg-black/90 backdrop-blur-sm flex items-center px-4 gap-3">
+        <button onClick={() => setSidebarOpen(v => !v)} className="lg:hidden text-white/40 hover:text-white mr-1 transition-colors">
+          <Menu size={18} />
+        </button>
+        <span className="font-bold text-white text-sm">SoSoMon</span>
+        <span className="text-white/15">·</span>
+        <span className="text-white/40 text-xs hidden sm:block">{t("admin_founder_console")}</span>
+        <span className="text-white/20 font-mono text-xs hidden sm:block">{session.address.slice(0, 6)}…{session.address.slice(-4)}</span>
+
+        <div className="ml-auto flex items-center gap-2">
+          <div className="flex rounded-lg border border-white/10 overflow-hidden text-xs">
+            <button onClick={() => changeNetwork("mainnet")} className={`px-3 py-1.5 font-semibold transition-all ${isMainnet ? "bg-green-500/20 text-green-400" : "text-white/30 hover:text-white/60"}`}>
+              🟢 {t("admin_network_mainnet")}
             </button>
-            <button
-              onClick={() => changeNetwork("testnet")}
-              className={`px-3 py-1.5 font-semibold transition-all ${!isMainnet ? "bg-yellow-500/20 text-yellow-400" : "text-white/30 hover:text-white/60"}`}
-            >
-              🟡 Testnet
+            <button onClick={() => changeNetwork("testnet")} className={`px-3 py-1.5 font-semibold transition-all ${!isMainnet ? "bg-yellow-500/20 text-yellow-400" : "text-white/30 hover:text-white/60"}`}>
+              🟡 {t("admin_network_testnet")}
             </button>
           </div>
-          <button
-            onClick={handleReport}
-            disabled={loadingReport}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/60 hover:text-white text-xs transition-all disabled:opacity-40"
-          >
-            <BarChart3 size={12} className={loadingReport ? "animate-pulse" : ""} />
-            {loadingReport ? "…" : t("admin_report_btn")}
-          </button>
-          <button
-            onClick={handleRunRebalancer}
-            disabled={runningRebalancer}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-blue/10 border border-brand-blue/20 text-brand-blue hover:bg-brand-blue/20 text-xs transition-all disabled:opacity-40"
-          >
-            <Play size={12} className={runningRebalancer ? "animate-pulse" : ""} />
-            {runningRebalancer ? t("admin_running") : t("admin_run_rebalancer")}
-          </button>
           <button onClick={() => loadAll(networkMode)} className="text-white/30 hover:text-white transition-colors">
-            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           </button>
           <LangPicker />
-          <button onClick={() => { expireSession(); disconnect(); }} className="text-white/20 hover:text-white/50 text-xs transition-colors">
-            {t("admin_disconnect")}
-          </button>
         </div>
-      </div>
+      </header>
 
-      {rebalancerMsg && (
-        <div className="bg-brand-blue/10 border-b border-brand-blue/20 px-6 py-2">
-          <p className="text-brand-blue text-xs">{rebalancerMsg}</p>
+      {/* ── Pending proposals banner ─────────────────────────────────────── */}
+      {showBanner && (
+        <div
+          onClick={() => goTab("proposals")}
+          className="fixed top-12 left-0 right-0 z-30 bg-amber-500/10 border-b border-amber-500/20 px-4 lg:pl-[216px] py-1.5 flex items-center gap-2 cursor-pointer hover:bg-amber-500/15 transition-colors"
+        >
+          <Bell size={11} className="text-amber-400 shrink-0" />
+          <p className="text-amber-300 text-xs font-medium">
+            {pendingCount === 1 ? t("admin_pending_banner_one") : t("admin_pending_banner_many").replace("{n}", String(pendingCount))}
+          </p>
+          <span className="ml-auto text-amber-400/50 text-xs shrink-0">{t("admin_pending_banner_link")}</span>
         </div>
       )}
 
-      <main className="max-w-5xl mx-auto px-4 py-8 space-y-8">
+      {/* ── Mobile sidebar overlay ───────────────────────────────────────── */}
+      {sidebarOpen && (
+        <div onClick={() => setSidebarOpen(false)} className="fixed inset-0 bg-black/60 z-30 lg:hidden" />
+      )}
 
-        {/* Stats — network-filtered */}
-        {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="stat-card">
-              <div className="flex items-center gap-1.5 mb-1"><DollarSign size={13} className="text-white/30" /><p className="stat-label">{t("admin_total_aum")}</p></div>
-              <p className="stat-value">{fmtUSD(stats.total_aum_usd)}</p>
-            </div>
-            <div className="stat-card">
-              <div className="flex items-center gap-1.5 mb-1"><Users size={13} className="text-white/30" /><p className="stat-label">{t("admin_subscribers")}</p></div>
-              <p className="stat-value">{stats.total_subscribers}</p>
-              <p className="text-xs text-white/30">{stats.pro_subscribers} Pro</p>
-            </div>
-            <div className="stat-card">
-              <div className="flex items-center gap-1.5 mb-1"><BarChart3 size={13} className="text-white/30" /><p className="stat-label">{t("admin_indexes")}</p></div>
-              <p className="stat-value">{stats.indexes.length}</p>
-            </div>
-            <div className="stat-card">
-              <div className="flex items-center gap-1.5 mb-1"><AlertTriangle size={13} className="text-amber-400" /><p className="stat-label">{t("admin_pending")}</p></div>
-              <p className={`stat-value ${stats.pending_proposals > 0 ? "text-amber-400" : "text-white"}`}>{stats.pending_proposals}</p>
-              <p className="text-xs text-white/30">{t("admin_proposals_label")}</p>
-            </div>
-          </div>
-        )}
-
-        {/* System Alerts */}
-        {session && (
-          <div className="space-y-2">
-            {alerts.length === 0 ? (
-              <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-green-500/20 bg-green-500/5">
-                <CheckCircle2 size={13} className="text-green-400 shrink-0" />
-                <p className="text-green-400/70 text-xs">{t("admin_all_systems_ok")}</p>
-                {alertsCheckedAt && <span className="ml-auto text-white/20 text-xs">{alertsCheckedAt}</span>}
-              </div>
-            ) : (
-              alerts.map((alert) => {
-                const cls: Record<string, string> = {
-                  critical: "border-red-500/40 bg-red-500/5 text-red-300",
-                  warning:  "border-amber-500/40 bg-amber-500/5 text-amber-300",
-                  info:     "border-blue-500/40 bg-blue-500/5 text-blue-300",
-                };
-                const icons: Record<string, React.ReactNode> = {
-                  critical: <AlertTriangle size={13} className="text-red-400 shrink-0 mt-0.5" />,
-                  warning:  <AlertTriangle size={13} className="text-amber-400 shrink-0 mt-0.5" />,
-                  info:     <Clock size={13} className="text-blue-400 shrink-0 mt-0.5" />,
-                };
-                return (
-                  <div key={alert.id} className={`flex items-start gap-3 px-4 py-3 rounded-xl border ${cls[alert.severity] ?? "border-white/10 bg-white/5 text-white/60"}`}>
-                    {icons[alert.severity]}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{alert.title}</p>
-                      <p className="text-xs opacity-70 mt-0.5">{alert.message}</p>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        )}
-
-        {/* Fund Wallet — selected network only */}
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Fuel size={16} className="text-amber-400" />
-              <h2 className="font-semibold text-white">{t("admin_fund_wallet_title")}</h2>
-              <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${isMainnet ? "text-green-400 bg-green-500/10 border-green-500/20" : "text-yellow-400 bg-yellow-500/10 border-yellow-500/20"}`}>
-                {isMainnet ? "🟢 Base Mainnet" : "🟡 Base Sepolia"}
-              </span>
-            </div>
-            <button onClick={() => { setFundWallet(null); loadAll(networkMode); }} className="text-white/30 hover:text-white transition-colors">
-              <RefreshCw size={13} className={loadingFundWallet ? "animate-spin" : ""} />
-            </button>
-          </div>
-
-          {loadingFundWallet && !fundWallet && (
-            <p className="text-white/30 text-sm text-center py-4">{t("admin_loading_balances")}</p>
-          )}
-
-          {fundWallet && (
-            <div className="space-y-3">
-              {/* ETH */}
-              <div className="flex items-center justify-between p-3 rounded-xl bg-white/3 border border-white/5">
-                <div className="flex items-center gap-2">
-                  <Fuel size={14} className={ethColor} />
-                  <span className="text-white/60 text-sm">{t("admin_eth_gas")}</span>
-                </div>
-                <div className="text-right">
-                  <span className={`font-bold text-sm ${ethColor}`}>
-                    {fundWallet.eth_balance !== null ? fundWallet.eth_balance.toFixed(6) : "—"} ETH
+      {/* ── Sidebar ──────────────────────────────────────────────────────── */}
+      <aside className={`fixed left-0 top-12 bottom-0 w-52 bg-[#07090d] border-r border-white/5 z-30 flex flex-col transition-transform duration-200 ${sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}>
+        <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
+          {NAV_ITEMS.map(item => {
+            const active = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => goTab(item.id)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${active ? "bg-white/8 text-white" : "text-white/40 hover:text-white/70 hover:bg-white/4"}`}
+              >
+                <item.icon size={15} className={active ? "text-brand-blue" : "text-white/25"} />
+                <span className="flex-1 text-left">{item.label}</span>
+                {item.badge > 0 && (
+                  <span className={`min-w-[18px] h-[18px] flex items-center justify-center rounded-full text-[10px] font-bold px-1 ${item.id === "proposals" ? "bg-amber-500 text-black" : "bg-red-500 text-white"}`}>
+                    {item.badge}
                   </span>
-                  {ethBal < 0.01 && <p className="text-red-400 text-xs">{t("admin_eth_critical")}</p>}
-                </div>
-              </div>
-
-              {/* USDC */}
-              <div className="flex items-center justify-between p-3 rounded-xl bg-white/3 border border-white/5">
-                <div className="flex items-center gap-2">
-                  <DollarSign size={14} className="text-white/40" />
-                  <span className="text-white/60 text-sm">USDC {t("admin_usdc_collected")}</span>
-                </div>
-                <span className="text-white font-bold text-sm">
-                  {fundWallet.usdc_balance !== null ? `$${fundWallet.usdc_balance.toFixed(2)}` : "—"}
-                </span>
-              </div>
-
-              {/* Depositar ETH — QR + endereço para copiar */}
-              <div className={`rounded-xl border p-3 ${isMainnet ? "border-green-500/20 bg-green-500/5" : "border-yellow-500/20 bg-yellow-500/5"}`}>
-                <div className="flex items-center gap-1.5 mb-3">
-                  <Download size={12} className={isMainnet ? "text-green-400" : "text-yellow-400"} />
-                  <span className={`text-xs font-semibold ${isMainnet ? "text-green-400" : "text-yellow-400"}`}>
-                    {t("admin_deposit_eth_gas")} ({isMainnet ? "Base" : "Base Sepolia"})
-                  </span>
-                </div>
-                <div className="flex gap-4 items-center">
-                  <div className="shrink-0 rounded-lg overflow-hidden border border-white/10 bg-white p-1.5">
-                    <QRCodeSVG
-                      value={`ethereum:${fundWallet.address}@${isMainnet ? CHAIN_BASE_MAINNET : CHAIN_BASE_SEPOLIA}`}
-                      size={88}
-                      bgColor="#ffffff"
-                      fgColor="#000000"
-                      level="M"
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0 space-y-2">
-                    <p className="text-white/30 text-xs leading-tight">{t("admin_deposit_eth_instruction")}</p>
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-white/50 font-mono text-xs truncate">{fundWallet.address}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={copyFundAddress}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/60 hover:text-white text-xs transition-all">
-                        <Copy size={11} />
-                        {copiedAddr ? t("invest_copied") : t("invest_copy")}
-                      </button>
-                      {fundWallet.basescan_url && (
-                        <a href={fundWallet.basescan_url} target="_blank" rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/60 hover:text-white text-xs transition-all">
-                          <ExternalLink size={11} /> Basescan
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Portfolio (SoDEX) */}
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Wallet size={16} className="text-brand-blue" />
-              <h2 className="font-semibold text-white">{t("admin_fund_portfolio")}</h2>
-              {portfolio && (
-                <span className={`text-xs px-2 py-0.5 rounded-full border ${portfolio.network === "mainnet" ? "bg-green-500/10 text-green-400 border-green-500/20" : "bg-yellow-500/10 text-yellow-400 border-yellow-500/20"}`}>
-                  {portfolio.network}
-                </span>
-              )}
-              {!isMainnet && (
-                <span className="text-xs text-white/30 italic">{t("admin_sodex_mainnet_only")}</span>
-              )}
-            </div>
-            <button onClick={() => { setLoadingPortfolio(true); adminApi.getPortfolio(session.address, session.message, session.signature).then(d => { setPortfolio(d); setLoadingPortfolio(false); }).catch(() => setLoadingPortfolio(false)); }} className="text-white/30 hover:text-white transition-colors">
-              <RefreshCw size={13} className={loadingPortfolio ? "animate-spin" : ""} />
-            </button>
-          </div>
-
-          {!portfolio && loadingPortfolio && <p className="text-white/30 text-sm text-center py-4">{t("admin_loading_portfolio")}</p>}
-          {!portfolio && !loadingPortfolio && (
-            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4 text-center">
-              <p className="text-amber-400 text-sm">{t("admin_sodex_not_configured")}</p>
-            </div>
-          )}
-
-          {portfolio && portfolio.configured && (
-            <>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-white/40 text-sm">{t("admin_total_value")}</span>
-                <span className="text-white font-bold text-lg">{fmtUSD(portfolio.total_usd)}</span>
-              </div>
-              <div className="space-y-2">
-                {portfolio.positions.filter((p) => p.usd_value > 0).map((pos) => (
-                  <div key={pos.asset} className="flex items-center justify-between p-2.5 rounded-lg bg-white/3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-white font-mono text-sm font-medium w-16">{pos.asset}</span>
-                      <div className="w-24 h-1.5 bg-white/5 rounded-full overflow-hidden">
-                        <div className="h-full bg-brand-blue rounded-full" style={{ width: `${Math.min(pos.weight_pct, 100)}%` }} />
-                      </div>
-                      <span className="text-white/40 text-xs">{pos.weight_pct.toFixed(1)}%</span>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm text-white">{fmtUSD(pos.usd_value)}</p>
-                      <p className="text-xs text-white/30">{pos.amount.toFixed(6)} {pos.asset}</p>
-                    </div>
-                  </div>
-                ))}
-                {portfolio.positions.filter((p) => p.usd_value > 0).length === 0 && (
-                  <p className="text-white/30 text-sm text-center py-3">{t("admin_no_positions")}</p>
                 )}
-              </div>
-              <p className="text-xs text-white/20 font-mono mt-3">{portfolio.wallet}</p>
-            </>
-          )}
-        </div>
-
-        {/* Movimentações do Fundo */}
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <ArrowRightLeft size={16} className="text-brand-blue" />
-              <h2 className="font-semibold text-white">{t("tab_movements")}</h2>
-            </div>
-            <button
-              onClick={() => {
-                setLoadingMovements(true);
-                adminApi.getMovements(session!.address, session!.message, session!.signature, networkMode)
-                  .then(d => setMovements((d?.movements ?? []) as Movement[]))
-                  .catch(() => {})
-                  .finally(() => setLoadingMovements(false));
-              }}
-              className="text-white/30 hover:text-white transition-colors"
-            >
-              <RefreshCw size={13} className={loadingMovements ? "animate-spin" : ""} />
-            </button>
+              </button>
+            );
+          })}
+        </nav>
+        <div className="p-3 border-t border-white/5 space-y-1">
+          <div className="px-3 py-1.5">
+            <p className="text-white/20 text-[10px] font-mono truncate">{session.address}</p>
           </div>
-
-          {loadingMovements && movements.length === 0 && (
-            <p className="text-white/30 text-sm text-center py-4">{t("admin_loading_portfolio")}</p>
-          )}
-
-          {!loadingMovements && movements.length === 0 && (
-            <p className="text-white/30 text-sm text-center py-6">{t("mov_empty")}</p>
-          )}
-
-          {movements.length > 0 && (
-            <div className="space-y-2">
-              {movements.map((m) => {
-                const typeColor = {
-                  deposit: "text-green-400 bg-green-500/10 border-green-500/20",
-                  refund: "text-orange-400 bg-orange-500/10 border-orange-500/20",
-                  withdrawal: "text-red-400 bg-red-500/10 border-red-500/20",
-                  manual: "text-blue-400 bg-blue-500/10 border-blue-500/20",
-                  other: "text-white/40 bg-white/5 border-white/10",
-                }[m.type] ?? "text-white/40 bg-white/5 border-white/10";
-                const typeLabel = {
-                  deposit: t("mov_deposit"),
-                  refund: t("mov_refund"),
-                  withdrawal: t("mov_withdrawal"),
-                  manual: t("mov_manual"),
-                  other: m.action,
-                }[m.type] ?? m.type;
-                const isExpanded = expandedMovement === m.id;
-                return (
-                  <div key={m.id} className="rounded-lg bg-white/3 overflow-hidden border border-white/5">
-                    <button
-                      onClick={() => setExpandedMovement(isExpanded ? null : m.id)}
-                      className="w-full flex items-center gap-3 p-3 hover:bg-white/5 transition-colors text-left"
-                    >
-                      <span className={`text-xs px-2 py-0.5 rounded border font-medium shrink-0 ${typeColor}`}>{typeLabel}</span>
-                      <span className="text-white font-medium text-sm">${m.amount_usd.toFixed(2)}</span>
-                      <span className="text-xs text-white/40 font-mono truncate flex-1">{m.wallet.slice(0, 8)}…{m.wallet.slice(-4)}</span>
-                      {m.type === "refund" && (
-                        <span className={`text-xs shrink-0 ${m.refund_ok === true ? "text-green-400" : m.refund_ok === false ? "text-red-400" : "text-yellow-400"}`}>
-                          {m.refund_ok === true ? t("mov_status_ok") : m.refund_ok === false ? t("mov_status_failed") : t("mov_status_pending")}
-                        </span>
-                      )}
-                      <span className="text-xs text-white/25 shrink-0">
-                        {new Date(m.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                    </button>
-                    {isExpanded && (
-                      <div className="px-4 pb-3 space-y-1.5 border-t border-white/5 pt-2">
-                        {m.index_id && (
-                          <p className="text-xs text-white/40"><span className="text-white/25">{t("mov_index")}: </span>{m.index_id}</p>
-                        )}
-                        {m.tx_hash && (
-                          <p className="text-xs text-white/40 flex items-center gap-1.5">
-                            <span className="text-white/25">{t("mov_tx")}: </span>
-                            <span className="font-mono truncate">{m.tx_hash.slice(0, 20)}…</span>
-                            {m.basescan && <a href={m.basescan} target="_blank" rel="noopener noreferrer" className="text-brand-blue hover:text-blue-300 shrink-0">↗</a>}
-                          </p>
-                        )}
-                        {m.refund_tx && (
-                          <p className="text-xs text-white/40 flex items-center gap-1.5">
-                            <span className="text-white/25">{t("mov_refund_tx")}: </span>
-                            <span className="font-mono truncate">{m.refund_tx.slice(0, 20)}…</span>
-                            {m.refund_basescan && <a href={m.refund_basescan} target="_blank" rel="noopener noreferrer" className="text-brand-blue hover:text-blue-300 shrink-0">↗</a>}
-                          </p>
-                        )}
-                        {m.manual_credit && <p className="text-xs text-blue-400">Crédito manual</p>}
-                        {m.description && <p className="text-xs text-white/30 leading-relaxed">{m.description}</p>}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <button onClick={() => { expireSession(); disconnect(); }} className="w-full text-left text-white/25 hover:text-white/60 text-xs px-3 py-2 rounded-lg hover:bg-white/4 transition-colors">
+            {t("admin_disconnect")}
+          </button>
         </div>
+      </aside>
 
-        {/* Relatório Gerencial */}
-        {showReport && report && (() => {
-          const p = report.platform as Record<string, unknown>;
-          const indexes = report.indexes as Array<Record<string, unknown>>;
-          const proposals = report.proposals as Record<string, unknown>;
-          const byStatus = proposals.by_status as Record<string, number> ?? {};
-          const activity = report.recent_activity as Array<Record<string, unknown>>;
-          return (
-            <div className="card">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <BarChart3 size={16} className="text-brand-blue" />
-                  <h2 className="font-semibold text-white">{t("admin_report_title")}</h2>
-                  <span className="text-white/20 text-xs">{String(report.generated_at ?? "").replace("T", " ").slice(0, 19)} UTC</span>
-                </div>
-                <button onClick={() => setShowReport(false)} className="text-white/30 hover:text-white/60 text-xs border border-white/10 rounded px-2 py-1">{t("admin_report_close")}</button>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-                {[
-                  { label: t("admin_total_aum"), value: fmtUSD(Number(p.total_aum_usd ?? 0)) },
-                  { label: t("admin_subscribers"), value: String(p.total_investors ?? 0) },
-                  { label: "Pro", value: String(p.pro_investors ?? 0) },
-                  { label: t("admin_report_proposals_total"), value: String(proposals.total ?? 0) },
-                ].map(s => (
-                  <div key={s.label} className="bg-white/3 rounded-xl p-3 border border-white/5">
-                    <p className="text-white/40 text-xs mb-1">{s.label}</p>
-                    <p className="text-white font-bold">{s.value}</p>
+      {/* ── Content area ─────────────────────────────────────────────────── */}
+      <main className={`lg:ml-52 min-h-screen ${showBanner ? "pt-20" : "pt-12"}`}>
+        <div className="max-w-4xl mx-auto px-4 py-6 space-y-5">
+
+          {/* ══════════════════════ OVERVIEW ══════════════════════════════ */}
+          {activeTab === "overview" && (
+            <>
+              {stats && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="stat-card">
+                    <div className="flex items-center gap-1.5 mb-1"><DollarSign size={13} className="text-white/30" /><p className="stat-label">{t("admin_total_aum")}</p></div>
+                    <p className="stat-value">{fmtUSD(stats.total_aum_usd)}</p>
                   </div>
-                ))}
-              </div>
-              <div className="mb-6">
-                <p className="text-white/40 text-xs mb-2 uppercase tracking-wide">{t("admin_report_proposals_status")}</p>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                  {Object.entries(byStatus).map(([k, v]) => (
-                    <div key={k} className="flex justify-between py-1.5 border-b border-white/5 text-sm">
-                      <span className={`capitalize ${STATUS_BADGE[k]?.split(" ")[1] ?? "text-white/60"}`}>{k}</span>
-                      <span className="text-white">{v}</span>
-                    </div>
-                  ))}
-                  {Object.keys(byStatus).length === 0 && <p className="text-white/30 text-xs">{t("admin_report_no_proposals")}</p>}
+                  <div className="stat-card">
+                    <div className="flex items-center gap-1.5 mb-1"><Users size={13} className="text-white/30" /><p className="stat-label">{t("admin_subscribers")}</p></div>
+                    <p className="stat-value">{stats.total_subscribers}</p>
+                    <p className="text-xs text-white/30">{t("admin_pro_subscribers").replace("{n}", String(stats.pro_subscribers))}</p>
+                  </div>
+                  <div className="stat-card">
+                    <div className="flex items-center gap-1.5 mb-1"><BarChart3 size={13} className="text-white/30" /><p className="stat-label">{t("admin_indexes")}</p></div>
+                    <p className="stat-value">{stats.indexes.length}</p>
+                  </div>
+                  <div className={`stat-card cursor-pointer transition-colors ${pendingCount > 0 ? "hover:border-amber-500/30" : ""}`} onClick={() => pendingCount > 0 && goTab("proposals")}>
+                    <div className="flex items-center gap-1.5 mb-1"><AlertTriangle size={13} className="text-amber-400" /><p className="stat-label">{t("admin_pending")}</p></div>
+                    <p className={`stat-value ${pendingCount > 0 ? "text-amber-400" : "text-white"}`}>{pendingCount}</p>
+                    <p className="text-xs text-white/30">{t("admin_proposals_label")}</p>
+                  </div>
                 </div>
+              )}
+
+              <div className="space-y-2">
+                {alerts.length === 0 ? (
+                  <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-green-500/20 bg-green-500/5">
+                    <CheckCircle2 size={13} className="text-green-400 shrink-0" />
+                    <p className="text-green-400/70 text-xs">{t("admin_all_systems_ok")}</p>
+                    {alertsCheckedAt && <span className="ml-auto text-white/20 text-xs">{alertsCheckedAt}</span>}
+                  </div>
+                ) : alerts.map((alert) => {
+                  const cls: Record<string, string> = {
+                    critical: "border-red-500/40 bg-red-500/5 text-red-300",
+                    warning:  "border-amber-500/40 bg-amber-500/5 text-amber-300",
+                    info:     "border-blue-500/40 bg-blue-500/5 text-blue-300",
+                  };
+                  const icons: Record<string, React.ReactNode> = {
+                    critical: <AlertTriangle size={13} className="text-red-400 shrink-0 mt-0.5" />,
+                    warning:  <AlertTriangle size={13} className="text-amber-400 shrink-0 mt-0.5" />,
+                    info:     <Clock size={13} className="text-blue-400 shrink-0 mt-0.5" />,
+                  };
+                  return (
+                    <div key={alert.id} className={`flex items-start gap-3 px-4 py-3 rounded-xl border ${cls[alert.severity] ?? "border-white/10 bg-white/5 text-white/60"}`}>
+                      {icons[alert.severity]}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">{alert.title}</p>
+                        <p className="text-xs opacity-70 mt-0.5">{alert.message}</p>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              <div className="mb-4">
-                <p className="text-white/40 text-xs mb-2 uppercase tracking-wide">{t("admin_report_indexes")}</p>
-                <div className="space-y-2">
-                  {indexes.map(idx => (
-                    <div key={String(idx.id)} className="flex items-center justify-between p-2.5 rounded-lg bg-white/3">
+
+              <div className="card">
+                <h2 className="font-semibold text-white mb-3 flex items-center gap-2 text-sm">
+                  <Server size={14} className="text-brand-blue" /> {t("admin_agent_health")}
+                </h2>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { name: "Scout",           freq: t("admin_scout_schedule") },
+                    { name: "Rebalancer",      freq: t("admin_rebal_schedule") },
+                    { name: "NAV Updater",     freq: t("admin_nav_schedule") },
+                    { name: "Deposit Monitor", freq: t("admin_deposit_schedule") },
+                  ].map(agent => (
+                    <div key={agent.name} className="flex items-center gap-3 p-3 rounded-lg bg-white/3 border border-white/5">
+                      <div className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
                       <div>
-                        <p className="text-sm text-white font-medium">{String(idx.name)}</p>
-                        <p className="text-xs text-white/30">{t("admin_investors").replace("{n}", String(idx.subscriber_count ?? 0))} · NAV ${Number(idx.nav_usd ?? 1).toFixed(4)}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm text-white">{fmtUSD(Number(idx.aum_usd ?? 0))}</p>
-                        <p className={`text-xs ${Number(idx.return_30d_pct) >= 0 ? "text-green-400" : "text-red-400"}`}>
-                          {Number(idx.return_30d_pct) >= 0 ? "+" : ""}{Number(idx.return_30d_pct).toFixed(1)}% 30d
-                        </p>
+                        <p className="text-white text-xs font-medium">{agent.name}</p>
+                        <p className="text-white/30 text-[10px]">{agent.freq}</p>
                       </div>
                     </div>
                   ))}
                 </div>
+                <button onClick={() => goTab("agents")} className="mt-3 text-brand-blue text-xs hover:underline">
+                  {t("admin_manage_agents_link")}
+                </button>
               </div>
-              {activity.length > 0 && (
-                <div>
-                  <p className="text-white/40 text-xs mb-2 uppercase tracking-wide">{t("admin_report_activity")}</p>
-                  <div className="space-y-1">
-                    {activity.slice(0, 5).map((a, i) => (
-                      <div key={i} className="flex items-start gap-2 py-1.5 border-b border-white/5">
-                        <span className="text-white/30 text-xs font-mono w-20 shrink-0">{String(a.agent)}</span>
-                        <span className="text-white/60 text-xs truncate">{String(a.description)}</span>
+
+              {stats && stats.indexes.length > 0 && (
+                <div className="card">
+                  <h2 className="font-semibold text-white mb-3 flex items-center gap-2 text-sm">
+                    <Layers size={14} className="text-brand-blue" /> {t("admin_tab_indexes")}
+                  </h2>
+                  <div className="space-y-2">
+                    {stats.indexes.map(idx => (
+                      <div key={idx.id} className="flex items-center justify-between p-3 rounded-lg bg-white/3">
+                        <div>
+                          <p className="text-sm text-white font-medium">{idx.name}</p>
+                          <p className="text-xs text-white/30">{t("admin_investors_count").replace("{n}", String(idx.subscriber_count))}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm text-white font-medium">{fmtUSD(idx.aum_usd)}</p>
+                          <p className={`text-xs ${idx.return_30d_pct > 0 ? "text-green-400" : idx.return_30d_pct < 0 ? "text-red-400" : "text-white/50"}`}>
+                            {idx.return_30d_pct > 0 ? "+" : ""}{idx.return_30d_pct.toFixed(1)}% 30d
+                          </p>
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
-            </div>
-          );
-        })()}
 
-        {/* Proposals (global — index-level, not per-network) */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-white flex items-center gap-2">
-              {t("admin_proposals_title")}
-              {pending.length > 0 && (
-                <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 text-xs border border-amber-500/20">
-                  {t("admin_pending_badge", { n: pending.length })}
-                </span>
+              {movements.length > 0 && (
+                <div className="card">
+                  <h2 className="font-semibold text-white mb-3 flex items-center gap-2 text-sm">
+                    <Activity size={14} className="text-brand-blue" /> {t("admin_recent_activity")}
+                  </h2>
+                  <div className="space-y-1">
+                    {movements.slice(0, 6).map(m => {
+                      const typeColor: Record<string, string> = { deposit: "text-green-400", refund: "text-orange-400", withdrawal: "text-red-400", manual: "text-blue-400", other: "text-white/40" };
+                      return (
+                        <div key={m.id} className="flex items-center gap-3 py-2 border-b border-white/5 last:border-0">
+                          <span className={`text-xs font-medium w-16 shrink-0 ${typeColor[m.type] ?? "text-white/40"}`}>{m.type}</span>
+                          <span className="text-white text-xs">${m.amount_usd.toFixed(2)}</span>
+                          <span className="text-white/30 text-xs font-mono truncate flex-1">{m.wallet.slice(0, 8)}…{m.wallet.slice(-4)}</span>
+                          <span className="text-white/20 text-xs shrink-0">{new Date(m.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {movements.length > 6 && (
+                    <button onClick={() => goTab("investors")} className="mt-2 text-brand-blue text-xs hover:underline">
+                      {t("admin_view_all_link")}
+                    </button>
+                  )}
+                </div>
               )}
-              {approved.length > 0 && (
-                <span className="px-2 py-0.5 rounded-full bg-green-500/10 text-green-400 text-xs border border-green-500/20">
-                  {t("admin_ready_badge", { n: approved.length })}
-                </span>
-              )}
-            </h2>
-          </div>
+            </>
+          )}
 
-          {proposals.length === 0 ? (
-            <div className="card text-center py-10">
-              <p className="text-white/30 text-sm">{t("admin_no_proposals")}</p>
-              <p className="text-white/20 text-xs mt-1">{t("admin_no_proposals_sub")}</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {proposals.map((p) => (
-                <div key={p.id} className="card">
-                  <div className="flex flex-col md:flex-row md:items-start gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 flex-wrap mb-1">
-                        <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_BADGE[p.status] ?? STATUS_BADGE.pending}`}>{p.status}</span>
-                        <span className="text-xs text-white/40 font-mono">{p.index_name}</span>
-                        <span className="text-xs text-white/20">{t("admin_trigger_label")}: {p.trigger}</span>
-                        <span className="text-xs text-white/20 flex items-center gap-1"><Clock size={10} /> {timeAgo(p.proposed_at, t("time_m_ago"), t("time_h_ago"), t("time_d_ago"))}</span>
+          {/* ══════════════════════ PROPOSALS ═════════════════════════════ */}
+          {activeTab === "proposals" && (
+            <>
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <h2 className="font-semibold text-white flex items-center gap-2 text-sm">
+                  <Bell size={14} className="text-brand-blue" /> {t("admin_tab_proposals")}
+                  {pendingCount > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 text-xs border border-amber-500/20">
+                      {t("admin_pending_count").replace("{n}", String(pendingCount))}
+                    </span>
+                  )}
+                </h2>
+                <div className="flex items-center gap-1">
+                  {([
+                    { key: "pending",  label: t("admin_prop_filter_pending") },
+                    { key: "approved", label: t("admin_prop_filter_approved") },
+                    { key: "executed", label: t("admin_prop_filter_executed") },
+                    { key: "rejected", label: t("admin_prop_filter_rejected") },
+                    { key: "all",      label: t("admin_prop_filter_all") },
+                  ] as const).map(f => (
+                    <button key={f.key} onClick={() => setPropFilter(f.key)} className={`px-2.5 py-1 rounded-lg text-xs transition-all ${propFilter === f.key ? "bg-white/10 text-white" : "text-white/30 hover:text-white/60"}`}>
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button onClick={handleRunRebalancer} disabled={runningRebalancer} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-blue/10 border border-brand-blue/20 text-brand-blue hover:bg-brand-blue/20 text-xs transition-all disabled:opacity-40">
+                  <Play size={12} className={runningRebalancer ? "animate-pulse" : ""} />
+                  {runningRebalancer ? t("admin_running_rebalancer") : t("admin_run_rebalancer_btn")}
+                </button>
+                {rebalancerMsg && <p className="text-brand-blue text-xs">{rebalancerMsg}</p>}
+              </div>
+
+              {(() => {
+                const filtered = proposals.filter(p => propFilter === "all" || p.status === propFilter);
+                if (filtered.length === 0) return (
+                  <div className="card text-center py-10">
+                    <p className="text-white/30 text-sm">{t("admin_no_proposals_filter")} &ldquo;{propFilter}&rdquo;</p>
+                    <p className="text-white/20 text-xs mt-1">{t("admin_scout_daily_note")}</p>
+                  </div>
+                );
+                return (
+                  <div className="space-y-3">
+                    {filtered.map(p => (
+                      <div key={p.id} className={`card ${p.status === "pending" ? "border border-amber-500/20" : ""}`}>
+                        <div className="flex flex-col md:flex-row md:items-start gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                              <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_BADGE[p.status] ?? STATUS_BADGE.pending}`}>{p.status}</span>
+                              <span className="text-xs text-white/60 font-medium">{p.index_name}</span>
+                              <span className="text-xs text-white/25">{t("admin_trigger_label")}: {p.trigger}</span>
+                              <span className="text-xs text-white/25 flex items-center gap-1"><Clock size={10} /> {timeAgo(p.proposed_at)}</span>
+                            </div>
+                            <p className="text-sm text-white/60 leading-relaxed">{p.ai_rationale}</p>
+                            {executeResult[p.id] && (
+                              <p className={`text-xs mt-2 ${executeResult[p.id].startsWith("Error") ? "text-red-400" : "text-green-400"}`}>
+                                {executeResult[p.id]}
+                              </p>
+                            )}
+                            {p.changes && p.changes.length > 0 && (
+                              <div className="mt-3">
+                                <button onClick={() => setExpanded(expanded === p.id ? null : p.id)} className="text-xs text-brand-blue hover:underline">
+                                  {expanded === p.id
+                                    ? t("admin_hide_changes")
+                                    : t("admin_show_changes").replace("{n}", String(p.changes.length))}
+                                </button>
+                                {expanded === p.id && (
+                                  <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-2">
+                                    {p.changes.map((c, i) => (
+                                      <div key={i} className="bg-white/3 rounded-lg p-2 text-xs">
+                                        <span className="text-white font-mono">{c.symbol}</span>
+                                        <span className="text-white/30 ml-2">{c.action}</span>
+                                        {c.old_weight !== undefined && <div className="text-white/30 mt-0.5">{c.old_weight}% → <span className="text-white">{c.new_weight}%</span></div>}
+                                        {c.rationale && <p className="text-white/20 mt-1 leading-tight">{c.rationale}</p>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex flex-col gap-2 shrink-0">
+                            {p.status === "pending" && (
+                              <div className="flex gap-2">
+                                <button onClick={() => handleReject(p.id)} disabled={actionId === p.id} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/20 text-red-400 hover:bg-red-500/10 text-xs transition-all disabled:opacity-40">
+                                  <XCircle size={13} /> {t("admin_reject")}
+                                </button>
+                                <button onClick={() => handleApprove(p.id)} disabled={actionId === p.id} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400 hover:bg-green-500/20 text-xs transition-all disabled:opacity-40">
+                                  <CheckCircle2 size={13} /> {t("admin_approve")}
+                                </button>
+                              </div>
+                            )}
+                            {(p.status === "approved" || p.status === "pending") && (
+                              <div className="flex gap-2">
+                                <button onClick={() => handleExecute(p.id, true)} disabled={executingId === p.id} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-500/20 text-purple-400 hover:bg-purple-500/10 text-xs transition-all disabled:opacity-40">
+                                  <Zap size={12} /> {t("admin_dry_run")}
+                                </button>
+                                <button onClick={() => handleExecute(p.id, false)} disabled={executingId === p.id} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-blue/10 border border-brand-blue/20 text-brand-blue hover:bg-brand-blue/20 text-xs transition-all disabled:opacity-40">
+                                  <Play size={12} className={executingId === p.id ? "animate-pulse" : ""} />
+                                  {executingId === p.id ? t("admin_executing") : t("admin_execute")}
+                                </button>
+                              </div>
+                            )}
+                            {p.status !== "pending" && p.status !== "approved" && (
+                              <div className="text-xs text-white/20 space-y-0.5">
+                                {p.approved_at && <p>{t("admin_approved_time").replace("{t}", timeAgo(p.approved_at))}</p>}
+                                {p.executed_at && <p>{t("admin_executed_time").replace("{t}", timeAgo(p.executed_at))}</p>}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-sm text-white/60 leading-relaxed">{p.ai_rationale}</p>
-                      {executeResult[p.id] && (
-                        <p className={`text-xs mt-2 ${executeResult[p.id].startsWith("Error") ? "text-red-400" : "text-green-400"}`}>
-                          {executeResult[p.id]}
-                        </p>
+                    ))}
+                  </div>
+                );
+              })()}
+            </>
+          )}
+
+          {/* ══════════════════════ INDEXES ═══════════════════════════════ */}
+          {activeTab === "indexes" && (
+            <>
+              <h2 className="font-semibold text-white flex items-center gap-2 text-sm">
+                <Layers size={14} className="text-brand-blue" /> {t("admin_indexes_net").replace("{net}", isMainnet ? t("admin_network_mainnet") : t("admin_network_testnet"))}
+              </h2>
+              {!stats ? (
+                <p className="text-white/30 text-sm">{t("admin_loading")}</p>
+              ) : (
+                <div className="space-y-4">
+                  {stats.indexes.map(idx => (
+                    <div key={idx.id} className="card">
+                      <div className="flex items-start justify-between mb-4">
+                        <div>
+                          <h3 className="text-white font-semibold">{idx.name}</h3>
+                          <p className="text-white/25 text-xs font-mono mt-0.5">{idx.id}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-white font-bold text-lg">{fmtUSD(idx.aum_usd)}</p>
+                          <p className={`text-xs ${idx.return_30d_pct > 0 ? "text-green-400" : idx.return_30d_pct < 0 ? "text-red-400" : "text-white/50"}`}>
+                            {idx.return_30d_pct > 0 ? "+" : ""}{idx.return_30d_pct.toFixed(2)}% 30d
+                          </p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3 text-xs">
+                        <div className="bg-white/3 rounded-lg p-2.5">
+                          <p className="text-white/30 mb-0.5">{t("admin_tab_investors_tab")}</p>
+                          <p className="text-white font-medium">{idx.subscriber_count}</p>
+                        </div>
+                        <div className="bg-white/3 rounded-lg p-2.5">
+                          <p className="text-white/30 mb-0.5">{t("admin_total_aum")}</p>
+                          <p className="text-white font-medium">{fmtUSD(idx.aum_usd)}</p>
+                        </div>
+                        <div className="bg-white/3 rounded-lg p-2.5">
+                          <p className="text-white/30 mb-0.5">30d</p>
+                          <p className={`font-medium ${idx.return_30d_pct > 0 ? "text-green-400" : idx.return_30d_pct < 0 ? "text-red-400" : "text-white"}`}>
+                            {idx.return_30d_pct > 0 ? "+" : ""}{idx.return_30d_pct.toFixed(2)}%
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ══════════════════════ TREASURY ══════════════════════════════ */}
+          {activeTab === "treasury" && (
+            <>
+              <h2 className="font-semibold text-white flex items-center gap-2 text-sm">
+                <Wallet size={14} className="text-brand-blue" /> {t("admin_treasury_title")}
+              </h2>
+
+              <div className="card">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Fuel size={15} className="text-amber-400" />
+                    <h3 className="font-semibold text-white text-sm">{t("admin_fund_wallet_label")}</h3>
+                    <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${isMainnet ? "text-green-400 bg-green-500/10 border-green-500/20" : "text-yellow-400 bg-yellow-500/10 border-yellow-500/20"}`}>
+                      {isMainnet ? "🟢 Base Mainnet" : "🟡 Base Sepolia"}
+                    </span>
+                  </div>
+                  <button onClick={() => { setFundWallet(null); loadAll(networkMode); }} className="text-white/30 hover:text-white transition-colors">
+                    <RefreshCw size={13} className={loadingFundWallet ? "animate-spin" : ""} />
+                  </button>
+                </div>
+                {!fundWallet && loadingFundWallet && <p className="text-white/30 text-sm text-center py-4">{t("admin_loading")}</p>}
+                {fundWallet && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-white/3 border border-white/5">
+                      <div className="flex items-center gap-2">
+                        <Fuel size={14} className={ethColor} />
+                        <span className="text-white/60 text-sm">{t("admin_eth_gas")}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className={`font-bold text-sm ${ethColor}`}>{fundWallet.eth_balance !== null ? fundWallet.eth_balance.toFixed(6) : "—"} ETH</span>
+                        {ethBal < 0.01 && <p className="text-red-400 text-xs">{t("admin_eth_critical_simple")}</p>}
+                        {ethBal >= 0.01 && ethBal < 0.05 && <p className="text-amber-400 text-xs">{t("admin_eth_low_simple")}</p>}
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-white/3 border border-white/5">
+                      <div className="flex items-center gap-2">
+                        <DollarSign size={14} className="text-white/40" />
+                        <span className="text-white/60 text-sm">{t("admin_usdc_collected")}</span>
+                      </div>
+                      <span className="text-white font-bold text-sm">{fundWallet.usdc_balance !== null ? `$${fundWallet.usdc_balance.toFixed(2)}` : "—"}</span>
+                    </div>
+                    <div className={`rounded-xl border p-3 ${isMainnet ? "border-green-500/20 bg-green-500/5" : "border-yellow-500/20 bg-yellow-500/5"}`}>
+                      <div className="flex items-center gap-1.5 mb-3">
+                        <Download size={12} className={isMainnet ? "text-green-400" : "text-yellow-400"} />
+                        <span className={`text-xs font-semibold ${isMainnet ? "text-green-400" : "text-yellow-400"}`}>
+                          {t("admin_deposit_eth_gas")} ({isMainnet ? "Base" : "Base Sepolia"})
+                        </span>
+                      </div>
+                      <div className="flex gap-4 items-center">
+                        <div className="shrink-0 rounded-lg overflow-hidden border border-white/10 bg-white p-1.5">
+                          <QRCodeSVG value={`ethereum:${fundWallet.address}@${isMainnet ? CHAIN_BASE_MAINNET : CHAIN_BASE_SEPOLIA}`} size={80} bgColor="#ffffff" fgColor="#000000" level="M" />
+                        </div>
+                        <div className="flex-1 min-w-0 space-y-2">
+                          <p className="text-white/50 font-mono text-xs truncate">{fundWallet.address}</p>
+                          <div className="flex gap-2 flex-wrap">
+                            <button onClick={copyFundAddress} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/60 hover:text-white text-xs transition-all">
+                              <Copy size={11} /> {copiedAddr ? t("admin_copied") : t("admin_copy")}
+                            </button>
+                            {fundWallet.basescan_url && (
+                              <a href={fundWallet.basescan_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/60 hover:text-white text-xs transition-all">
+                                <ExternalLink size={11} /> Basescan
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="card">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Wallet size={15} className="text-brand-blue" />
+                    <h3 className="font-semibold text-white text-sm">{t("admin_sodex_portfolio_title")}</h3>
+                    {!isMainnet && <span className="text-xs text-white/30 italic">{t("admin_mainnet_only_note")}</span>}
+                  </div>
+                  <button onClick={() => { setLoadingPortfolio(true); adminApi.getPortfolio(session.address, session.message, session.signature).then(d => { setPortfolio(d); setLoadingPortfolio(false); }).catch(() => setLoadingPortfolio(false)); }} className="text-white/30 hover:text-white transition-colors">
+                    <RefreshCw size={13} className={loadingPortfolio ? "animate-spin" : ""} />
+                  </button>
+                </div>
+                {!portfolio && !loadingPortfolio && (
+                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4 text-center">
+                    <p className="text-amber-400 text-sm">{t("admin_sodex_not_configured")}</p>
+                  </div>
+                )}
+                {portfolio && portfolio.configured && (
+                  <>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-white/40 text-sm">{t("admin_total_value")}</span>
+                      <span className="text-white font-bold text-lg">{fmtUSD(portfolio.total_usd)}</span>
+                    </div>
+                    <div className="space-y-2">
+                      {portfolio.positions.filter(p => p.usd_value > 0).map(pos => (
+                        <div key={pos.asset} className="flex items-center justify-between p-2.5 rounded-lg bg-white/3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-white font-mono text-sm font-medium w-16">{pos.asset}</span>
+                            <div className="w-20 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                              <div className="h-full bg-brand-blue rounded-full" style={{ width: `${Math.min(pos.weight_pct, 100)}%` }} />
+                            </div>
+                            <span className="text-white/40 text-xs">{pos.weight_pct.toFixed(1)}%</span>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm text-white">{fmtUSD(pos.usd_value)}</p>
+                            <p className="text-xs text-white/30">{pos.amount.toFixed(6)} {pos.asset}</p>
+                          </div>
+                        </div>
+                      ))}
+                      {portfolio.positions.filter(p => p.usd_value > 0).length === 0 && (
+                        <p className="text-white/30 text-sm text-center py-3">{t("admin_no_positions_short")}</p>
                       )}
-                      {p.changes && p.changes.length > 0 && (
-                        <div className="mt-3">
-                          <button onClick={() => setExpanded(expanded === p.id ? null : p.id)}
-                            className="text-xs text-brand-blue hover:underline">
-                            {expanded === p.id ? t("admin_hide_changes") : t("admin_show_changes", { n: p.changes.length })}
+                    </div>
+                    <p className="text-xs text-white/15 font-mono mt-3">{portfolio.wallet}</p>
+                  </>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* ══════════════════════ INVESTORS ═════════════════════════════ */}
+          {activeTab === "investors" && (
+            <>
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <h2 className="font-semibold text-white flex items-center gap-2 text-sm">
+                  <Users size={14} className="text-brand-blue" /> {t("admin_movements_title")}
+                </h2>
+                <div className="flex items-center gap-1">
+                  {([
+                    { key: "all",        label: t("admin_filter_all") },
+                    { key: "deposit",    label: t("admin_filter_deposit") },
+                    { key: "refund",     label: t("admin_filter_refund") },
+                    { key: "withdrawal", label: t("admin_filter_withdrawal") },
+                  ] as const).map(f => (
+                    <button key={f.key} onClick={() => setMovFilter(f.key)} className={`px-2.5 py-1 rounded-lg text-xs transition-all ${movFilter === f.key ? "bg-white/10 text-white" : "text-white/30 hover:text-white/60"}`}>
+                      {f.label}
+                    </button>
+                  ))}
+                  <button onClick={() => { setLoadingMovements(true); adminApi.getMovements(session.address, session.message, session.signature, networkMode).then(d => setMovements((d?.movements ?? []) as Movement[])).catch(() => {}).finally(() => setLoadingMovements(false)); }} className="text-white/30 hover:text-white ml-1 transition-colors">
+                    <RefreshCw size={12} className={loadingMovements ? "animate-spin" : ""} />
+                  </button>
+                </div>
+              </div>
+
+              {(() => {
+                const filtered = movements.filter(m => movFilter === "all" || m.type === movFilter);
+                if (!loadingMovements && filtered.length === 0) return (
+                  <div className="card text-center py-10">
+                    <p className="text-white/30 text-sm">{t("admin_no_movements_filter")} &ldquo;{movFilter}&rdquo;</p>
+                  </div>
+                );
+                return (
+                  <div className="space-y-2">
+                    {filtered.map(m => {
+                      const typeColor: Record<string, string> = { deposit: "text-green-400 bg-green-500/10 border-green-500/20", refund: "text-orange-400 bg-orange-500/10 border-orange-500/20", withdrawal: "text-red-400 bg-red-500/10 border-red-500/20", manual: "text-blue-400 bg-blue-500/10 border-blue-500/20", other: "text-white/40 bg-white/5 border-white/10" };
+                      const isExp = expandedMovement === m.id;
+                      return (
+                        <div key={m.id} className="rounded-lg bg-white/3 overflow-hidden border border-white/5">
+                          <button onClick={() => setExpandedMovement(isExp ? null : m.id)} className="w-full flex items-center gap-3 p-3 hover:bg-white/5 transition-colors text-left">
+                            <span className={`text-xs px-2 py-0.5 rounded border font-medium shrink-0 ${typeColor[m.type] ?? "text-white/40 bg-white/5 border-white/10"}`}>{m.type}</span>
+                            <span className="text-white font-medium text-sm">${m.amount_usd.toFixed(2)}</span>
+                            <span className="text-xs text-white/40 font-mono truncate flex-1">{m.wallet.slice(0, 8)}…{m.wallet.slice(-4)}</span>
+                            {m.type === "refund" && (
+                              <span className={`text-xs shrink-0 ${m.refund_ok === true ? "text-green-400" : m.refund_ok === false ? "text-red-400" : "text-yellow-400"}`}>
+                                {m.refund_ok === true ? t("admin_refund_status_ok") : m.refund_ok === false ? t("admin_refund_status_failed") : t("admin_refund_status_pending")}
+                              </span>
+                            )}
+                            <span className="text-xs text-white/25 shrink-0">{new Date(m.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
                           </button>
-                          {expanded === p.id && (
-                            <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-2">
-                              {p.changes.map((c, i) => (
-                                <div key={i} className="bg-white/3 rounded-lg p-2 text-xs">
-                                  <span className="text-white font-mono">{c.symbol}</span>
-                                  <span className="text-white/30 ml-2">{c.action}</span>
-                                  {c.old_weight !== undefined && (
-                                    <div className="text-white/30 mt-0.5">{c.old_weight}% → <span className="text-white">{c.new_weight}%</span></div>
-                                  )}
-                                  {c.rationale && <p className="text-white/20 mt-1 leading-tight">{c.rationale}</p>}
-                                </div>
-                              ))}
+                          {isExp && (
+                            <div className="px-4 pb-3 space-y-1.5 border-t border-white/5 pt-2">
+                              {m.index_id && <p className="text-xs text-white/40"><span className="text-white/25">{t("admin_index_overview")}: </span>{m.index_id}</p>}
+                              {m.tx_hash && (
+                                <p className="text-xs text-white/40 flex items-center gap-1.5">
+                                  <span className="text-white/25">Tx: </span>
+                                  <span className="font-mono truncate">{m.tx_hash.slice(0, 20)}…</span>
+                                  {m.basescan && <a href={m.basescan} target="_blank" rel="noopener noreferrer" className="text-brand-blue hover:text-blue-300 shrink-0">↗</a>}
+                                </p>
+                              )}
+                              {m.refund_tx && (
+                                <p className="text-xs text-white/40 flex items-center gap-1.5">
+                                  <span className="text-white/25">Refund Tx: </span>
+                                  <span className="font-mono truncate">{m.refund_tx.slice(0, 20)}…</span>
+                                  {m.refund_basescan && <a href={m.refund_basescan} target="_blank" rel="noopener noreferrer" className="text-brand-blue hover:text-blue-300 shrink-0">↗</a>}
+                                </p>
+                              )}
+                              {m.description && <p className="text-xs text-white/30 leading-relaxed">{m.description}</p>}
                             </div>
                           )}
                         </div>
-                      )}
-                    </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </>
+          )}
 
-                    <div className="flex flex-col gap-2 shrink-0">
-                      {p.status === "pending" && (
-                        <div className="flex gap-2">
-                          <button onClick={() => handleReject(p.id)} disabled={actionId === p.id}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/20 text-red-400 hover:bg-red-500/10 text-xs transition-all disabled:opacity-40">
-                            <XCircle size={13} /> {t("admin_reject")}
-                          </button>
-                          <button onClick={() => handleApprove(p.id)} disabled={actionId === p.id}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400 hover:bg-green-500/20 text-xs transition-all disabled:opacity-40">
-                            <CheckCircle2 size={13} /> {t("admin_approve")}
-                          </button>
+          {/* ══════════════════════ TRADES ════════════════════════════════ */}
+          {activeTab === "trades" && (
+            <>
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold text-white flex items-center gap-2 text-sm">
+                  <ArrowRightLeft size={14} className="text-brand-blue" /> {t("admin_trades_sodex_title")}
+                </h2>
+                <button onClick={() => { setLoadingTrades(true); adminApi.getTrades(session.address, session.message, session.signature, 50).then(d => { setTrades(Array.isArray(d) ? d : []); setLoadingTrades(false); }).catch(() => setLoadingTrades(false)); }} className="text-white/30 hover:text-white transition-colors">
+                  <RefreshCw size={13} className={loadingTrades ? "animate-spin" : ""} />
+                </button>
+              </div>
+              {loadingTrades && trades.length === 0 && <p className="text-white/30 text-sm text-center py-6">{t("admin_loading")}</p>}
+              {!loadingTrades && trades.length === 0 && (
+                <div className="card text-center py-10">
+                  <p className="text-white/30 text-sm">{t("admin_no_trades")}</p>
+                  <p className="text-white/20 text-xs mt-1">{t("admin_no_trades_sub2")}</p>
+                </div>
+              )}
+              {trades.length > 0 && (
+                <div className="card overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-white/20 border-b border-white/5">
+                        <th className="text-left pb-2 font-normal">{t("admin_trade_symbol")}</th>
+                        <th className="text-left pb-2 font-normal">{t("admin_trade_side")}</th>
+                        <th className="text-right pb-2 font-normal">{t("admin_trade_qty")}</th>
+                        <th className="text-right pb-2 font-normal">{t("admin_trade_price")}</th>
+                        <th className="text-right pb-2 font-normal">{t("admin_trade_status")}</th>
+                        <th className="text-right pb-2 font-normal">{t("admin_trade_time")}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/3">
+                      {trades.map((tr, i) => (
+                        <tr key={tr.id ?? i}>
+                          <td className="py-2 font-mono text-white">{String(tr.symbol ?? tr.s ?? "—")}</td>
+                          <td className={`py-2 font-medium ${String(tr.side).toUpperCase() === "BUY" ? "text-green-400" : "text-red-400"}`}>{String(tr.side ?? "—").toUpperCase()}</td>
+                          <td className="py-2 text-right text-white/60">{String(tr.quantity ?? tr.qty ?? "—")}</td>
+                          <td className="py-2 text-right text-white/60">{tr.price ? `$${tr.price}` : "—"}</td>
+                          <td className="py-2 text-right">
+                            <span className={`px-1.5 py-0.5 rounded text-xs ${String(tr.status) === "placed" || String(tr.status) === "filled" ? "text-green-400" : "text-white/40"}`}>{String(tr.status ?? "—")}</span>
+                          </td>
+                          <td className="py-2 text-right text-white/30">{tr.created_at ? timeAgo(String(tr.created_at)) : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ══════════════════════ AGENTS ════════════════════════════════ */}
+          {activeTab === "agents" && (
+            <>
+              <h2 className="font-semibold text-white flex items-center gap-2 text-sm">
+                <Cpu size={14} className="text-brand-blue" /> {t("admin_agents_controls_title")}
+              </h2>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="card">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
+                    <h3 className="font-semibold text-white text-sm">Scout</h3>
+                    <span className="text-white/25 text-xs ml-auto">{t("admin_scout_schedule")}</span>
+                  </div>
+                  <p className="text-white/35 text-xs mb-4 leading-relaxed">{t("admin_scout_agent_desc")}</p>
+                  <button onClick={handleRunScout} disabled={runningScout} className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white/70 hover:text-white hover:bg-white/8 text-sm transition-all disabled:opacity-40">
+                    <Play size={13} className={runningScout ? "animate-pulse text-green-400" : ""} />
+                    {runningScout ? t("admin_running_scout") : t("admin_run_scout")}
+                  </button>
+                  {scoutMsg && <p className={`text-xs mt-2 ${scoutMsg.startsWith("Erro") ? "text-red-400" : "text-green-400"}`}>{scoutMsg}</p>}
+                </div>
+
+                <div className="card">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
+                    <h3 className="font-semibold text-white text-sm">Rebalancer</h3>
+                    <span className="text-white/25 text-xs ml-auto">{t("admin_rebal_schedule")}</span>
+                  </div>
+                  <p className="text-white/35 text-xs mb-4 leading-relaxed">{t("admin_rebalancer_agent_desc")}</p>
+                  <button onClick={handleRunRebalancer} disabled={runningRebalancer} className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white/70 hover:text-white hover:bg-white/8 text-sm transition-all disabled:opacity-40">
+                    <Play size={13} className={runningRebalancer ? "animate-pulse text-brand-blue" : ""} />
+                    {runningRebalancer ? t("admin_running_rebalancer") : t("admin_run_rebalancer_now")}
+                  </button>
+                  {rebalancerMsg && <p className={`text-xs mt-2 ${rebalancerMsg.startsWith("Erro") ? "text-red-400" : "text-brand-blue"}`}>{rebalancerMsg}</p>}
+                </div>
+
+                <div className="card">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
+                    <h3 className="font-semibold text-white text-sm">NAV Updater</h3>
+                    <span className="text-white/25 text-xs ml-auto">{t("admin_nav_schedule")}</span>
+                  </div>
+                  <p className="text-white/35 text-xs mb-4 leading-relaxed">{t("admin_nav_updater_agent_desc")}</p>
+                  <button onClick={handleRunNavUpdate} disabled={runningNavUpdate} className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white/70 hover:text-white hover:bg-white/8 text-sm transition-all disabled:opacity-40">
+                    <RefreshCw size={13} className={runningNavUpdate ? "animate-spin text-amber-400" : ""} />
+                    {runningNavUpdate ? t("admin_running_nav") : t("admin_run_nav_now")}
+                  </button>
+                  {navUpdateMsg && <p className={`text-xs mt-2 ${navUpdateMsg.startsWith("Erro") ? "text-red-400" : "text-green-400"}`}>{navUpdateMsg}</p>}
+                </div>
+
+                <div className="card">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
+                    <h3 className="font-semibold text-white text-sm">{t("admin_report_title")}</h3>
+                    <span className="text-white/25 text-xs ml-auto">{t("admin_on_demand")}</span>
+                  </div>
+                  <p className="text-white/35 text-xs mb-4 leading-relaxed">{t("admin_report_agent_desc")}</p>
+                  <button onClick={handleReport} disabled={loadingReport} className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white/70 hover:text-white hover:bg-white/8 text-sm transition-all disabled:opacity-40">
+                    <BarChart3 size={13} className={loadingReport ? "animate-pulse text-blue-400" : ""} />
+                    {loadingReport ? t("admin_generating") : t("admin_generate_report")}
+                  </button>
+                </div>
+              </div>
+
+              {showReport && report && (() => {
+                const p = report.platform as Record<string, unknown>;
+                const indexes = report.indexes as Array<Record<string, unknown>>;
+                const rProps = report.proposals as Record<string, unknown>;
+                const byStatus = rProps.by_status as Record<string, number> ?? {};
+                return (
+                  <div className="card">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <BarChart3 size={15} className="text-brand-blue" />
+                        <h3 className="font-semibold text-white text-sm">{t("admin_report_title")}</h3>
+                        <span className="text-white/20 text-xs">{String(report.generated_at ?? "").replace("T", " ").slice(0, 19)} UTC</span>
+                      </div>
+                      <button onClick={() => setShowReport(false)} className="text-white/30 hover:text-white/60 text-xs border border-white/10 rounded px-2 py-1">{t("admin_report_close")}</button>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+                      {[
+                        { label: t("admin_total_aum"),             value: fmtUSD(Number(p.total_aum_usd ?? 0)) },
+                        { label: t("admin_subscribers"),            value: String(p.total_investors ?? 0) },
+                        { label: t("admin_pro_label"),              value: String(p.pro_investors ?? 0) },
+                        { label: t("admin_report_proposals_total"), value: String(rProps.total ?? 0) },
+                      ].map(s => (
+                        <div key={s.label} className="bg-white/3 rounded-xl p-3 border border-white/5">
+                          <p className="text-white/40 text-xs mb-1">{s.label}</p>
+                          <p className="text-white font-bold">{s.value}</p>
                         </div>
-                      )}
-                      {(p.status === "approved" || p.status === "pending") && (
-                        <div className="flex gap-2">
-                          <button onClick={() => handleExecute(p.id, true)} disabled={executingId === p.id}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-500/20 text-purple-400 hover:bg-purple-500/10 text-xs transition-all disabled:opacity-40">
-                            <Zap size={12} /> {t("admin_dry_run")}
-                          </button>
-                          <button onClick={() => handleExecute(p.id, false)} disabled={executingId === p.id}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-blue/10 border border-brand-blue/20 text-brand-blue hover:bg-brand-blue/20 text-xs transition-all disabled:opacity-40">
-                            <Play size={12} className={executingId === p.id ? "animate-pulse" : ""} />
-                            {executingId === p.id ? t("admin_executing") : t("admin_execute")}
-                          </button>
-                        </div>
-                      )}
-                      {p.status !== "pending" && p.status !== "approved" && (
-                        <div className="text-xs text-white/20">
-                          {p.approved_at && <p>{t("admin_approved_time").replace("{t}", timeAgo(p.approved_at, t("time_m_ago"), t("time_h_ago"), t("time_d_ago")))}</p>}
-                          {p.executed_at && <p>{t("admin_executed_time").replace("{t}", timeAgo(p.executed_at, t("time_m_ago"), t("time_h_ago"), t("time_d_ago")))}</p>}
-                        </div>
-                      )}
+                      ))}
+                    </div>
+                    <div className="mb-4">
+                      <p className="text-white/30 text-xs mb-2 uppercase tracking-wide">{t("admin_report_proposals_status")}</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {Object.entries(byStatus).map(([k, v]) => (
+                          <span key={k} className={`text-xs px-2 py-1 rounded border ${STATUS_BADGE[k] ?? "border-white/10 text-white/40"}`}>{k}: {v}</span>
+                        ))}
+                        {Object.keys(byStatus).length === 0 && <p className="text-white/30 text-xs">{t("admin_report_no_proposals")}</p>}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-white/30 text-xs mb-2 uppercase tracking-wide">{t("admin_report_indexes")}</p>
+                      <div className="space-y-2">
+                        {indexes.map(idx => (
+                          <div key={String(idx.id)} className="flex items-center justify-between p-2.5 rounded-lg bg-white/3">
+                            <div>
+                              <p className="text-sm text-white font-medium">{String(idx.name)}</p>
+                              <p className="text-xs text-white/30">{String(idx.subscriber_count ?? 0)} · NAV ${Number(idx.nav_usd ?? 1).toFixed(4)}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm text-white">{fmtUSD(Number(idx.aum_usd ?? 0))}</p>
+                              <p className={`text-xs ${Number(idx.return_30d_pct) > 0 ? "text-green-400" : Number(idx.return_30d_pct) < 0 ? "text-red-400" : "text-white/50"}`}>
+                                {Number(idx.return_30d_pct) > 0 ? "+" : ""}{Number(idx.return_30d_pct).toFixed(1)}% 30d
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                );
+              })()}
 
-        {/* Trade History */}
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <ArrowRightLeft size={16} className="text-brand-blue" />
-              <h2 className="font-semibold text-white">{t("admin_trades_title")} — SoDEX</h2>
-            </div>
-            <button onClick={() => { setLoadingTrades(true); adminApi.getTrades(session.address, session.message, session.signature, 20).then(d => { setTrades(Array.isArray(d) ? d : []); setLoadingTrades(false); }).catch(() => setLoadingTrades(false)); }} className="text-white/30 hover:text-white transition-colors">
-              <RefreshCw size={13} className={loadingTrades ? "animate-spin" : ""} />
-            </button>
-          </div>
-          {loadingTrades && trades.length === 0 && <p className="text-white/30 text-sm text-center py-4">{t("admin_loading_trades")}</p>}
-          {!loadingTrades && trades.length === 0 && (
-            <div className="text-center py-6">
-              <p className="text-white/30 text-sm">{t("admin_no_trades")}</p>
-              <p className="text-white/20 text-xs mt-1">{t("admin_no_trades_sub")}</p>
-            </div>
-          )}
-          {trades.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-white/20 border-b border-white/5">
-                    <th className="text-left pb-2 font-normal">{t("admin_trade_symbol")}</th>
-                    <th className="text-left pb-2 font-normal">{t("admin_trade_side")}</th>
-                    <th className="text-right pb-2 font-normal">{t("admin_trade_qty")}</th>
-                    <th className="text-right pb-2 font-normal">{t("admin_trade_price")}</th>
-                    <th className="text-right pb-2 font-normal">{t("admin_trade_status")}</th>
-                    <th className="text-right pb-2 font-normal">{t("admin_trade_time")}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/3">
-                  {trades.map((tr, i) => (
-                    <tr key={tr.id ?? i}>
-                      <td className="py-2 font-mono text-white">{String(tr.symbol ?? tr.s ?? "—")}</td>
-                      <td className={`py-2 font-medium ${String(tr.side).toUpperCase() === "BUY" ? "text-green-400" : "text-red-400"}`}>
-                        {String(tr.side ?? "—").toUpperCase()}
-                      </td>
-                      <td className="py-2 text-right text-white/60">{String(tr.quantity ?? tr.qty ?? "—")}</td>
-                      <td className="py-2 text-right text-white/60">{tr.price ? `$${tr.price}` : "—"}</td>
-                      <td className="py-2 text-right">
-                        <span className={`px-1.5 py-0.5 rounded text-xs ${String(tr.status) === "placed" || String(tr.status) === "filled" ? "text-green-400" : "text-white/40"}`}>
-                          {String(tr.status ?? "—")}
-                        </span>
-                      </td>
-                      <td className="py-2 text-right text-white/30">{tr.created_at ? timeAgo(String(tr.created_at), t("time_m_ago"), t("time_h_ago"), t("time_d_ago")) : "—"}</td>
-                    </tr>
+              <div className="card">
+                <h3 className="font-semibold text-white mb-3 flex items-center gap-2 text-sm">
+                  <Clock size={14} className="text-white/40" /> {t("admin_scheduler_title")}
+                </h3>
+                <div className="space-y-2">
+                  {[
+                    ["Scout",            t("admin_scout_schedule"),   t("admin_scout_agent_desc").split(".")[0]],
+                    ["Rebalancer",       t("admin_rebal_schedule"),   t("admin_rebalancer_agent_desc").split(".")[0]],
+                    ["NAV Updater",      t("admin_nav_schedule"),     t("admin_nav_updater_agent_desc").split(".")[0]],
+                    ["Deposit Monitor",  t("admin_deposit_schedule"), "USDC on Base"],
+                    ["Fee Manager",      "1st/month 08:00 UTC",       "2%/yr mgmt + 20% perf HWM"],
+                  ].map(([name, freq, desc]) => (
+                    <div key={name} className="flex items-start gap-3 py-2 border-b border-white/5 last:border-0">
+                      <div className="w-2 h-2 rounded-full bg-green-400 mt-1.5 shrink-0" />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-white text-xs font-medium">{name}</span>
+                          <span className="text-white/30 text-xs">{freq}</span>
+                        </div>
+                        <p className="text-white/20 text-xs mt-0.5">{desc}</p>
+                      </div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Index Overview */}
-        {stats && stats.indexes.length > 0 && (
-          <div className="card">
-            <h2 className="font-semibold text-white mb-4">{t("admin_index_overview")}</h2>
-            <div className="space-y-2">
-              {stats.indexes.map((idx) => (
-                <div key={idx.id} className="flex items-center justify-between p-3 rounded-lg bg-white/3">
-                  <div>
-                    <p className="text-sm text-white font-medium">{idx.name}</p>
-                    <p className="text-xs text-white/30">{t("admin_investors", { n: idx.subscriber_count })}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm text-white font-medium">{fmtUSD(idx.aum_usd)}</p>
-                    <p className={`text-xs ${idx.return_30d_pct >= 0 ? "text-green-400" : "text-red-400"}`}>
-                      {idx.return_30d_pct >= 0 ? "+" : ""}{idx.return_30d_pct.toFixed(1)}% 30d
-                    </p>
-                  </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
+              </div>
+            </>
+          )}
 
+        </div>
       </main>
     </div>
   );

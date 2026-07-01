@@ -16,6 +16,7 @@ export interface TokenConstituent {
   price_change_30d: number;
   ai_rationale: string;
   added_at: string;
+  in_basket: boolean;
   ejection_risk_pct: number; // 0-100: % do threshold de ejeção (-40% em 7d) atingido
 }
 

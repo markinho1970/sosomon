@@ -53,6 +53,11 @@ async def _process_index(idx: AlphaIndex, sentiment_score: float, target_buffer:
     """Evaluate a single index for rebalance needs."""
     logger.info(f"Rebalancer: evaluating index={idx.id}")
 
+    # Não processa índices sem AUM — evita alterar cestas sem investidores ativos
+    if not (idx.aum_usd or 0) > 0:
+        logger.info(f"Rebalancer: skipping {idx.id} — AUM=$0 (sem investidores ativos)")
+        return
+
     constituents = db.query(IndexConstituent).filter(
         IndexConstituent.index_id == idx.id
     ).all()
@@ -236,9 +241,14 @@ SCOUT AGENT RECOMMENDATIONS (from last daily screening):
 CONSTRAINTS:
 - Target stablecoin buffer: {target_buffer:.0f}% (based on sentiment score {sentiment_score}/100)
 - Max single token weight: {MAX_SINGLE_WEIGHT}%
-- Base equal weight after buffer: {(100 - target_buffer) / max(len([c for c in constituents if not c.is_stablecoin]), 1):.2f}% per token ({len([c for c in constituents if not c.is_stablecoin])} non-stable tokens in index)
-- CRITICAL: all new_weight values MUST sum to exactly 100.0% — verify before responding
+- HARD LIMIT: the basket must have EXACTLY {idx.target_constituents} non-stablecoin tokens after this rebalance. Do NOT add more.
+- Base equal weight after buffer: {(100 - target_buffer) / idx.target_constituents:.2f}% per token
+- CRITICAL: new_weight values for add/maintain/increase/decrease actions MUST sum to exactly 100.0%. remove actions always have new_weight=0.0 and are excluded from this sum.
 - Momentum boost: +20% weight for tokens with positive 30d price trend
+- EXCLUDED: WSOSO is the SoDEX governance token — never add it as an index constituent
+- CONSERVATIVE: This is a long-term index fund. Only REMOVE a token if: (1) it triggered emergency ejection (in EMERGENCY EJECTIONS list above), or (2) the Scout agent explicitly recommended removal. DO NOT restructure the basket without specific cause.
+- MINIMUM: the basket must have AT LEAST {idx.target_constituents} active tokens. If you cannot find enough replacements, keep existing constituents.
+- STABLE CORE: prefer increasing/decreasing weights of existing tokens over full replacements unless an emergency or Scout recommendation justifies it.
 
 Generate a rebalancing proposal. Respond ONLY with valid JSON:
 {{
@@ -277,18 +287,38 @@ Generate a rebalancing proposal. Respond ONLY with valid JSON:
 
         changes = parsed.get("changes", [])
 
-        # Validação: pesos devem somar 100%. Se não, normaliza proporcionalmente.
-        total = sum(c.get("new_weight", 0) for c in changes)
+        # Rejeita WSOSO como constituinte — é o token do SoDEX
+        changes = [c for c in changes if not (c.get("action") in ("add", "maintain") and c.get("symbol") == "WSOSO")]
+
+        # Garante que o número de tokens adicionados não ultrapassa target_constituents
+        adds = [c for c in changes if c.get("action") in ("add", "maintain", "increase", "decrease")]
+        if len(adds) > idx.target_constituents:
+            logger.warning(
+                f"Rebalancer [{idx.id}]: {len(adds)} tokens propostos, target={idx.target_constituents} — truncando"
+            )
+            keep_symbols = {c["symbol"] for c in sorted(adds, key=lambda x: x.get("new_weight", 0), reverse=True)[:idx.target_constituents]}
+            changes = [c for c in changes if c.get("action") == "remove" or c.get("symbol") in keep_symbols]
+
+        # Rejeita proposta se há menos tokens ativos que o target
+        active_check = [c for c in changes if c.get("action") != "remove"]
+        if len(active_check) < idx.target_constituents:
+            logger.warning(
+                f"Rebalancer [{idx.id}]: apenas {len(active_check)} tokens ativos, target={idx.target_constituents} — rejeitando proposta"
+            )
+            return None
+
+        # Validação: pesos de tokens não-removidos devem somar 100%. Normaliza se necessário.
+        active = [c for c in changes if c.get("action") != "remove"]
+        total = sum(c.get("new_weight", 0) for c in active)
         if total > 0 and abs(total - 100.0) > 0.5:
             logger.warning(
                 f"Rebalancer [{idx.id}]: pesos somam {total:.2f}% — normalizando para 100%"
             )
-            for c in changes:
+            for c in active:
                 c["new_weight"] = round(c.get("new_weight", 0) * 100.0 / total, 2)
-            # Ajuste de arredondamento no maior peso
-            total2 = sum(c.get("new_weight", 0) for c in changes)
-            if changes and abs(total2 - 100.0) > 0.01:
-                biggest = max(changes, key=lambda x: x.get("new_weight", 0))
+            total2 = sum(c.get("new_weight", 0) for c in active)
+            if active and abs(total2 - 100.0) > 0.01:
+                biggest = max(active, key=lambda x: x.get("new_weight", 0))
                 biggest["new_weight"] = round(biggest["new_weight"] + (100.0 - total2), 2)
 
         return changes
@@ -345,8 +375,12 @@ async def apply_proposal(proposal_id: int, db, dry_run: bool = False):
         raise ValueError(f"Proposal {proposal_id} not found or not approved")
 
     try:
-        # 1. Snapshot atual do portfolio no SoDEX
-        snapshot = await get_portfolio_snapshot()
+        # Determina a rede da proposta (move para cima para usar em todas as chamadas SoDEX)
+        network_mode = proposal.network_mode or "mainnet"
+        _use_testnet = (network_mode == "testnet")
+
+        # 1. Snapshot atual do portfolio no SoDEX (gateway correto por rede)
+        snapshot = await get_portfolio_snapshot(testnet=_use_testnet)
         logger.info(
             f"Rebalancer: portfolio snapshot — "
             f"total ${snapshot['total_usd']:,.2f} | "
@@ -365,6 +399,7 @@ async def apply_proposal(proposal_id: int, db, dry_run: bool = False):
         executed_orders = await execute_rebalance_trades(
             target_weights=target_weights,
             dry_run=dry_run,
+            testnet=_use_testnet,
         )
 
         logger.info(f"Rebalancer: {len(executed_orders)} ordens {'simuladas' if dry_run else 'executadas'} no SoDEX")
@@ -372,16 +407,61 @@ async def apply_proposal(proposal_id: int, db, dry_run: bool = False):
         # Salva as ordens executadas (com order IDs) no banco como evidência
         proposal.execution_orders = executed_orders
 
-        # 4. Atualiza pesos dos constituents no banco
+        # 4. Busca preços ao vivo para inicializar price_at_nav_ref de novos tokens
+        live_tickers = await get_all_tickers()
+
+        # 5. Atualiza constituents no banco
         for change in proposal.changes:
+            # Filtra por network_mode para evitar atualizar a rede errada
             constituent = db.query(IndexConstituent).filter(
                 IndexConstituent.index_id == proposal.index_id,
                 IndexConstituent.symbol == change["symbol"],
+                IndexConstituent.network_mode == network_mode,
             ).first()
-            if constituent and change["action"] != "remove":
-                constituent.weight = change["new_weight"]
-            elif constituent and change["action"] == "remove":
-                db.delete(constituent)
+
+            if change["action"] == "remove":
+                if constituent:
+                    # Marca como fora da cesta (mantém histórico de preços)
+                    constituent.weight = 0.0
+                    constituent.in_basket = False
+
+            else:
+                # Entrada ou reweight
+                if constituent:
+                    # Token já existe (cesta ou candidato) — atualiza peso e promove para cesta
+                    constituent.weight = change["new_weight"]
+                    constituent.in_basket = True
+                else:
+                    # Token novo — cria constituinte no banco
+                    ticker = live_tickers.get(change["symbol"]) or live_tickers.get(change["symbol"] + "-USDC")
+                    live_price = 0.0
+                    if ticker:
+                        try:
+                            live_price = float(ticker.get("lastPrice") or 0)
+                        except Exception:
+                            live_price = 0.0
+
+                    constituent = IndexConstituent(
+                        index_id=proposal.index_id,
+                        symbol=change["symbol"],
+                        name=change.get("name") or change["symbol"],
+                        weight=change["new_weight"],
+                        current_price_usd=live_price,
+                        price_at_nav_ref=live_price,   # inicializa com preço ao vivo
+                        market_cap_usd=0.0,
+                        volume_24h_usd=0.0,
+                        price_change_7d=0.0,
+                        price_change_30d=0.0,
+                        ai_rationale=change.get("rationale") or "",
+                        is_stablecoin=False,
+                        network_mode=network_mode,
+                        in_basket=True,
+                    )
+                    db.add(constituent)
+                    logger.info(
+                        f"Rebalancer: novo token {change['symbol']} criado no banco "
+                        f"(price_at_nav_ref=${live_price:.4f}, rede={network_mode})"
+                    )
 
         proposal.status = "executed" if not dry_run else "dry_run"
         proposal.executed_at = datetime.utcnow()

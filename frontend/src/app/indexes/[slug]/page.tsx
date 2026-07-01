@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Users, RefreshCw, TrendingUp, Info, Copy, CheckCircle2, ExternalLink, ShieldAlert, Activity } from "lucide-react";
+import { ArrowLeft, Users, RefreshCw, TrendingUp, Info, Copy, CheckCircle2, ExternalLink, ShieldAlert, Activity, LayoutList, X } from "lucide-react";
 import Navbar from "../../components/Navbar";
 import InvestButton from "../../components/InvestButton";
 import { indexApi, investApi } from "@/lib/api";
@@ -102,6 +102,7 @@ export default function IndexDetailPage() {
   const [risk, setRisk] = useState<IndexRiskData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [showBasket, setShowBasket] = useState(false);
 
   useEffect(() => {
     if (!slug) return;
@@ -173,15 +174,20 @@ export default function IndexDetailPage() {
         {/* Stats grid */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
           {[
-            { label: t("idx_aum"),     value: fmt(idx.aum_usd ?? 0, true) },
-            { label: t("idx_nav_token"), value: `$${(idx.nav_usd ?? 0).toFixed(3)}` },
-            { label: t("idx_30d"),     value: `${(idx.return_30d_pct ?? 0) >= 0 ? "+" : ""}${(idx.return_30d_pct ?? 0).toFixed(1)}%`, green: (idx.return_30d_pct ?? 0) >= 0 },
-            { label: t("idx_btc"),     value: `${alphaBTC >= 0 ? "+" : ""}${alphaBTC.toFixed(1)}%`, green: alphaBTC > 0 },
-            { label: t("idx_alltime"), value: `${(idx.total_return_pct ?? 0) >= 0 ? "+" : ""}${(idx.total_return_pct ?? 0).toFixed(1)}%`, green: (idx.total_return_pct ?? 0) >= 0 },
+            { label: t("idx_aum"),     value: fmt(idx.aum_usd ?? 0, true), neutral: true },
+            { label: t("idx_nav_token"), value: `$${(idx.nav_usd ?? 0).toFixed(3)}`, neutral: true },
+            { label: t("idx_30d"),     value: `${(idx.return_30d_pct ?? 0) >= 0 ? "+" : ""}${(idx.return_30d_pct ?? 0).toFixed(1)}%`, sign: idx.return_30d_pct ?? 0 },
+            { label: t("idx_btc"),     value: `${alphaBTC >= 0 ? "+" : ""}${alphaBTC.toFixed(1)}%`, sign: alphaBTC },
+            { label: t("idx_alltime"), value: `${(idx.total_return_pct ?? 0) >= 0 ? "+" : ""}${(idx.total_return_pct ?? 0).toFixed(1)}%`, sign: idx.total_return_pct ?? 0 },
           ].map((s) => (
             <div key={s.label} className="stat-card">
               <p className="stat-label">{s.label}</p>
-              <p className={`text-xl font-bold ${s.green ? "text-green-400" : "text-white"}`}>{s.value}</p>
+              <p className={`text-xl font-bold ${
+                s.neutral ? "text-white"
+                : s.sign! > 0 ? "text-green-400"
+                : s.sign! < 0 ? "text-red-400"
+                : "text-white"
+              }`}>{s.value}</p>
             </div>
           ))}
         </div>
@@ -213,46 +219,60 @@ export default function IndexDetailPage() {
 
               <div className="space-y-1">
                 {idx.constituents?.map((token) => {
-                  const ejRisk = token.ejection_risk_pct ?? 0;
+                  const inBasket = token.in_basket !== false;
+                  const ejRisk = inBasket ? (token.ejection_risk_pct ?? 0) : 0;
                   const ejColor = ejRisk >= 75 ? "bg-red-500" : ejRisk >= 50 ? "bg-orange-400" : ejRisk >= 25 ? "bg-yellow-400" : "bg-green-500/60";
                   return (
-                    <div key={token.symbol} className="flex items-center gap-3 p-3 rounded-lg hover:bg-white/3 transition-colors group">
+                    <div key={`${token.symbol}-${inBasket}`} className={`flex items-center gap-3 p-3 rounded-lg transition-colors group ${inBasket ? "hover:bg-white/3" : "opacity-50 hover:opacity-70"}`}>
                       {/* Symbol + weight bar */}
                       <div className="w-28 shrink-0">
                         <div className="flex items-center justify-between mb-0.5">
-                          <span className="text-xs font-mono text-white/70">{token.symbol}</span>
-                          <span className="text-xs text-white/40">{token.weight}%</span>
+                          <span className={`text-xs font-mono ${inBasket ? "text-white/70" : "text-white/40"}`}>{token.symbol}</span>
+                          {inBasket ? (
+                            <span className="text-xs text-white/40">{token.weight}%</span>
+                          ) : (
+                            <span className="text-xs text-white/20">—</span>
+                          )}
                         </div>
                         <div className="h-1 bg-white/5 rounded-full overflow-hidden">
-                          <div className="h-full bg-brand-blue/60 rounded-full" style={{ width: `${Math.min((token.weight / 40) * 100, 100)}%` }} />
+                          {inBasket && <div className="h-full bg-brand-blue/60 rounded-full" style={{ width: `${Math.min((token.weight / 40) * 100, 100)}%` }} />}
                         </div>
                       </div>
 
                       {/* Name + price */}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-white/70 truncate">{token.name}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className={`text-sm truncate ${inBasket ? "text-white/70" : "text-white/35"}`}>{token.name}</p>
+                          {!inBasket && <span className="text-[9px] px-1 py-0.5 rounded border border-white/10 text-white/25 shrink-0">candidate</span>}
+                        </div>
                         <p className="text-xs text-white/30">{fmt(token.current_price_usd ?? 0)}</p>
                       </div>
 
                       {/* 7d */}
-                      <div className={`w-14 text-right text-sm font-medium shrink-0 ${(token.price_change_7d ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
-                        {(token.price_change_7d ?? 0) >= 0 ? "+" : ""}{(token.price_change_7d ?? 0).toFixed(1)}%
+                      <div className={`w-14 text-right text-sm font-medium shrink-0 ${(token.price_change_7d ?? 0) > 0 ? "text-green-400" : (token.price_change_7d ?? 0) < 0 ? "text-red-400" : "text-white"}`}>
+                        {(token.price_change_7d ?? 0) > 0 ? "+" : ""}{(token.price_change_7d ?? 0).toFixed(1)}%
                       </div>
 
                       {/* 30d */}
-                      <div className={`w-14 text-right text-xs shrink-0 ${(token.price_change_30d ?? 0) >= 0 ? "text-green-400/70" : "text-red-400/70"}`}>
-                        {(token.price_change_30d ?? 0) >= 0 ? "+" : ""}{(token.price_change_30d ?? 0).toFixed(1)}%
+                      <div className={`w-14 text-right text-xs shrink-0 ${(token.price_change_30d ?? 0) > 0 ? "text-green-400/70" : (token.price_change_30d ?? 0) < 0 ? "text-red-400/70" : "text-white/40"}`}>
+                        {(token.price_change_30d ?? 0) > 0 ? "+" : ""}{(token.price_change_30d ?? 0).toFixed(1)}%
                       </div>
 
-                      {/* Ejection risk bar */}
+                      {/* Ejection risk bar — só para tokens da cesta */}
                       <div className="w-20 shrink-0">
-                        <div className="flex items-center justify-between mb-0.5">
-                          <span className="text-xs text-white/20">{ejRisk.toFixed(0)}%</span>
-                          {ejRisk >= 50 && <ShieldAlert size={10} className="text-orange-400" />}
-                        </div>
-                        <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full transition-all ${ejColor}`} style={{ width: `${Math.min(ejRisk, 100)}%` }} />
-                        </div>
+                        {inBasket ? (
+                          <>
+                            <div className="flex items-center justify-between mb-0.5">
+                              <span className="text-xs text-white/20">{ejRisk.toFixed(0)}%</span>
+                              {ejRisk >= 50 && <ShieldAlert size={10} className="text-orange-400" />}
+                            </div>
+                            <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full transition-all ${ejColor}`} style={{ width: `${Math.min(ejRisk, 100)}%` }} />
+                            </div>
+                          </>
+                        ) : (
+                          <div className="h-1.5 bg-white/3 rounded-full" />
+                        )}
                       </div>
 
                       {/* Rationale tooltip */}
@@ -264,24 +284,28 @@ export default function IndexDetailPage() {
                             <div className="pt-2 border-t border-white/5 grid grid-cols-2 gap-1 text-xs">
                               <div>
                                 <span className="text-white/20">{t("idx_tooltip_7d")}</span>
-                                <p className={`font-medium ${(token.price_change_7d ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
-                                  {(token.price_change_7d ?? 0) >= 0 ? "+" : ""}{(token.price_change_7d ?? 0).toFixed(2)}%
+                                <p className={`font-medium ${(token.price_change_7d ?? 0) > 0 ? "text-green-400" : (token.price_change_7d ?? 0) < 0 ? "text-red-400" : "text-white"}`}>
+                                  {(token.price_change_7d ?? 0) > 0 ? "+" : ""}{(token.price_change_7d ?? 0).toFixed(2)}%
                                 </p>
                               </div>
                               <div>
                                 <span className="text-white/20">{t("idx_tooltip_30d")}</span>
-                                <p className={`font-medium ${(token.price_change_30d ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
-                                  {(token.price_change_30d ?? 0) >= 0 ? "+" : ""}{(token.price_change_30d ?? 0).toFixed(2)}%
+                                <p className={`font-medium ${(token.price_change_30d ?? 0) > 0 ? "text-green-400" : (token.price_change_30d ?? 0) < 0 ? "text-red-400" : "text-white"}`}>
+                                  {(token.price_change_30d ?? 0) > 0 ? "+" : ""}{(token.price_change_30d ?? 0).toFixed(2)}%
                                 </p>
                               </div>
-                              <div>
-                                <span className="text-white/20">{t("idx_weight")}</span>
-                                <p className="text-white font-medium">{token.weight}%</p>
-                              </div>
-                              <div>
-                                <span className="text-white/20">{t("idx_col_ejection_risk")}</span>
-                                <p className={`font-medium ${ejRisk >= 50 ? "text-orange-400" : "text-white/60"}`}>{ejRisk.toFixed(1)}% {t("idx_pct_of_threshold")}</p>
-                              </div>
+                              {inBasket && (
+                                <>
+                                  <div>
+                                    <span className="text-white/20">{t("idx_weight")}</span>
+                                    <p className="text-white font-medium">{token.weight}%</p>
+                                  </div>
+                                  <div>
+                                    <span className="text-white/20">{t("idx_col_ejection_risk")}</span>
+                                    <p className={`font-medium ${ejRisk >= 50 ? "text-orange-400" : "text-white/60"}`}>{ejRisk.toFixed(1)}% {t("idx_pct_of_threshold")}</p>
+                                  </div>
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -406,7 +430,15 @@ export default function IndexDetailPage() {
                   <span className="text-white">SoSoValue ValueChain</span>
                 </div>
               </div>
-              <InvestButton indexId={idx.id} indexName={idxName} navUsd={idx.nav_usd ?? 1} />
+              <button
+                onClick={() => setShowBasket(true)}
+                className="w-full flex items-center justify-center gap-2 mb-3 px-4 py-2 rounded-xl border border-white/10 bg-white/3 hover:bg-white/7 text-white/60 hover:text-white text-sm transition-all"
+              >
+                <LayoutList size={14} />
+                {t("idx_view_basket")}
+                <span className="ml-auto text-xs text-white/30">{idx.constituents?.filter(c => c.in_basket !== false).length ?? 0} tokens</span>
+              </button>
+              <InvestButton indexId={idx.id} indexName={idxName} navUsd={idx.nav_usd ?? 1} minDepositUsd={idx.min_deposit_usd ?? 50} />
               <FundWalletBox t={t} networkMode={networkMode} />
             </div>
 
@@ -422,6 +454,79 @@ export default function IndexDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Basket Modal */}
+      {showBasket && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowBasket(false)}>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div
+            className="relative w-full max-w-lg bg-brand-card border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
+              <div>
+                <h3 className="font-semibold text-white text-base">{idxName}</h3>
+                <p className="text-xs text-white/30 mt-0.5">{t("idx_view_basket")} · {idx.constituents?.filter(c => c.in_basket !== false).length ?? 0} tokens · {t("idx_last_rebalanced")} {idx.last_rebalanced_at ? new Date(idx.last_rebalanced_at).toLocaleDateString() : "—"}</p>
+              </div>
+              <button onClick={() => setShowBasket(false)} className="text-white/30 hover:text-white transition-colors ml-4 shrink-0">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Token list — somente tokens da cesta */}
+            <div className="px-3 py-3 space-y-1 max-h-[70vh] overflow-y-auto">
+              {(idx.constituents ?? []).filter(c => c.in_basket !== false).map((token) => {
+                const ejRisk = token.ejection_risk_pct ?? 0;
+                const ejColor = ejRisk >= 75 ? "bg-red-500" : ejRisk >= 50 ? "bg-orange-400" : ejRisk >= 25 ? "bg-yellow-400" : "bg-green-500/60";
+                const ejLabel = ejRisk >= 75 ? "text-red-400" : ejRisk >= 50 ? "text-orange-400" : ejRisk >= 25 ? "text-yellow-400" : "text-green-400/70";
+                return (
+                  <div key={token.symbol} className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/4 transition-colors">
+                    {/* Symbol + weight */}
+                    <div className="w-24 shrink-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-mono font-semibold text-white">{token.symbol}</span>
+                        <span className="text-xs text-white/40">{token.weight}%</span>
+                      </div>
+                      <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                        <div className="h-full bg-brand-orange/50 rounded-full" style={{ width: `${Math.min((token.weight / 40) * 100, 100)}%` }} />
+                      </div>
+                    </div>
+
+                    {/* Name + price */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-white/60 truncate">{token.name}</p>
+                      <p className="text-xs text-white/25">{fmt(token.current_price_usd ?? 0)}</p>
+                    </div>
+
+                    {/* 7d */}
+                    <div className={`text-xs font-medium w-12 text-right shrink-0 ${(token.price_change_7d ?? 0) > 0 ? "text-green-400" : (token.price_change_7d ?? 0) < 0 ? "text-red-400" : "text-white/40"}`}>
+                      {(token.price_change_7d ?? 0) > 0 ? "+" : ""}{(token.price_change_7d ?? 0).toFixed(1)}%
+                    </div>
+
+                    {/* Ejection risk */}
+                    <div className="w-16 shrink-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className={`text-xs ${ejLabel}`}>{ejRisk.toFixed(0)}%</span>
+                        {ejRisk >= 50 && <ShieldAlert size={9} className="text-orange-400" />}
+                      </div>
+                      <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${ejColor}`} style={{ width: `${Math.min(ejRisk, 100)}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-3 border-t border-white/8 flex items-center justify-between text-xs text-white/30">
+              <span>{t("idx_col_ejection_risk")}: % {t("idx_pct_of_threshold")} (−40% / 7d)</span>
+              <span>{t("idx_risk_max_weight_label")}: 25%</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

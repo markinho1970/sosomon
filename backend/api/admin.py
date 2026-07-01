@@ -167,6 +167,20 @@ async def run_rebalancer(req: RunRebalancerRequest, db: Session = Depends(get_db
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/run-scout")
+async def run_scout(_: None = Depends(require_admin), db: Session = Depends(get_db)):
+    """Dispara o Scout agent manualmente para análise imediata de mercado."""
+    from agents.scout import run_all_indexes
+    try:
+        result = await run_all_indexes()
+        pending = db.query(func.count(RebalanceProposal.id)).filter(
+            RebalanceProposal.status == "pending"
+        ).scalar() or 0
+        return {"success": True, "message": f"Scout concluído. {result or 'Análise realizada.'}", "pending_proposals": pending}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 _AUDIT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "audit", "proposals"))
 
 

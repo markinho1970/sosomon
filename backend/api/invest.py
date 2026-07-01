@@ -8,7 +8,8 @@ from eth_account.messages import encode_defunct
 from eth_account import Account
 
 from database import get_db
-from models import AlphaIndex, Subscriber, SubscriberPortfolio, AgentActivityLog, InvestmentIntent, InvestmentConsent
+from sqlalchemy import func
+from models import AlphaIndex, Subscriber, SubscriberPortfolio, AgentActivityLog, InvestmentIntent, InvestmentConsent, IndexConstituent, PortfolioSnapshot
 
 router = APIRouter(prefix="/api/invest", tags=["invest"])
 
@@ -502,6 +503,169 @@ def get_portfolio(wallet_address: str, network_mode: str = "mainnet", db: Sessio
             "days_streak": subscriber.days_streak,
         },
     }
+
+
+@router.get("/portfolio/{wallet_address}/breakdown")
+def get_portfolio_breakdown(wallet_address: str, network_mode: str = "mainnet", db: Session = Depends(get_db)):
+    """Breakdown de holdings por token baseado nos pesos da cesta e valor atual do portfolio."""
+    wallet_address = wallet_address.lower()
+    subscriber = db.query(Subscriber).filter(
+        Subscriber.wallet_address == wallet_address
+    ).first()
+    if not subscriber:
+        return []
+
+    result = []
+    portfolios = [
+        p for p in subscriber.portfolios
+        if getattr(p, "network_mode", "mainnet") == network_mode
+    ]
+    for p in portfolios:
+        index = db.query(AlphaIndex).filter(AlphaIndex.id == p.index_id).first()
+        if not index:
+            continue
+        constituents = db.query(IndexConstituent).filter(
+            IndexConstituent.index_id == p.index_id,
+            IndexConstituent.in_basket == True,
+            IndexConstituent.network_mode == network_mode,
+            IndexConstituent.weight > 0,
+        ).all()
+        total_weight = sum(c.weight for c in constituents)
+        tokens = []
+        for c in constituents:
+            share = c.weight / total_weight if total_weight > 0 else 0
+            usd_value = round((p.current_value_usd or 0) * share, 2)
+            price = c.current_price_usd or 0
+            qty = round(usd_value / price, 6) if price > 0 else 0
+            tokens.append({
+                "symbol": c.symbol,
+                "name": c.name,
+                "weight": c.weight,
+                "usd_value": usd_value,
+                "quantity": qty,
+                "price": price,
+                "change_7d": round(c.price_change_7d or 0, 2),
+                "change_30d": round(c.price_change_30d or 0, 2),
+            })
+        result.append({
+            "index_id": p.index_id,
+            "index_name": index.name,
+            "total_value": p.current_value_usd,
+            "tokens": tokens,
+        })
+    return result
+
+
+@router.get("/portfolio/{wallet_address}/history")
+def get_portfolio_history(wallet_address: str, network_mode: str = "mainnet", days: int = 30, db: Session = Depends(get_db)):
+    """Histórico de valor do portfolio para gráfico de evolução."""
+    wallet_address = wallet_address.lower()
+    subscriber = db.query(Subscriber).filter(
+        Subscriber.wallet_address == wallet_address
+    ).first()
+    if not subscriber:
+        return []
+
+    from datetime import timedelta
+    cutoff = datetime.utcnow() - timedelta(days=days)
+
+    result = []
+    portfolios = [
+        p for p in subscriber.portfolios
+        if getattr(p, "network_mode", "mainnet") == network_mode
+    ]
+    for p in portfolios:
+        index = db.query(AlphaIndex).filter(AlphaIndex.id == p.index_id).first()
+        snapshots = db.query(PortfolioSnapshot).filter(
+            PortfolioSnapshot.portfolio_id == p.id,
+            PortfolioSnapshot.snapshot_at >= cutoff,
+        ).order_by(PortfolioSnapshot.snapshot_at.asc()).all()
+
+        # If no snapshots yet, return current value as single data point
+        if not snapshots:
+            points = [{
+                "date": (p.first_invested_at or datetime.utcnow()).strftime("%Y-%m-%dT%H:%M:%S"),
+                "value": p.current_value_usd,
+                "deposited": p.deposited_usd,
+            }]
+        else:
+            points = [{
+                "date": s.snapshot_at.strftime("%Y-%m-%dT%H:%M:%S"),
+                "value": s.value_usd,
+                "deposited": s.deposited_usd or p.deposited_usd,
+            } for s in snapshots]
+
+        result.append({
+            "index_id": p.index_id,
+            "index_name": index.name if index else p.index_id,
+            "theme": index.theme if index else "",
+            "current_value": p.current_value_usd,
+            "deposited": p.deposited_usd,
+            "points": points,
+        })
+    return result
+
+
+@router.get("/portfolio/{wallet_address}/transactions")
+def get_portfolio_transactions(wallet_address: str, network_mode: str = "mainnet", db: Session = Depends(get_db)):
+    """Histórico de depósitos e saques."""
+    wallet_address = wallet_address.lower()
+
+    # Só mostra transações de índices onde a carteira tem portfolio ativo nessa rede
+    subscriber = db.query(Subscriber).filter(
+        Subscriber.wallet_address == wallet_address
+    ).first()
+    active_index_ids = set()
+    if subscriber:
+        active_index_ids = {
+            p.index_id for p in subscriber.portfolios
+            if getattr(p, "network_mode", "mainnet") == network_mode
+        }
+
+    # Get deposits from agent_activity (deposit_detected events)
+    activities = db.query(AgentActivityLog).filter(
+        AgentActivityLog.agent == "deposit_monitor",
+        AgentActivityLog.action == "deposit_detected",
+    ).order_by(AgentActivityLog.timestamp.desc()).limit(100).all()
+
+    txs = []
+    for a in activities:
+        data = a.data or {}
+        tx_wallet = (data.get("from") or data.get("wallet") or data.get("from_wallet") or "").lower()
+        if tx_wallet != wallet_address:
+            continue
+        if active_index_ids and a.index_id not in active_index_ids:
+            continue
+        txs.append({
+            "type": "deposit",
+            "index_id": a.index_id,
+            "amount_usd": data.get("amount_usdc") or data.get("amount_usd") or 0,
+            "tx_hash": data.get("tx_hash", ""),
+            "timestamp": a.timestamp.strftime("%Y-%m-%dT%H:%M:%S") if a.timestamp else "",
+            "status": "completed",
+        })
+
+    # Get withdrawals
+    withdrawals = db.query(AgentActivityLog).filter(
+        AgentActivityLog.agent == "deposit_monitor",
+        AgentActivityLog.action == "withdrawal",
+    ).order_by(AgentActivityLog.timestamp.desc()).limit(50).all()
+    for a in withdrawals:
+        data = a.data or {}
+        if (data.get("to") or "").lower() != wallet_address:
+            continue
+        txs.append({
+            "type": "withdrawal",
+            "index_id": a.index_id,
+            "amount_usd": data.get("withdrawal_usd") or data.get("amount_usd") or 0,
+            "net_usd": data.get("net_usd"),
+            "tx_hash": data.get("tx_hash", ""),
+            "timestamp": a.timestamp.strftime("%Y-%m-%dT%H:%M:%S") if a.timestamp else "",
+            "status": "completed",
+        })
+
+    txs.sort(key=lambda x: x["timestamp"], reverse=True)
+    return txs
 
 
 @router.get("/refunds/{wallet_address}")

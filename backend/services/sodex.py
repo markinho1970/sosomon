@@ -26,8 +26,18 @@ SODEX_ACCOUNT_ID  = os.getenv("SODEX_ACCOUNT_ID", "0")
 USE_TESTNET       = os.getenv("SODEX_USE_TESTNET", "false").lower() == "true"
 
 _NET      = "testnet" if USE_TESTNET else "mainnet"
-BASE_SPOT = f"https://{_NET}-gw.sodex.dev/api/v1/spot"
+BASE_SPOT = f"https://{_NET}-gw.sodex.dev/api/v1/spot"  # leitura de preços (mesmo valor em ambas as redes)
 TIMEOUT   = 15
+
+
+def _spot_url(testnet: bool | None = None) -> str:
+    """URL do gateway SoDEX para operações de conta/trading.
+    testnet=None → usa env var SODEX_USE_TESTNET (padrão).
+    testnet=True/False → força o gateway correto independente do env.
+    """
+    use_test = USE_TESTNET if testnet is None else testnet
+    net = "testnet" if use_test else "mainnet"
+    return f"https://{net}-gw.sodex.dev/api/v1/spot"
 
 # Lê API key em runtime (não no import) para suportar scripts com load_dotenv tardio
 def _api_key() -> str:
@@ -53,13 +63,13 @@ def _can_trade() -> bool:
 #  MARKET DATA  (público)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-async def get_markets() -> List[Dict]:
-    """Todos os símbolos spot com regras de trading."""
+async def get_markets(testnet: bool | None = None) -> List[Dict]:
+    """Todos os símbolos spot com regras de trading. testnet=None usa env var."""
     if not _configured():
         return []
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as c:
-            r = await c.get(f"{BASE_SPOT}/markets/symbols", headers=_PUB())
+            r = await c.get(f"{_spot_url(testnet)}/markets/symbols", headers=_PUB())
             r.raise_for_status()
             data = r.json().get("data", [])
             return data if isinstance(data, list) else []
@@ -68,16 +78,17 @@ async def get_markets() -> List[Dict]:
         return []
 
 
-async def get_all_tickers() -> Dict[str, Dict]:
+async def get_all_tickers(testnet: bool | None = None) -> Dict[str, Dict]:
     """
     Tickers de todos os mercados (24h stats).
     Retorna dict com múltiplos aliases por símbolo para facilitar lookup:
       "BTC-USDC", "BTC-USD", "vBTC_vUSDC" todos apontam para o mesmo ticker.
     Campos normalizados: lastPx -> lastPrice, volume -> volume24h
+    testnet=None usa env var; True/False força o gateway correto.
     """
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as c:
-            r = await c.get(f"{BASE_SPOT}/markets/tickers", headers=_PUB())
+            r = await c.get(f"{_spot_url(testnet)}/markets/tickers", headers=_PUB())
             r.raise_for_status()
             items = r.json().get("data", [])
             if not isinstance(items, list):
@@ -106,13 +117,13 @@ async def get_all_tickers() -> Dict[str, Dict]:
         return {}
 
 
-async def get_ticker(symbol: str) -> Optional[Dict]:
-    """Ticker de um símbolo específico (ex: BTC-USDC)."""
+async def get_ticker(symbol: str, testnet: bool | None = None) -> Optional[Dict]:
+    """Ticker de um símbolo específico (ex: BTC-USDC). testnet=None usa env var."""
     if not _configured():
         return None
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as c:
-            r = await c.get(f"{BASE_SPOT}/markets/tickers",
+            r = await c.get(f"{_spot_url(testnet)}/markets/tickers",
                             headers=_PUB(), params={"symbol": symbol})
             r.raise_for_status()
             data = r.json().get("data", [])
@@ -122,13 +133,13 @@ async def get_ticker(symbol: str) -> Optional[Dict]:
         return None
 
 
-async def get_orderbook(symbol: str, depth: int = 20) -> Optional[Dict]:
-    """Orderbook de um mercado."""
+async def get_orderbook(symbol: str, depth: int = 20, testnet: bool | None = None) -> Optional[Dict]:
+    """Orderbook de um mercado. testnet=None usa env var."""
     if not _configured():
         return None
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as c:
-            r = await c.get(f"{BASE_SPOT}/markets/{symbol}/orderbook",
+            r = await c.get(f"{_spot_url(testnet)}/markets/{symbol}/orderbook",
                             headers=_PUB(), params={"limit": depth})
             r.raise_for_status()
             return r.json().get("data")
@@ -137,13 +148,13 @@ async def get_orderbook(symbol: str, depth: int = 20) -> Optional[Dict]:
         return None
 
 
-async def get_candles(symbol: str, interval: str = "1D", limit: int = 30) -> List[Dict]:
+async def get_candles(symbol: str, interval: str = "1D", limit: int = 30, testnet: bool | None = None) -> List[Dict]:
     """Candles OHLCV. Intervals: 1m, 5m, 15m, 1h, 4h, 1D."""
     if not _configured():
         return []
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as c:
-            r = await c.get(f"{BASE_SPOT}/markets/{symbol}/klines",
+            r = await c.get(f"{_spot_url(testnet)}/markets/{symbol}/klines",
                             headers=_PUB(),
                             params={"interval": interval, "limit": limit})
             r.raise_for_status()
@@ -158,8 +169,8 @@ async def get_candles(symbol: str, interval: str = "1D", limit: int = 30) -> Lis
 #  ACCOUNT  (autenticado — GET com X-API-Key + assinatura)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-async def get_balances() -> Dict[str, Any]:
-    """Saldos da fund wallet."""
+async def get_balances(testnet: bool | None = None) -> Dict[str, Any]:
+    """Saldos da fund wallet. testnet=None usa env var; True/False força o gateway."""
     if not _can_trade():
         logger.warning("SoDEX: credenciais não configuradas")
         return {}
@@ -167,7 +178,7 @@ async def get_balances() -> Dict[str, Any]:
         payload = {"accountID": SODEX_ACCOUNT_ID}
         async with httpx.AsyncClient(timeout=TIMEOUT) as c:
             r = await c.get(
-                f"{BASE_SPOT}/accounts/{SODEX_WALLET_ADDR}/balances",
+                f"{_spot_url(testnet)}/accounts/{SODEX_WALLET_ADDR}/balances",
                 headers=_SIGN(payload),
                 params={"accountID": SODEX_ACCOUNT_ID},
             )
@@ -186,8 +197,8 @@ async def get_balances() -> Dict[str, Any]:
         return {}
 
 
-async def get_open_orders(symbol: Optional[str] = None) -> List[Dict]:
-    """Ordens abertas da fund wallet."""
+async def get_open_orders(symbol: Optional[str] = None, testnet: bool | None = None) -> List[Dict]:
+    """Ordens abertas da fund wallet. testnet=None usa env var."""
     if not _can_trade():
         return []
     try:
@@ -197,7 +208,7 @@ async def get_open_orders(symbol: Optional[str] = None) -> List[Dict]:
             params["symbol"] = symbol
         async with httpx.AsyncClient(timeout=TIMEOUT) as c:
             r = await c.get(
-                f"{BASE_SPOT}/accounts/{SODEX_WALLET_ADDR}/orders",
+                f"{_spot_url(testnet)}/accounts/{SODEX_WALLET_ADDR}/orders",
                 headers=_SIGN(payload),
                 params=params,
             )
@@ -209,8 +220,8 @@ async def get_open_orders(symbol: Optional[str] = None) -> List[Dict]:
         return []
 
 
-async def get_trade_history(symbol: Optional[str] = None, limit: int = 50) -> List[Dict]:
-    """Histórico de trades executados."""
+async def get_trade_history(symbol: Optional[str] = None, limit: int = 50, testnet: bool | None = None) -> List[Dict]:
+    """Histórico de trades executados. testnet=None usa env var."""
     if not _can_trade():
         return []
     try:
@@ -220,7 +231,7 @@ async def get_trade_history(symbol: Optional[str] = None, limit: int = 50) -> Li
             params["symbol"] = symbol
         async with httpx.AsyncClient(timeout=TIMEOUT) as c:
             r = await c.get(
-                f"{BASE_SPOT}/accounts/{SODEX_WALLET_ADDR}/trades",
+                f"{_spot_url(testnet)}/accounts/{SODEX_WALLET_ADDR}/trades",
                 headers=_SIGN(payload),
                 params=params,
             )
@@ -245,6 +256,7 @@ async def place_order(
     price: str = None,
     client_order_id: str = None,
     time_in_force: str = "GTC",
+    testnet: bool | None = None,
 ) -> Optional[Dict]:
     """
     Coloca uma ordem no SoDEX via batch endpoint.
@@ -283,7 +295,7 @@ async def place_order(
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as c:
             r = await c.post(
-                f"{BASE_SPOT}/trade/orders/batch",
+                f"{_spot_url(testnet)}/trade/orders/batch",
                 headers=_SIGN(payload),
                 content=json.dumps(payload, separators=(",", ":")),
             )
@@ -296,8 +308,8 @@ async def place_order(
         return None
 
 
-async def cancel_orders(symbol: str, symbol_id: int, order_ids: List[str]) -> bool:
-    """Cancela ordens pelo ID do cliente."""
+async def cancel_orders(symbol: str, symbol_id: int, order_ids: List[str], testnet: bool | None = None) -> bool:
+    """Cancela ordens pelo ID do cliente. testnet=None usa env var."""
     if not _can_trade():
         return False
     try:
@@ -308,7 +320,7 @@ async def cancel_orders(symbol: str, symbol_id: int, order_ids: List[str]) -> bo
         async with httpx.AsyncClient(timeout=TIMEOUT) as c:
             r = await c.request(
                 "DELETE",
-                f"{BASE_SPOT}/trade/orders/batch",
+                f"{_spot_url(testnet)}/trade/orders/batch",
                 headers=_SIGN(payload),
                 content=json.dumps(payload, separators=(",", ":")),
             )
@@ -324,12 +336,13 @@ async def cancel_orders(symbol: str, symbol_id: int, order_ids: List[str]) -> bo
 #  HELPERS para os Agents
 # ═══════════════════════════════════════════════════════════════════════════════
 
-async def get_portfolio_snapshot() -> Dict[str, Any]:
+async def get_portfolio_snapshot(testnet: bool | None = None) -> Dict[str, Any]:
     """
     Snapshot do portfolio: saldos + valor USD de cada posição.
     Usado pelo Rebalancer para calcular pesos atuais.
+    testnet=None usa env var; True/False força o gateway correto.
     """
-    balances = await get_balances()
+    balances = await get_balances(testnet=testnet)
     tickers  = await get_all_tickers()
 
     positions = []
@@ -358,17 +371,26 @@ async def get_portfolio_snapshot() -> Dict[str, Any]:
     return {
         "positions":          positions,
         "total_usd":          total_usd,
-        "network":            _NET,
+        "network":            "testnet" if (USE_TESTNET if testnet is None else testnet) else "mainnet",
         "wallet":             SODEX_WALLET_ADDR,
         "configured":         _can_trade(),
     }
 
 
-async def get_symbol_id(symbol: str) -> Optional[int]:
-    """Busca o symbolID numérico necessário para ordens."""
-    markets = await get_markets()
+async def get_symbol_id(symbol: str, testnet: bool | None = None) -> Optional[int]:
+    """Busca o symbolID numérico necessário para ordens.
+    Tenta múltiplos formatos: 'ETH-USDC' → 'vETH_vUSDC', 'WSOSO_vUSDC', etc.
+    """
+    markets = await get_markets(testnet=testnet)
+    base = symbol.replace("-USDC", "").replace("-USD", "")
     for m in markets:
-        if m.get("name") == symbol or m.get("displayName") == symbol:
+        name    = m.get("name", "")
+        display = m.get("displayName", "")
+        if (name == symbol
+                or name == f"v{base}_vUSDC"
+                or name == f"{base}_vUSDC"
+                or display == symbol.replace("-", "/")
+                or display == f"{base}/USDC"):
             return m.get("id")
     return None
 
@@ -376,12 +398,14 @@ async def get_symbol_id(symbol: str) -> Optional[int]:
 async def execute_rebalance_trades(
     target_weights: Dict[str, float],
     dry_run: bool = True,
+    testnet: bool | None = None,
 ) -> List[Dict]:
     """
     Executa rebalanceamento para atingir pesos alvo via SoDEX.
     dry_run=True apenas loga sem executar.
+    testnet=None usa env var; True/False força o gateway correto.
     """
-    snapshot  = await get_portfolio_snapshot()
+    snapshot  = await get_portfolio_snapshot(testnet=testnet)
     total_usd = snapshot["total_usd"]
     current   = {p["asset"]: p for p in snapshot["positions"]}
     tickers   = await get_all_tickers()
@@ -427,7 +451,7 @@ async def execute_rebalance_trades(
         else:
             sym_id = await get_symbol_id(sym)
             if sym_id:
-                result = await place_order(sym, sym_id, side, "LIMIT", qty_str, price_str)
+                result = await place_order(sym, sym_id, side, "LIMIT", qty_str, price_str, testnet=testnet)
                 order_info["status"] = "placed" if result else "failed"
             else:
                 logger.warning(f"SoDEX: symbolID não encontrado para {sym}")
@@ -436,3 +460,89 @@ async def execute_rebalance_trades(
         orders.append(order_info)
 
     return orders
+
+
+async def execute_buy_for_deposit(
+    amount_usd: float,
+    constituents: list,          # lista de IndexConstituent (in_basket=True)
+    dry_run: bool = True,
+    testnet: bool | None = None,
+) -> Dict[str, Any]:
+    """
+    Compra tokens no SoDEX proporcional aos pesos da cesta após um depósito.
+
+    - Cada constituinte recebe amount_usd * weight/100 de USDC.
+    - Tokens abaixo de $5 ou sem preço são pulados (viram stablecoin buffer).
+    - testnet=True força gateway testnet; testnet=False força mainnet;
+      testnet=None usa SODEX_USE_TESTNET do env.
+    - dry_run=True loga sem colocar ordens reais.
+
+    Retorna dict com ordens e total alocado.
+    """
+    MIN_ORDER_USD = 5.0
+
+    tickers = await get_all_tickers(testnet=testnet)
+    orders        = []
+    skipped_usd   = 0.0
+    allocated_usd = 0.0
+
+    for c in constituents:
+        symbol     = c.symbol
+        weight_pct = c.weight or 0.0
+        alloc_usd  = amount_usd * (weight_pct / 100.0)
+
+        if alloc_usd < MIN_ORDER_USD:
+            logger.info(f"execute_buy_for_deposit: {symbol} pulado — ${alloc_usd:.2f} < mínimo ${MIN_ORDER_USD}")
+            skipped_usd += alloc_usd
+            orders.append({"symbol": symbol, "status": "skipped_below_minimum", "usd_value": alloc_usd})
+            continue
+
+        sym_key = f"{symbol}-USDC"
+        ticker  = tickers.get(sym_key) or tickers.get(f"v{symbol}-USDC") or {}
+        price   = float(ticker.get("lastPrice") or ticker.get("lastPx") or ticker.get("c") or 0)
+
+        if price <= 0:
+            logger.warning(f"execute_buy_for_deposit: {symbol} sem preço no SoDEX — pulando")
+            skipped_usd += alloc_usd
+            orders.append({"symbol": symbol, "status": "skipped_no_price", "usd_value": alloc_usd})
+            continue
+
+        qty     = alloc_usd / price
+        qty_str = f"{qty:.8f}"
+        px_str  = f"{price:.6f}"
+
+        order_info = {
+            "symbol":    symbol,
+            "side":      "BUY",
+            "quantity":  qty_str,
+            "price":     px_str,
+            "usd_value": round(alloc_usd, 4),
+            "status":    None,
+        }
+
+        if dry_run:
+            logger.info(f"[DRY RUN] BUY {qty_str} {sym_key} @ ${px_str} (${alloc_usd:.2f})")
+            order_info["status"] = "dry_run"
+        else:
+            sym_id = await get_symbol_id(sym_key, testnet=testnet)
+            if not sym_id:
+                sym_id = await get_symbol_id(f"v{symbol}-USDC", testnet=testnet)
+            if sym_id:
+                result = await place_order(sym_key, sym_id, "BUY", "LIMIT", qty_str, px_str, testnet=testnet)
+                order_info["status"] = "placed" if result else "failed"
+                order_info["raw"]    = result
+            else:
+                logger.warning(f"execute_buy_for_deposit: symbolID não encontrado para {sym_key}")
+                order_info["status"] = "no_symbol"
+                skipped_usd += alloc_usd
+
+        allocated_usd += alloc_usd
+        orders.append(order_info)
+
+    return {
+        "orders":        orders,
+        "allocated_usd": round(allocated_usd, 4),
+        "skipped_usd":   round(skipped_usd, 4),
+        "dry_run":       dry_run,
+        "testnet":       USE_TESTNET if testnet is None else testnet,
+    }

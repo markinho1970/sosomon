@@ -86,7 +86,7 @@ export default function Home() {
           {/* Network selector — pill compacta, some quando conectado */}
           {!isConnected && (
             <div className="flex flex-col items-center mb-8">
-              <p className="text-xs text-white/30 uppercase tracking-widest mb-2">{t("home_select_network")}</p>
+              <p className="text-base font-extrabold text-white uppercase tracking-[0.2em] mb-3 drop-shadow-[0_0_14px_rgba(255,255,255,0.85)]">{t("home_select_network")}</p>
               <div className="flex items-center gap-0.5 p-1 rounded-full bg-white/5 border border-white/10">
                 <button
                   onClick={() => { if (isTestnet) toggleMode(); }}
@@ -158,8 +158,8 @@ export default function Home() {
                     <p className="text-xs text-white/30 mb-0.5">{t("idx_aum")}</p>
                     <p className="font-semibold text-white">{formatUSD(idx.aum_usd ?? 0)}</p>
                   </div>
-                  <div className={`text-xl font-bold ${(idx.return_30d_pct ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
-                    {(idx.return_30d_pct ?? 0) >= 0 ? "+" : ""}{(idx.return_30d_pct ?? 0).toFixed(1)}%
+                  <div className={`text-xl font-bold ${(idx.return_30d_pct ?? 0) > 0 ? "text-green-400" : (idx.return_30d_pct ?? 0) < 0 ? "text-red-400" : "text-white"}`}>
+                    {(idx.return_30d_pct ?? 0) > 0 ? "+" : ""}{(idx.return_30d_pct ?? 0).toFixed(1)}%
                     <p className="text-xs font-normal text-white/30 text-right">30d</p>
                   </div>
                 </div>

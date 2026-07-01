@@ -97,6 +97,13 @@ export const investApi = {
     });
     return data;
   },
+
+  getBreakdown: (walletAddress: string, networkMode: string) =>
+    axios.get(`/api/invest/portfolio/${walletAddress}/breakdown?network_mode=${networkMode}`).then(r => r.data),
+  getHistory: (walletAddress: string, networkMode: string, days: number = 30) =>
+    axios.get(`/api/invest/portfolio/${walletAddress}/history?network_mode=${networkMode}&days=${days}`).then(r => r.data),
+  getTransactions: (walletAddress: string, networkMode: string) =>
+    axios.get(`/api/invest/portfolio/${walletAddress}/transactions?network_mode=${networkMode}`).then(r => r.data),
 };
 
 // ─── Admin ────────────────────────────────────────────────────────────────────
@@ -197,6 +204,16 @@ export const adminApi = {
   alerts: async (address: string, message: string, signature: string) => {
     const { data } = await api.get("/api/admin/alerts", adminHeaders(address, message, signature));
     return data as { alerts: SystemAlert[]; healthy: boolean; checked_at: string };
+  },
+
+  runScout: async (address: string, message: string, signature: string) => {
+    const { data } = await api.post("/api/admin/run-scout", {}, adminHeaders(address, message, signature));
+    return data as { success: boolean; message: string; pending_proposals: number };
+  },
+
+  runNavUpdate: async (address: string, message: string, signature: string) => {
+    const { data } = await api.post("/api/admin/run-nav-update", {}, adminHeaders(address, message, signature));
+    return data as { success: boolean; message: string };
   },
 };
 

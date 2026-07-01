@@ -13,6 +13,7 @@ interface IndexCardProps {
 export default function IndexCard({ index }: IndexCardProps) {
   const { t } = useLang();
   const isPositive = index.return_30d_pct >= 0;
+  const retColor = (v: number) => v > 0 ? "text-green-400" : v < 0 ? "text-red-400" : "text-white";
   const themeStyle = getThemeColor(index.theme);
 
   return (
@@ -30,7 +31,7 @@ export default function IndexCard({ index }: IndexCardProps) {
           </div>
           <div className={cn(
             "flex items-center gap-1 text-sm font-semibold",
-            isPositive ? "text-green-400" : "text-red-400"
+            retColor(index.return_30d_pct)
           )}>
             {isPositive ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
             {formatPct(index.return_30d_pct)}
@@ -49,7 +50,7 @@ export default function IndexCard({ index }: IndexCardProps) {
           </div>
           <div>
             <p className="stat-label text-xs">{t("idx_alltime")}</p>
-            <p className={cn("font-semibold text-sm", index.total_return_pct >= 0 ? "text-green-400" : "text-red-400")}>
+            <p className={cn("font-semibold text-sm", retColor(index.total_return_pct))}>
               {formatPct(index.total_return_pct)}
             </p>
           </div>
@@ -57,7 +58,7 @@ export default function IndexCard({ index }: IndexCardProps) {
 
         {/* vs BTC */}
         <div className="flex items-center justify-between text-xs text-white/40 mb-4">
-          <span>vs BTC 30d: <span className={index.return_30d_pct - index.btc_benchmark_30d >= 0 ? "text-green-400" : "text-red-400"}>
+          <span>vs BTC 30d: <span className={retColor(index.return_30d_pct - index.btc_benchmark_30d)}>
             {formatPct(index.return_30d_pct - index.btc_benchmark_30d)} alpha
           </span></span>
           <span>{index.constituents.length} tokens</span>

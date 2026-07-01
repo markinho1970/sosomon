@@ -28,7 +28,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     nav_indexes: "Indexes", nav_transparency: "Transparency", nav_whats_new: "What's New",
 
-    nav_dashboard: "Dashboard", nav_mainnet: "Mainnet", nav_testnet: "Testnet",
+    nav_dashboard: "Dashboard", nav_dashboard_locked: "Connect wallet to access Dashboard", nav_login: "Login", nav_mainnet: "Mainnet", nav_testnet: "Testnet",
     nav_network_locked: "Disconnect wallet to switch networks",
     nav_network_locked_short: "locked", nav_switch_to_mainnet: "switch to Mainnet", nav_switch_to_testnet: "switch to Testnet",
 
@@ -69,7 +69,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     invest_sign: "Sign Risk Disclaimer", invest_signing: "Signing…",
 
-    invest_sent: "I already sent the USDC →", invest_min: "Minimum: $5 USDC",
+    invest_sent: "I already sent the USDC →", invest_min_prefix: "Minimum:",
 
     invest_pending: "Your deposit will appear in the dashboard in 2–3 min after on-chain confirmation.",
 
@@ -107,7 +107,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     home_scout_role: "Research & Screening",
 
-    home_scout_desc: "Scans 400+ tokens daily using SoSoValue data feeds and SoDEX market data. Outputs ranked inclusion lists with AI-written rationale.",
+    home_scout_desc: "Screens 34 SoDEX markets daily, cross-referenced with SoSoValue SSI constituents. Outputs ranked inclusion lists with AI-written rationale.",
 
     home_rebal_role: "Portfolio Maintenance",
 
@@ -115,7 +115,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     home_narrator_role: "Content & Reports",
 
-    home_narrator_desc: "Generates the weekly Alpha Memo, Twitter threads, and subscriber digests automatically from agent data. Full transparency, zero spin.",
+    home_narrator_desc: "Generates the weekly Alpha Memo and Twitter thread drafts from agent data. Content is reviewed by the founder before publishing. Full transparency.",
 
     admin_title: "Admin Access", admin_subtitle: "SoSoMon Founder Dashboard",
 
@@ -219,7 +219,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     transp_footer2: "AI decisions are logged immutably. Deposits are verifiable on-chain.",
 
-    transp_scout_desc: "Daily screening of 30+ tokens per theme. Uses CoinGecko market data + SoSoValue SSI constituents + Gemini AI rationale.",
+    transp_scout_desc: "Daily screening of SoDEX markets (34 total, 26 TRADING) per theme. Uses SoDEX live prices + SoSoValue SSI constituents + Gemini AI rationale.",
 
     transp_rebalancer_desc: "Executes trades on SoDEX DEX based on Scout proposals. Applies sentiment-based stablecoin buffer.",
 
@@ -237,7 +237,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     idx_send_instr: "Send USDC on Base to the address below. Your position is registered automatically after deposit is detected.",
 
-    idx_invest: "Invest in this Index", idx_min_invest: "Minimum $5", idx_min_invest_prefix: "Minimum",
+    idx_invest: "Invest in this Index", idx_min_invest: "Minimum $5", idx_min_invest_prefix: "Minimum", idx_view_basket: "View Basket",
 
     idx_receive: "Receive index tokens · Withdraw anytime",
 
@@ -521,7 +521,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     invest_term_signed_desc: "Your consent and deposit intent for this index are registered.",
 
-    invest_minimum_title: "Minimum deposit: $5 USDC",
+    invest_minimum_title: "Minimum deposit:",
 
     invest_minimum_desc: "Deposits below $5 are automatically refunded to your wallet.",
 
@@ -552,9 +552,9 @@ export const T: Record<Lang, Record<string, string>> = {
 
     invest_step3: "Tokens issued at current NAV: ${nav} per token",
 
-    invest_mgmt_fee_label: "Management fee", invest_mgmt_fee_val: "0.75% / year",
+    invest_mgmt_fee_label: "Management fee", invest_mgmt_fee_val: "2% / year",
 
-    invest_perf_fee_label: "Performance fee", invest_perf_fee_val: "15% on profits",
+    invest_perf_fee_label: "Performance fee", invest_perf_fee_val: "20% on profits",
 
     invest_pending_title: "Transaction in progress",
 
@@ -639,7 +639,7 @@ export const T: Record<Lang, Record<string, string>> = {
     // ─── Wave 3 — Admin panel ───────────────────────────────────────────────
     admin_founder_label: "Founder Admin", admin_report_btn: "Report",
     admin_pro_subscribers: "{n} Pro", admin_all_systems_ok: "All systems operational",
-    admin_usdc_collected: "collected", admin_pro_label: "Pro",
+    admin_usdc_collected: "USDC collected", admin_pro_label: "Pro",
     admin_deposit_eth_gas: "Deposit ETH for gas",
     admin_deposit_eth_instruction: "Send ETH from your wallet to this address to cover gas fees.",
     admin_sodex_mainnet_only: "SoDEX operates on mainnet only",
@@ -678,13 +678,58 @@ export const T: Record<Lang, Record<string, string>> = {
     invest_usdc_only: "USDC only", home_agent_prefix: "Agent:",
     time_m_ago: "{n}m ago", time_h_ago: "{n}h ago", time_d_ago: "{n}d ago",
 
+    // ─── Admin Console — 7-tab redesign ──────────────────────────────────────
+    admin_founder_console: "Founder Console",
+    admin_tab_overview: "Overview", admin_tab_proposals: "Proposals", admin_tab_indexes: "Indexes",
+    admin_tab_treasury: "Treasury", admin_tab_investors_tab: "Investors", admin_tab_trades: "Trades",
+    admin_tab_agents: "Agents",
+    admin_pending_banner_one: "1 proposal pending approval",
+    admin_pending_banner_many: "{n} proposals pending approval",
+    admin_pending_banner_link: "View proposals →",
+    admin_agent_health: "Agent Health", admin_manage_agents_link: "Manage agents →",
+    admin_recent_activity: "Recent Activity", admin_view_all_link: "View all →",
+    admin_scout_schedule: "Daily 06:00 UTC", admin_rebal_schedule: "Mon 08:00 + drift 4h",
+    admin_nav_schedule: "Every 1h", admin_deposit_schedule: "Every 2min",
+    admin_loading: "Loading...",
+    admin_treasury_title: "Treasury", admin_fund_wallet_label: "Fund Wallet",
+    admin_eth_critical_simple: "CRITICAL — replenish", admin_eth_low_simple: "Low — attention",
+    admin_copy: "Copy", admin_copied: "Copied!",
+    admin_sodex_portfolio_title: "SoDEX Portfolio", admin_mainnet_only_note: "(mainnet only)",
+    admin_no_positions_short: "No positions",
+    admin_movements_title: "Movements",
+    admin_filter_all: "all", admin_filter_deposit: "deposit", admin_filter_refund: "refund",
+    admin_filter_withdrawal: "withdrawal",
+    admin_no_movements_filter: "No movements of type",
+    admin_refund_status_ok: "ok", admin_refund_status_failed: "failed", admin_refund_status_pending: "pending",
+    admin_trades_sodex_title: "Trades — SoDEX",
+    admin_no_trades_sub2: "Trades appear after rebalance execution",
+    admin_agents_controls_title: "Agents & Controls",
+    admin_scout_agent_desc: "Analyzes SoDEX markets + SoSoValue SSI. Proposes tokens for the 3 index baskets.",
+    admin_run_scout: "Run Scout Now", admin_running_scout: "Running Scout...",
+    admin_rebalancer_agent_desc: "Checks weight drift and proposes rebalancing. Generates proposal for human approval.",
+    admin_run_rebalancer_now: "Run Rebalancer Now", admin_running_rebalancer: "Running Rebalancer...",
+    admin_nav_updater_agent_desc: "Fetches SoDEX prices, recalculates NAV for all indexes and updates investor portfolios.",
+    admin_run_nav_now: "Run NAV Update Now", admin_running_nav: "Updating NAV...",
+    admin_report_agent_desc: "Generates a full report with AUM, investors, returns per index and recent activity.",
+    admin_generate_report: "Generate Report", admin_generating: "Generating...",
+    admin_on_demand: "On demand", admin_scheduler_title: "Scheduler",
+    admin_prop_filter_all: "all", admin_prop_filter_pending: "pending",
+    admin_prop_filter_approved: "approved", admin_prop_filter_executed: "executed",
+    admin_prop_filter_rejected: "rejected",
+    admin_no_proposals_filter: "No proposals with status",
+    admin_scout_daily_note: "Scout runs daily at 06:00 UTC",
+    admin_run_rebalancer_btn: "Run Rebalancer",
+    admin_pending_count: "{n} pending",
+    admin_investors_count: "{n} investors",
+    admin_indexes_net: "Indexes — {net}",
+
   },
 
   pt: {
 
     nav_indexes: "Índices", nav_transparency: "Transparência", nav_whats_new: "Novidades",
 
-    nav_dashboard: "Painel", nav_mainnet: "Mainnet", nav_testnet: "Testnet",
+    nav_dashboard: "Painel", nav_login: "Login", nav_mainnet: "Mainnet", nav_testnet: "Testnet",
     nav_network_locked: "Desconecte a carteira para trocar de rede",
     nav_network_locked_short: "travado", nav_switch_to_mainnet: "trocar para Mainnet", nav_switch_to_testnet: "trocar para Testnet",
 
@@ -725,7 +770,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     invest_sign: "Assinar Termo de Risco", invest_signing: "Assinando…",
 
-    invest_sent: "Já enviei o USDC →", invest_min: "Mínimo: $5 USDC",
+    invest_sent: "Já enviei o USDC →", invest_min_prefix: "Mínimo:",
 
     invest_pending: "Seu depósito aparecerá no painel em 2–3 min após confirmação on-chain.",
 
@@ -761,7 +806,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     home_scout_role: "Pesquisa & Seleção",
 
-    home_scout_desc: "Varre mais de 400 tokens diariamente usando feeds de dados da SoSoValue e dados de mercado do SoDEX. Gera listas de inclusão ranqueadas com justificativa gerada por IA.",
+    home_scout_desc: "Analisa 34 mercados do SoDEX diariamente, cruzados com os constituintes SSI da SoSoValue. Gera listas de inclusão ranqueadas com justificativa gerada por IA.",
 
     home_rebal_role: "Manutenção de Portfólio",
 
@@ -769,7 +814,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     home_narrator_role: "Conteúdo & Relatórios",
 
-    home_narrator_desc: "Gera automaticamente o Alpha Memo semanal, threads e resumos para investidores a partir dos dados dos agentes. Transparência total, sem rodeios.",
+    home_narrator_desc: "Gera o Alpha Memo semanal e rascunhos de threads a partir dos dados dos agentes. O conteúdo é revisado pelo fundador antes da publicação. Transparência total.",
 
     admin_title: "Acesso Admin", admin_subtitle: "Painel do Fundador SoSoMon",
 
@@ -871,7 +916,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     transp_footer2: "Decisões dos agentes são registradas de forma imutável. Depósitos são verificáveis on-chain.",
 
-    transp_scout_desc: "Triagem diária de 30+ tokens por tema. Usa dados do CoinGecko + constituintes SSI da SoSoValue + justificativa por IA Gemini.",
+    transp_scout_desc: "Triagem diária dos mercados SoDEX (34 total, 26 TRADING) por tema. Usa preços ao vivo do SoDEX + constituintes SSI da SoSoValue + justificativa por IA Gemini.",
 
     transp_rebalancer_desc: "Executa trades na SoDEX DEX baseado nas propostas do Scout. Aplica buffer de stablecoin baseado em sentimento.",
 
@@ -887,7 +932,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     idx_send_instr: "Envie USDC na rede Base para o endereço abaixo. Sua posição é registrada automaticamente após o depósito ser detectado.",
 
-    idx_invest: "Investir neste Índice", idx_min_invest: "Mínimo $5", idx_min_invest_prefix: "Mínimo",
+    idx_invest: "Investir neste Índice", idx_min_invest: "Mínimo $5", idx_min_invest_prefix: "Mínimo", idx_view_basket: "Ver Cesta",
 
     idx_receive: "Receba tokens do índice · Saque a qualquer momento",
 
@@ -1155,7 +1200,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     invest_term_signed_desc: "Seu consentimento e a intenção de depósito neste índice estão registrados.",
 
-    invest_minimum_title: "Depósito mínimo: $5 USDC",
+    invest_minimum_title: "Depósito mínimo:",
 
     invest_minimum_desc: "Depósitos abaixo de $5 são estornados automaticamente para sua carteira.",
 
@@ -1186,9 +1231,9 @@ export const T: Record<Lang, Record<string, string>> = {
 
     invest_step3: "Tokens emitidos ao NAV atual: ${nav} por token",
 
-    invest_mgmt_fee_label: "Taxa de gestão", invest_mgmt_fee_val: "0,75% / ano",
+    invest_mgmt_fee_label: "Taxa de gestão", invest_mgmt_fee_val: "2% / ano",
 
-    invest_perf_fee_label: "Taxa de performance", invest_perf_fee_val: "15% sobre lucros",
+    invest_perf_fee_label: "Taxa de performance", invest_perf_fee_val: "20% sobre lucros",
 
     invest_pending_title: "Transação em andamento",
 
@@ -1270,7 +1315,7 @@ export const T: Record<Lang, Record<string, string>> = {
     idx_perf_fee_value: "20% sobre lucros",
     admin_founder_label: "Admin Founder", admin_report_btn: "Relatório",
     admin_pro_subscribers: "{n} Pro", admin_all_systems_ok: "Todos os sistemas operacionais",
-    admin_usdc_collected: "coletado", admin_pro_label: "Pro",
+    admin_usdc_collected: "USDC coletado", admin_pro_label: "Pro",
     admin_deposit_eth_gas: "Depositar ETH para gas",
     admin_deposit_eth_instruction: "Envie ETH da sua carteira para este endereço para cobrir taxas de gas.",
     admin_sodex_mainnet_only: "SoDEX opera apenas na mainnet",
@@ -1303,13 +1348,58 @@ export const T: Record<Lang, Record<string, string>> = {
     invest_usdc_only: "Somente USDC", home_agent_prefix: "Agente:",
     time_m_ago: "há {n}m", time_h_ago: "há {n}h", time_d_ago: "há {n}d",
 
+    // ─── Admin Console — 7-tab redesign ──────────────────────────────────────
+    admin_founder_console: "Console do Fundador",
+    admin_tab_overview: "Visão Geral", admin_tab_proposals: "Propostas", admin_tab_indexes: "Índices",
+    admin_tab_treasury: "Tesouraria", admin_tab_investors_tab: "Investidores", admin_tab_trades: "Trades",
+    admin_tab_agents: "Agentes",
+    admin_pending_banner_one: "1 proposta pendente aguardando aprovação",
+    admin_pending_banner_many: "{n} propostas pendentes aguardando aprovação",
+    admin_pending_banner_link: "Ver propostas →",
+    admin_agent_health: "Status dos Agentes", admin_manage_agents_link: "Gerenciar agentes →",
+    admin_recent_activity: "Atividade Recente", admin_view_all_link: "Ver todas →",
+    admin_scout_schedule: "Diário 06:00 UTC", admin_rebal_schedule: "Seg 08:00 + drift 4h",
+    admin_nav_schedule: "A cada 1h", admin_deposit_schedule: "A cada 2min",
+    admin_loading: "Carregando...",
+    admin_treasury_title: "Tesouraria", admin_fund_wallet_label: "Carteira do Fundo",
+    admin_eth_critical_simple: "CRÍTICO — recarregar", admin_eth_low_simple: "Baixo — atenção",
+    admin_copy: "Copiar", admin_copied: "Copiado!",
+    admin_sodex_portfolio_title: "Portfólio SoDEX", admin_mainnet_only_note: "(apenas mainnet)",
+    admin_no_positions_short: "Sem posições",
+    admin_movements_title: "Movimentações",
+    admin_filter_all: "todos", admin_filter_deposit: "depósito", admin_filter_refund: "estorno",
+    admin_filter_withdrawal: "saque",
+    admin_no_movements_filter: "Nenhuma movimentação do tipo",
+    admin_refund_status_ok: "ok", admin_refund_status_failed: "falhou", admin_refund_status_pending: "pendente",
+    admin_trades_sodex_title: "Trades — SoDEX",
+    admin_no_trades_sub2: "Trades aparecem após execução de rebalanceamento",
+    admin_agents_controls_title: "Agentes & Controles",
+    admin_scout_agent_desc: "Analisa mercados SoDEX + SoSoValue SSI. Propõe tokens para as cestas dos 3 índices.",
+    admin_run_scout: "Rodar Scout Agora", admin_running_scout: "Rodando Scout...",
+    admin_rebalancer_agent_desc: "Verifica drift dos pesos e propõe rebalanceamento. Gera proposta para aprovação humana.",
+    admin_run_rebalancer_now: "Rodar Rebalancer Agora", admin_running_rebalancer: "Rodando Rebalancer...",
+    admin_nav_updater_agent_desc: "Busca preços no SoDEX, recalcula NAV de todos os índices e atualiza portfolios dos investidores.",
+    admin_run_nav_now: "Rodar NAV Update Agora", admin_running_nav: "Atualizando NAV...",
+    admin_report_agent_desc: "Gera relatório completo com AUM, investidores, retornos por índice e atividade recente.",
+    admin_generate_report: "Gerar Relatório", admin_generating: "Gerando...",
+    admin_on_demand: "Sob demanda", admin_scheduler_title: "Agendamento",
+    admin_prop_filter_all: "todas", admin_prop_filter_pending: "pendentes",
+    admin_prop_filter_approved: "aprovadas", admin_prop_filter_executed: "executadas",
+    admin_prop_filter_rejected: "rejeitadas",
+    admin_no_proposals_filter: "Nenhuma proposta com status",
+    admin_scout_daily_note: "Scout roda diariamente às 06:00 UTC",
+    admin_run_rebalancer_btn: "Rodar Rebalancer",
+    admin_pending_count: "{n} pendentes",
+    admin_investors_count: "{n} investidores",
+    admin_indexes_net: "Índices — {net}",
+
   },
 
   zh: {
 
     nav_indexes: "指数", nav_transparency: "透明度", nav_whats_new: "新功能",
 
-    nav_dashboard: "仪表板", nav_mainnet: "主网", nav_testnet: "测试网",
+    nav_dashboard: "仪表板", nav_login: "登录", nav_mainnet: "主网", nav_testnet: "测试网",
     nav_network_locked: "断开钱包以切换网络",
     nav_network_locked_short: "已锁定", nav_switch_to_mainnet: "切换到主网", nav_switch_to_testnet: "切换到测试网",
 
@@ -1349,7 +1439,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     invest_sign: "签署风险声明", invest_signing: "签署中…",
 
-    invest_sent: "我已发送USDC →", invest_min: "最低：$5 USDC",
+    invest_sent: "我已发送USDC →", invest_min_prefix: "最低：",
 
     invest_pending: "链上确认后2-3分钟内将显示在仪表板中。",
 
@@ -1485,7 +1575,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     idx_nav_token: "每代币净值", idx_constituents: "成分股", idx_weight: "权重", idx_price: "价格",
 
-    idx_invest: "投资此指数", idx_min_invest: "最低 $5", idx_min_invest_prefix: "最低", idx_not_found: "未找到指数。", idx_back: "← 返回指数",
+    idx_invest: "投资此指数", idx_min_invest: "最低 $5", idx_min_invest_prefix: "最低", idx_view_basket: "查看篮子", idx_not_found: "未找到指数。", idx_back: "← 返回指数",
 
     wd_btn: "提取", wd_deposited: "已存入", wd_current: "当前价值", wd_preview_btn: "预览提取",
 
@@ -1518,11 +1608,11 @@ export const T: Record<Lang, Record<string, string>> = {
 
     home_hiw_sub: "SoSoMon完全由在SoSoValue ValueChain上运行的AI代理驱动。代理处理一切。",
 
-    home_scout_role: "研究与筛选", home_scout_desc: "每日扫描400多个代币，使用SoSoValue数据和SoDEX市场数据，输出带有AI撰写理由的排名纳入列表。",
+    home_scout_role: "研究与筛选", home_scout_desc: "每日筛查34个SoDEX市场，与SoSoValue SSI成分交叉验证。输出带有AI撰写理由的排名纳入列表。",
 
     home_rebal_role: "投资组合维护", home_rebal_desc: "监控漂移、情绪评分和流动性。每周或触发风险时提出再平衡建议。在SoDEX上执行订单。",
 
-    home_narrator_role: "内容与报告", home_narrator_desc: "自动从代理数据生成每周Alpha备忘录、推文和订阅者摘要。完全透明，零偏见。",
+    home_narrator_role: "内容与报告", home_narrator_desc: "从代理数据生成每周Alpha备忘录和推文草稿。内容由创始人审核后发布。完全透明。",
 
     admin_title: "管理员访问", admin_subtitle: "SoSoMon创始人仪表板",
 
@@ -1687,6 +1777,7 @@ export const T: Record<Lang, Record<string, string>> = {
     wd_eth_required: "资金钱包需要ETH支付gas。请联系支持。", wd_try_again: "重试",
     invest_usdc_only: "仅限USDC", home_agent_prefix: "代理:",
     time_m_ago: "{n}分钟前", time_h_ago: "{n}小时前", time_d_ago: "{n}天前",
+    admin_founder_console: "Founder Console", admin_tab_overview: "Overview", admin_tab_proposals: "Proposals", admin_tab_indexes: "Indexes", admin_tab_treasury: "Treasury", admin_tab_investors_tab: "Investors", admin_tab_trades: "Trades", admin_tab_agents: "Agents", admin_pending_banner_one: "1 proposal pending approval", admin_pending_banner_many: "{n} proposals pending approval", admin_pending_banner_link: "View proposals →", admin_agent_health: "Agent Health", admin_manage_agents_link: "Manage agents →", admin_recent_activity: "Recent Activity", admin_view_all_link: "View all →", admin_scout_schedule: "Daily 06:00 UTC", admin_rebal_schedule: "Mon 08:00 + drift 4h", admin_nav_schedule: "Every 1h", admin_deposit_schedule: "Every 2min", admin_loading: "Loading...", admin_treasury_title: "Treasury", admin_fund_wallet_label: "Fund Wallet", admin_eth_critical_simple: "CRITICAL — replenish", admin_eth_low_simple: "Low — attention", admin_copy: "Copy", admin_copied: "Copied!", admin_sodex_portfolio_title: "SoDEX Portfolio", admin_mainnet_only_note: "(mainnet only)", admin_no_positions_short: "No positions", admin_movements_title: "Movements", admin_filter_all: "all", admin_filter_deposit: "deposit", admin_filter_refund: "refund", admin_filter_withdrawal: "withdrawal", admin_no_movements_filter: "No movements of type", admin_refund_status_ok: "ok", admin_refund_status_failed: "failed", admin_refund_status_pending: "pending", admin_trades_sodex_title: "Trades — SoDEX", admin_no_trades_sub2: "Trades appear after rebalance execution", admin_agents_controls_title: "Agents & Controls", admin_scout_agent_desc: "Analyzes SoDEX markets + SoSoValue SSI.", admin_run_scout: "Run Scout Now", admin_running_scout: "Running Scout...", admin_rebalancer_agent_desc: "Checks weight drift and proposes rebalancing.", admin_run_rebalancer_now: "Run Rebalancer Now", admin_running_rebalancer: "Running Rebalancer...", admin_nav_updater_agent_desc: "Fetches SoDEX prices, recalculates NAV and updates portfolios.", admin_run_nav_now: "Run NAV Update Now", admin_running_nav: "Updating NAV...", admin_report_agent_desc: "Generates a full management report.", admin_generate_report: "Generate Report", admin_generating: "Generating...", admin_on_demand: "On demand", admin_scheduler_title: "Scheduler", admin_prop_filter_all: "all", admin_prop_filter_pending: "pending", admin_prop_filter_approved: "approved", admin_prop_filter_executed: "executed", admin_prop_filter_rejected: "rejected", admin_no_proposals_filter: "No proposals with status", admin_scout_daily_note: "Scout runs daily at 06:00 UTC", admin_run_rebalancer_btn: "Run Rebalancer", admin_pending_count: "{n} pending", admin_investors_count: "{n} investors", admin_indexes_net: "Indexes — {net}",
 
   },
 
@@ -1694,7 +1785,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     nav_indexes: "インデックス", nav_transparency: "透明性", nav_whats_new: "新機能",
 
-    nav_dashboard: "ダッシュボード", nav_mainnet: "メインネット", nav_testnet: "テストネット",
+    nav_dashboard: "ダッシュボード", nav_login: "ログイン", nav_mainnet: "メインネット", nav_testnet: "テストネット",
     nav_network_locked: "ウォレットを切断してネットワークを切り替えてください",
     nav_network_locked_short: "ロック中", nav_switch_to_mainnet: "メインネットに切替", nav_switch_to_testnet: "テストネットに切替",
 
@@ -1734,7 +1825,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     invest_sign: "リスク開示に署名", invest_signing: "署名中…",
 
-    invest_sent: "USDCを送りました →", invest_min: "最低：$5 USDC",
+    invest_sent: "USDCを送りました →", invest_min_prefix: "最低：",
 
     invest_pending: "オンチェーン確認後2〜3分でダッシュボードに表示されます。",
 
@@ -1870,7 +1961,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     idx_nav_token: "トークンあたりNAV", idx_constituents: "構成銘柄", idx_weight: "ウェイト", idx_price: "価格",
 
-    idx_invest: "このインデックスに投資", idx_min_invest: "最低 $5", idx_min_invest_prefix: "最低", idx_not_found: "インデックスが見つかりません。", idx_back: "← インデックスに戻る",
+    idx_invest: "このインデックスに投資", idx_min_invest: "最低 $5", idx_min_invest_prefix: "最低", idx_view_basket: "バスケットを見る", idx_not_found: "インデックスが見つかりません。", idx_back: "← インデックスに戻る",
 
     wd_btn: "引き出し", wd_deposited: "預入済み", wd_current: "現在価値", wd_preview_btn: "引き出しプレビュー",
 
@@ -1903,11 +1994,11 @@ export const T: Record<Lang, Record<string, string>> = {
 
     home_hiw_sub: "SoSoMonはSoSoValue ValueChain上で動作するAIエージェントで完全に動いています。エージェントがすべてを処理します。",
 
-    home_scout_role: "リサーチ&スクリーニング", home_scout_desc: "SoSoValueデータとSoDEX市場データを使用して400以上のトークンを毎日スキャン。AI生成の根拠付き順位リストを出力。",
+    home_scout_role: "リサーチ&スクリーニング", home_scout_desc: "34のSoDEXマーケットを毎日スクリーニング、SoSoValue SSI構成銘柄とクロスリファレンス。AI生成の根拠付き順位リストを出力。",
 
     home_rebal_role: "ポートフォリオ管理", home_rebal_desc: "ドリフト、センチメントスコア、流動性を監視。週次またはリスクトリガー時にリバランスを提案。SoDEXで注文を実行。",
 
-    home_narrator_role: "コンテンツ&レポート", home_narrator_desc: "エージェントデータから週次アルファメモ、Twitterスレッド、サブスクライバーダイジェストを自動生成。完全な透明性。",
+    home_narrator_role: "コンテンツ&レポート", home_narrator_desc: "エージェントデータから週次アルファメモとTwitterスレッドの草稿を生成。コンテンツは創設者が審査後に公開。完全な透明性。",
 
     admin_title: "管理者アクセス", admin_subtitle: "SoSoMonファウンダーダッシュボード",
 
@@ -2072,6 +2163,7 @@ export const T: Record<Lang, Record<string, string>> = {
     wd_eth_required: "ファンドウォレットにETH（gas代）が必要です。サポートへご連絡ください。", wd_try_again: "再試行",
     invest_usdc_only: "USDCのみ", home_agent_prefix: "エージェント:",
     time_m_ago: "{n}分前", time_h_ago: "{n}時間前", time_d_ago: "{n}日前",
+    admin_founder_console: "Founder Console", admin_tab_overview: "Overview", admin_tab_proposals: "Proposals", admin_tab_indexes: "Indexes", admin_tab_treasury: "Treasury", admin_tab_investors_tab: "Investors", admin_tab_trades: "Trades", admin_tab_agents: "Agents", admin_pending_banner_one: "1 proposal pending approval", admin_pending_banner_many: "{n} proposals pending approval", admin_pending_banner_link: "View proposals →", admin_agent_health: "Agent Health", admin_manage_agents_link: "Manage agents →", admin_recent_activity: "Recent Activity", admin_view_all_link: "View all →", admin_scout_schedule: "Daily 06:00 UTC", admin_rebal_schedule: "Mon 08:00 + drift 4h", admin_nav_schedule: "Every 1h", admin_deposit_schedule: "Every 2min", admin_loading: "Loading...", admin_treasury_title: "Treasury", admin_fund_wallet_label: "Fund Wallet", admin_eth_critical_simple: "CRITICAL — replenish", admin_eth_low_simple: "Low — attention", admin_copy: "Copy", admin_copied: "Copied!", admin_sodex_portfolio_title: "SoDEX Portfolio", admin_mainnet_only_note: "(mainnet only)", admin_no_positions_short: "No positions", admin_movements_title: "Movements", admin_filter_all: "all", admin_filter_deposit: "deposit", admin_filter_refund: "refund", admin_filter_withdrawal: "withdrawal", admin_no_movements_filter: "No movements of type", admin_refund_status_ok: "ok", admin_refund_status_failed: "failed", admin_refund_status_pending: "pending", admin_trades_sodex_title: "Trades — SoDEX", admin_no_trades_sub2: "Trades appear after rebalance execution", admin_agents_controls_title: "Agents & Controls", admin_scout_agent_desc: "Analyzes SoDEX markets + SoSoValue SSI.", admin_run_scout: "Run Scout Now", admin_running_scout: "Running Scout...", admin_rebalancer_agent_desc: "Checks weight drift and proposes rebalancing.", admin_run_rebalancer_now: "Run Rebalancer Now", admin_running_rebalancer: "Running Rebalancer...", admin_nav_updater_agent_desc: "Fetches SoDEX prices, recalculates NAV and updates portfolios.", admin_run_nav_now: "Run NAV Update Now", admin_running_nav: "Updating NAV...", admin_report_agent_desc: "Generates a full management report.", admin_generate_report: "Generate Report", admin_generating: "Generating...", admin_on_demand: "On demand", admin_scheduler_title: "Scheduler", admin_prop_filter_all: "all", admin_prop_filter_pending: "pending", admin_prop_filter_approved: "approved", admin_prop_filter_executed: "executed", admin_prop_filter_rejected: "rejected", admin_no_proposals_filter: "No proposals with status", admin_scout_daily_note: "Scout runs daily at 06:00 UTC", admin_run_rebalancer_btn: "Run Rebalancer", admin_pending_count: "{n} pending", admin_investors_count: "{n} investors", admin_indexes_net: "Indexes — {net}",
 
   },
 
@@ -2079,7 +2171,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     nav_indexes: "सूचकांक", nav_transparency: "पारदर्शिता", nav_whats_new: "नया क्या है",
 
-    nav_dashboard: "डैशबोर्ड", nav_mainnet: "मेननेट", nav_testnet: "टेस्टनेट",
+    nav_dashboard: "डैशबोर्ड", nav_login: "लॉगिन", nav_mainnet: "मेननेट", nav_testnet: "टेस्टनेट",
     nav_network_locked: "नेटवर्क बदलने के लिए वॉलेट डिस्कनेक्ट करें",
     nav_network_locked_short: "लॉक्ड", nav_switch_to_mainnet: "Mainnet पर जाएं", nav_switch_to_testnet: "Testnet पर जाएं",
 
@@ -2119,7 +2211,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     invest_sign: "जोखिम प्रकटीकरण पर हस्ताक्षर करें", invest_signing: "हस्ताक्षर हो रहा है…",
 
-    invest_sent: "मैंने USDC भेज दिया →", invest_min: "न्यूनतम: $5 USDC",
+    invest_sent: "मैंने USDC भेज दिया →", invest_min_prefix: "न्यूनतम:",
 
     invest_pending: "ऑन-चेन पुष्टि के 2-3 मिनट बाद डैशबोर्ड में दिखेगी।",
 
@@ -2251,7 +2343,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     transp_filter_all: "सभी एजेंट", transp_no_decisions: "अभी तक कोई निर्णय दर्ज नहीं।", transp_loading: "लोड हो रहा है…",
 
-    idx_invest: "इस इंडेक्स में निवेश करें", idx_min_invest_prefix: "न्यूनतम", idx_not_found: "इंडेक्स नहीं मिला।", idx_back: "← इंडेक्स पर वापस",
+    idx_invest: "इस इंडेक्स में निवेश करें", idx_min_invest_prefix: "न्यूनतम", idx_view_basket: "बास्केट देखें", idx_not_found: "इंडेक्स नहीं मिला।", idx_back: "← इंडेक्स पर वापस",
 
     wd_btn: "निकासी", wd_preview_btn: "निकासी पूर्वावलोकन", wd_execute: "निकासी करें →",
 
@@ -2282,11 +2374,11 @@ export const T: Record<Lang, Record<string, string>> = {
 
     home_hiw_sub: "SoSoMon पूरी तरह से SoSoValue ValueChain पर AI एजेंटों द्वारा संचालित है।",
 
-    home_scout_role: "अनुसंधान और स्क्रीनिंग", home_scout_desc: "SoSoValue डेटा और SoDEX मार्केट डेटा का उपयोग करके 400+ टोकन की दैनिक स्कैनिंग।",
+    home_scout_role: "अनुसंधान और स्क्रीनिंग", home_scout_desc: "34 SoDEX मार्केट की दैनिक स्क्रीनिंग, SoSoValue SSI घटकों से क्रॉस-रेफरेंस। AI-लिखित तर्क के साथ रैंक की गई समावेश सूचियां।",
 
     home_rebal_role: "पोर्टफोलियो रखरखाव", home_rebal_desc: "ड्रिफ्ट, भावना स्कोर और तरलता की निगरानी करता है। SoDEX पर ऑर्डर निष्पादित करता है।",
 
-    home_narrator_role: "सामग्री और रिपोर्ट", home_narrator_desc: "एजेंट डेटा से साप्ताहिक Alpha Memo और सब्सक्राइबर डाइजेस्ट स्वचालित रूप से उत्पन्न करता है।",
+    home_narrator_role: "सामग्री और रिपोर्ट", home_narrator_desc: "एजेंट डेटा से साप्ताहिक Alpha Memo और Twitter थ्रेड ड्राफ्ट तैयार करता है। प्रकाशन से पहले संस्थापक द्वारा समीक्षित। पूर्ण पारदर्शिता।",
 
     admin_title: "एडमिन एक्सेस", admin_subtitle: "SoSoMon फाउंडर डैशबोर्ड",
 
@@ -2451,6 +2543,7 @@ export const T: Record<Lang, Record<string, string>> = {
     wd_eth_required: "फंड वॉलेट को गैस के लिए ETH चाहिए। सहायता से संपर्क करें।", wd_try_again: "पुनः प्रयास करें",
     invest_usdc_only: "केवल USDC", home_agent_prefix: "एजेंट:",
     time_m_ago: "{n}मिनट पहले", time_h_ago: "{n}घंटे पहले", time_d_ago: "{n}दिन पहले",
+    admin_founder_console: "Founder Console", admin_tab_overview: "Overview", admin_tab_proposals: "Proposals", admin_tab_indexes: "Indexes", admin_tab_treasury: "Treasury", admin_tab_investors_tab: "Investors", admin_tab_trades: "Trades", admin_tab_agents: "Agents", admin_pending_banner_one: "1 proposal pending approval", admin_pending_banner_many: "{n} proposals pending approval", admin_pending_banner_link: "View proposals →", admin_agent_health: "Agent Health", admin_manage_agents_link: "Manage agents →", admin_recent_activity: "Recent Activity", admin_view_all_link: "View all →", admin_scout_schedule: "Daily 06:00 UTC", admin_rebal_schedule: "Mon 08:00 + drift 4h", admin_nav_schedule: "Every 1h", admin_deposit_schedule: "Every 2min", admin_loading: "Loading...", admin_treasury_title: "Treasury", admin_fund_wallet_label: "Fund Wallet", admin_eth_critical_simple: "CRITICAL — replenish", admin_eth_low_simple: "Low — attention", admin_copy: "Copy", admin_copied: "Copied!", admin_sodex_portfolio_title: "SoDEX Portfolio", admin_mainnet_only_note: "(mainnet only)", admin_no_positions_short: "No positions", admin_movements_title: "Movements", admin_filter_all: "all", admin_filter_deposit: "deposit", admin_filter_refund: "refund", admin_filter_withdrawal: "withdrawal", admin_no_movements_filter: "No movements of type", admin_refund_status_ok: "ok", admin_refund_status_failed: "failed", admin_refund_status_pending: "pending", admin_trades_sodex_title: "Trades — SoDEX", admin_no_trades_sub2: "Trades appear after rebalance execution", admin_agents_controls_title: "Agents & Controls", admin_scout_agent_desc: "Analyzes SoDEX markets + SoSoValue SSI.", admin_run_scout: "Run Scout Now", admin_running_scout: "Running Scout...", admin_rebalancer_agent_desc: "Checks weight drift and proposes rebalancing.", admin_run_rebalancer_now: "Run Rebalancer Now", admin_running_rebalancer: "Running Rebalancer...", admin_nav_updater_agent_desc: "Fetches SoDEX prices, recalculates NAV and updates portfolios.", admin_run_nav_now: "Run NAV Update Now", admin_running_nav: "Updating NAV...", admin_report_agent_desc: "Generates a full management report.", admin_generate_report: "Generate Report", admin_generating: "Generating...", admin_on_demand: "On demand", admin_scheduler_title: "Scheduler", admin_prop_filter_all: "all", admin_prop_filter_pending: "pending", admin_prop_filter_approved: "approved", admin_prop_filter_executed: "executed", admin_prop_filter_rejected: "rejected", admin_no_proposals_filter: "No proposals with status", admin_scout_daily_note: "Scout runs daily at 06:00 UTC", admin_run_rebalancer_btn: "Run Rebalancer", admin_pending_count: "{n} pending", admin_investors_count: "{n} investors", admin_indexes_net: "Indexes — {net}",
 
   },
 
@@ -2458,7 +2551,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     nav_indexes: "Indeks", nav_transparency: "Transparansi", nav_whats_new: "Apa yang Baru",
 
-    nav_dashboard: "Dasbor", nav_mainnet: "Mainnet", nav_testnet: "Testnet",
+    nav_dashboard: "Dasbor", nav_login: "Masuk", nav_mainnet: "Mainnet", nav_testnet: "Testnet",
     nav_network_locked: "Putuskan dompet untuk mengganti jaringan",
     nav_network_locked_short: "terkunci", nav_switch_to_mainnet: "ganti ke Mainnet", nav_switch_to_testnet: "ganti ke Testnet",
 
@@ -2498,7 +2591,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     invest_sign: "Tandatangani Pengungkapan Risiko", invest_signing: "Menandatangani…",
 
-    invest_sent: "Saya sudah mengirim USDC →", invest_min: "Minimum: $5 USDC",
+    invest_sent: "Saya sudah mengirim USDC →", invest_min_prefix: "Minimum:",
 
     invest_pending: "Setoran Anda akan muncul di dasbor dalam 2–3 menit setelah konfirmasi on-chain.",
 
@@ -2630,7 +2723,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     transp_filter_all: "Semua agen", transp_no_decisions: "Belum ada keputusan tercatat.", transp_loading: "Memuat…",
 
-    idx_invest: "Investasi di Indeks Ini", idx_min_invest_prefix: "Minimum", idx_not_found: "Indeks tidak ditemukan.", idx_back: "← Kembali ke Indeks",
+    idx_invest: "Investasi di Indeks Ini", idx_min_invest_prefix: "Minimum", idx_view_basket: "Lihat Keranjang", idx_not_found: "Indeks tidak ditemukan.", idx_back: "← Kembali ke Indeks",
 
     wd_btn: "Tarik", wd_preview_btn: "Pratinjau penarikan", wd_execute: "Jalankan penarikan →",
 
@@ -2661,11 +2754,11 @@ export const T: Record<Lang, Record<string, string>> = {
 
     home_hiw_sub: "SoSoMon berjalan sepenuhnya pada agen AI yang beroperasi di SoSoValue ValueChain.",
 
-    home_scout_role: "Riset & Penyaringan", home_scout_desc: "Memindai 400+ token setiap hari menggunakan data SoSoValue dan SoDEX. Menghasilkan daftar inklusi berperingkat dengan alasan yang ditulis AI.",
+    home_scout_role: "Riset & Penyaringan", home_scout_desc: "Menyaring 34 pasar SoDEX setiap hari, direferensikan silang dengan konstituen SoSoValue SSI. Menghasilkan daftar inklusi berperingkat dengan alasan yang ditulis AI.",
 
     home_rebal_role: "Pemeliharaan Portofolio", home_rebal_desc: "Memantau drift, skor sentimen, dan likuiditas. Mengeksekusi pesanan di SoDEX.",
 
-    home_narrator_role: "Konten & Laporan", home_narrator_desc: "Menghasilkan Alpha Memo mingguan dan ringkasan pelanggan secara otomatis dari data agen.",
+    home_narrator_role: "Konten & Laporan", home_narrator_desc: "Menghasilkan draft Alpha Memo mingguan dan thread Twitter dari data agen. Konten ditinjau oleh pendiri sebelum diterbitkan. Transparansi penuh.",
 
     admin_title: "Akses Admin", admin_subtitle: "Dasbor Pendiri SoSoMon",
 
@@ -2830,6 +2923,7 @@ export const T: Record<Lang, Record<string, string>> = {
     wd_eth_required: "Dompet dana membutuhkan ETH untuk gas. Hubungi dukungan.", wd_try_again: "Coba lagi",
     invest_usdc_only: "USDC saja", home_agent_prefix: "Agen:",
     time_m_ago: "{n}m lalu", time_h_ago: "{n}j lalu", time_d_ago: "{n}h lalu",
+    admin_founder_console: "Founder Console", admin_tab_overview: "Overview", admin_tab_proposals: "Proposals", admin_tab_indexes: "Indexes", admin_tab_treasury: "Treasury", admin_tab_investors_tab: "Investors", admin_tab_trades: "Trades", admin_tab_agents: "Agents", admin_pending_banner_one: "1 proposal pending approval", admin_pending_banner_many: "{n} proposals pending approval", admin_pending_banner_link: "View proposals →", admin_agent_health: "Agent Health", admin_manage_agents_link: "Manage agents →", admin_recent_activity: "Recent Activity", admin_view_all_link: "View all →", admin_scout_schedule: "Daily 06:00 UTC", admin_rebal_schedule: "Mon 08:00 + drift 4h", admin_nav_schedule: "Every 1h", admin_deposit_schedule: "Every 2min", admin_loading: "Loading...", admin_treasury_title: "Treasury", admin_fund_wallet_label: "Fund Wallet", admin_eth_critical_simple: "CRITICAL — replenish", admin_eth_low_simple: "Low — attention", admin_copy: "Copy", admin_copied: "Copied!", admin_sodex_portfolio_title: "SoDEX Portfolio", admin_mainnet_only_note: "(mainnet only)", admin_no_positions_short: "No positions", admin_movements_title: "Movements", admin_filter_all: "all", admin_filter_deposit: "deposit", admin_filter_refund: "refund", admin_filter_withdrawal: "withdrawal", admin_no_movements_filter: "No movements of type", admin_refund_status_ok: "ok", admin_refund_status_failed: "failed", admin_refund_status_pending: "pending", admin_trades_sodex_title: "Trades — SoDEX", admin_no_trades_sub2: "Trades appear after rebalance execution", admin_agents_controls_title: "Agents & Controls", admin_scout_agent_desc: "Analyzes SoDEX markets + SoSoValue SSI.", admin_run_scout: "Run Scout Now", admin_running_scout: "Running Scout...", admin_rebalancer_agent_desc: "Checks weight drift and proposes rebalancing.", admin_run_rebalancer_now: "Run Rebalancer Now", admin_running_rebalancer: "Running Rebalancer...", admin_nav_updater_agent_desc: "Fetches SoDEX prices, recalculates NAV and updates portfolios.", admin_run_nav_now: "Run NAV Update Now", admin_running_nav: "Updating NAV...", admin_report_agent_desc: "Generates a full management report.", admin_generate_report: "Generate Report", admin_generating: "Generating...", admin_on_demand: "On demand", admin_scheduler_title: "Scheduler", admin_prop_filter_all: "all", admin_prop_filter_pending: "pending", admin_prop_filter_approved: "approved", admin_prop_filter_executed: "executed", admin_prop_filter_rejected: "rejected", admin_no_proposals_filter: "No proposals with status", admin_scout_daily_note: "Scout runs daily at 06:00 UTC", admin_run_rebalancer_btn: "Run Rebalancer", admin_pending_count: "{n} pending", admin_investors_count: "{n} investors", admin_indexes_net: "Indexes — {net}",
 
   },
 
@@ -2837,7 +2931,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     nav_indexes: "인덱스", nav_transparency: "투명성", nav_whats_new: "새로운 기능",
 
-    nav_dashboard: "대시보드", nav_mainnet: "메인넷", nav_testnet: "테스트넷",
+    nav_dashboard: "대시보드", nav_login: "로그인", nav_mainnet: "메인넷", nav_testnet: "테스트넷",
     nav_network_locked: "네트워크 전환을 위해 지갑 연결을 해제하세요",
     nav_network_locked_short: "잠김", nav_switch_to_mainnet: "메인넷으로 전환", nav_switch_to_testnet: "테스트넷으로 전환",
 
@@ -2877,7 +2971,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     invest_sign: "위험 공시 서명", invest_signing: "서명 중…",
 
-    invest_sent: "USDC를 이미 보냈습니다 →", invest_min: "최소: $5 USDC",
+    invest_sent: "USDC를 이미 보냈습니다 →", invest_min_prefix: "최소:",
 
     invest_pending: "온체인 확인 후 2~3분 내에 대시보드에 표시됩니다.",
 
@@ -3009,7 +3103,7 @@ export const T: Record<Lang, Record<string, string>> = {
 
     transp_filter_all: "모든 에이전트", transp_no_decisions: "아직 결정이 기록되지 않았습니다.", transp_loading: "로딩 중…",
 
-    idx_invest: "이 인덱스에 투자", idx_min_invest_prefix: "최소", idx_not_found: "인덱스를 찾을 수 없습니다.", idx_back: "← 인덱스로 돌아가기",
+    idx_invest: "이 인덱스에 투자", idx_min_invest_prefix: "최소", idx_view_basket: "바스켓 보기", idx_not_found: "인덱스를 찾을 수 없습니다.", idx_back: "← 인덱스로 돌아가기",
 
     wd_btn: "출금", wd_preview_btn: "출금 미리보기", wd_execute: "출금 실행 →",
 
@@ -3040,11 +3134,11 @@ export const T: Record<Lang, Record<string, string>> = {
 
     home_hiw_sub: "SoSoMon은 SoSoValue ValueChain에서 운영되는 AI 에이전트로 완전히 구동됩니다.",
 
-    home_scout_role: "리서치 & 스크리닝", home_scout_desc: "SoSoValue 데이터와 SoDEX 시장 데이터를 사용하여 매일 400개 이상의 토큰을 스캔합니다.",
+    home_scout_role: "리서치 & 스크리닝", home_scout_desc: "34개의 SoDEX 마켓을 매일 스크리닝하고 SoSoValue SSI 구성종목과 교차 검증합니다. AI 작성 근거와 함께 순위 포함 목록 출력.",
 
     home_rebal_role: "포트폴리오 유지관리", home_rebal_desc: "드리프트, 감성 점수, 유동성을 모니터링하고 SoDEX에서 주문을 실행합니다.",
 
-    home_narrator_role: "콘텐츠 & 보고서", home_narrator_desc: "에이전트 데이터에서 주간 Alpha Memo와 구독자 다이제스트를 자동으로 생성합니다.",
+    home_narrator_role: "콘텐츠 & 보고서", home_narrator_desc: "에이전트 데이터에서 주간 Alpha Memo와 Twitter 스레드 초안을 생성합니다. 게시 전 창립자 검토. 완전한 투명성.",
 
     admin_title: "관리자 접근", admin_subtitle: "SoSoMon 창립자 대시보드",
 
@@ -3209,6 +3303,7 @@ export const T: Record<Lang, Record<string, string>> = {
     wd_eth_required: "펀드 지갑에 가스용 ETH가 필요합니다. 지원팀에 연락하세요.", wd_try_again: "다시 시도",
     invest_usdc_only: "USDC만", home_agent_prefix: "에이전트:",
     time_m_ago: "{n}분 전", time_h_ago: "{n}시간 전", time_d_ago: "{n}일 전",
+    admin_founder_console: "Founder Console", admin_tab_overview: "Overview", admin_tab_proposals: "Proposals", admin_tab_indexes: "Indexes", admin_tab_treasury: "Treasury", admin_tab_investors_tab: "Investors", admin_tab_trades: "Trades", admin_tab_agents: "Agents", admin_pending_banner_one: "1 proposal pending approval", admin_pending_banner_many: "{n} proposals pending approval", admin_pending_banner_link: "View proposals →", admin_agent_health: "Agent Health", admin_manage_agents_link: "Manage agents →", admin_recent_activity: "Recent Activity", admin_view_all_link: "View all →", admin_scout_schedule: "Daily 06:00 UTC", admin_rebal_schedule: "Mon 08:00 + drift 4h", admin_nav_schedule: "Every 1h", admin_deposit_schedule: "Every 2min", admin_loading: "Loading...", admin_treasury_title: "Treasury", admin_fund_wallet_label: "Fund Wallet", admin_eth_critical_simple: "CRITICAL — replenish", admin_eth_low_simple: "Low — attention", admin_copy: "Copy", admin_copied: "Copied!", admin_sodex_portfolio_title: "SoDEX Portfolio", admin_mainnet_only_note: "(mainnet only)", admin_no_positions_short: "No positions", admin_movements_title: "Movements", admin_filter_all: "all", admin_filter_deposit: "deposit", admin_filter_refund: "refund", admin_filter_withdrawal: "withdrawal", admin_no_movements_filter: "No movements of type", admin_refund_status_ok: "ok", admin_refund_status_failed: "failed", admin_refund_status_pending: "pending", admin_trades_sodex_title: "Trades — SoDEX", admin_no_trades_sub2: "Trades appear after rebalance execution", admin_agents_controls_title: "Agents & Controls", admin_scout_agent_desc: "Analyzes SoDEX markets + SoSoValue SSI.", admin_run_scout: "Run Scout Now", admin_running_scout: "Running Scout...", admin_rebalancer_agent_desc: "Checks weight drift and proposes rebalancing.", admin_run_rebalancer_now: "Run Rebalancer Now", admin_running_rebalancer: "Running Rebalancer...", admin_nav_updater_agent_desc: "Fetches SoDEX prices, recalculates NAV and updates portfolios.", admin_run_nav_now: "Run NAV Update Now", admin_running_nav: "Updating NAV...", admin_report_agent_desc: "Generates a full management report.", admin_generate_report: "Generate Report", admin_generating: "Generating...", admin_on_demand: "On demand", admin_scheduler_title: "Scheduler", admin_prop_filter_all: "all", admin_prop_filter_pending: "pending", admin_prop_filter_approved: "approved", admin_prop_filter_executed: "executed", admin_prop_filter_rejected: "rejected", admin_no_proposals_filter: "No proposals with status", admin_scout_daily_note: "Scout runs daily at 06:00 UTC", admin_run_rebalancer_btn: "Run Rebalancer", admin_pending_count: "{n} pending", admin_investors_count: "{n} investors", admin_indexes_net: "Indexes — {net}",
 
   },
 
