@@ -253,6 +253,11 @@ export default function AdminPage() {
     localStorage.setItem("sosomon_admin_network", mode);
     setReport(null);
     setShowReport(false);
+    // Limpa dados stale da rede anterior imediatamente
+    setTrades([]);
+    setPortfolio(null);
+    setFundWallet(null);
+    setMovements([]);
   }
 
   function expireSession() {
@@ -308,10 +313,10 @@ export default function AdminPage() {
       setLoadingFundWallet(false);
     }
     try {
-      setPortfolio(await adminApi.getPortfolio(session.address, session.message, session.signature));
+      setPortfolio(await adminApi.getPortfolio(session.address, session.message, session.signature, net));
     } catch { /**/ } finally { setLoadingPortfolio(false); }
     try {
-      const tr = await adminApi.getTrades(session.address, session.message, session.signature, 20);
+      const tr = await adminApi.getTrades(session.address, session.message, session.signature, 20, net);
       setTrades(Array.isArray(tr) ? tr : []);
     } catch { /**/ } finally { setLoadingTrades(false); }
     setLoadingMovements(true);
@@ -1122,8 +1127,11 @@ export default function AdminPage() {
               <div className="flex items-center justify-between">
                 <h2 className="font-semibold text-white flex items-center gap-2 text-sm">
                   <ArrowRightLeft size={14} className="text-brand-blue" /> {t("admin_trades_sodex_title")}
+                  <span className={`text-xs px-2 py-0.5 rounded font-mono ${networkMode === "testnet" ? "bg-amber-500/20 text-amber-400" : "bg-blue-500/20 text-blue-400"}`}>
+                    {networkMode === "testnet" ? "testnet-gw" : "mainnet-gw"}
+                  </span>
                 </h2>
-                <button onClick={() => { setLoadingTrades(true); adminApi.getTrades(session.address, session.message, session.signature, 50).then(d => { setTrades(Array.isArray(d) ? d : []); setLoadingTrades(false); }).catch(() => setLoadingTrades(false)); }} className="text-white/30 hover:text-white transition-colors">
+                <button onClick={() => { setLoadingTrades(true); setTrades([]); adminApi.getTrades(session.address, session.message, session.signature, 50, networkMode).then(d => { setTrades(Array.isArray(d) ? d : []); setLoadingTrades(false); }).catch(() => setLoadingTrades(false)); }} className="text-white/30 hover:text-white transition-colors">
                   <RefreshCw size={13} className={loadingTrades ? "animate-spin" : ""} />
                 </button>
               </div>
