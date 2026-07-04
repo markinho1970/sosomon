@@ -13,9 +13,11 @@ from typing import Optional, Dict, Any, List
 from loguru import logger
 
 BASE_URL = "https://openapi.sosovalue.com/openapi/v1"
-API_KEY  = os.getenv("SOSOVALUE_API_KEY", "")
-HEADERS  = {"x-soso-api-key": API_KEY}
 TIMEOUT  = 15
+
+def _headers() -> dict:
+    """Lê a API key em runtime (não no import) para evitar key vazia antes do load_dotenv."""
+    return {"x-soso-api-key": os.getenv("SOSOVALUE_API_KEY", "")}
 
 # Rate limit: 20 req/min → mínimo 3s entre requests (3.5s com margem)
 _RATE_LOCK = asyncio.Lock()
@@ -43,7 +45,7 @@ async def _get(path: str, params: dict = None) -> Any:
         _LAST_REQUEST_AT = time.monotonic()
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-            r = await client.get(f"{BASE_URL}{path}", headers=HEADERS, params=params)
+            r = await client.get(f"{BASE_URL}{path}", headers=_headers(), params=params)
             r.raise_for_status()
             return _d(r.json())
     except Exception as e:
