@@ -17,7 +17,7 @@ import httpx
 from typing import Optional, Dict, Any, List
 from loguru import logger
 
-from utils.eip712 import get_public_headers, get_signed_headers
+from utils.eip712 import get_public_headers, get_signed_headers, ACTION_BATCH_NEW_ORDER, ACTION_BATCH_CANCEL_ORDER
 from utils.crypto import get_private_key
 
 SODEX_API_KEY    = os.getenv("SODEX_API_KEY", "")
@@ -43,8 +43,21 @@ def _spot_url(testnet: bool | None = None) -> str:
 def _api_key() -> str:
     return os.getenv("SODEX_API_KEY", "") or SODEX_API_KEY
 
-_PUB  = lambda: get_public_headers(_api_key())
-_SIGN = lambda p: get_signed_headers(_api_key(), p, get_private_key(), USE_TESTNET)
+_PUB = lambda: get_public_headers(_api_key())
+
+def _sign(payload: dict, testnet: bool | None = None, action_type: str = ACTION_BATCH_NEW_ORDER) -> dict:
+    """Assina payload com o chainId correto para a rede alvo.
+    testnet=None usa SODEX_USE_TESTNET do env; True/False força a rede.
+    """
+    use_test = USE_TESTNET if testnet is None else testnet
+    return get_signed_headers(_api_key(), payload, get_private_key(), use_test, action_type)
+
+
+def _strip_decimal(s: str) -> str:
+    """Remove trailing zeros de string decimal. '1800.000' -> '1800', '0.00300' -> '0.003'."""
+    if "." in s:
+        return s.rstrip("0").rstrip(".")
+    return s
 
 
 def _configured() -> bool:
@@ -175,12 +188,10 @@ async def get_balances(testnet: bool | None = None) -> Dict[str, Any]:
         logger.warning("SoDEX: credenciais não configuradas")
         return {}
     try:
-        payload = {"accountID": SODEX_ACCOUNT_ID}
         async with httpx.AsyncClient(timeout=TIMEOUT) as c:
             r = await c.get(
                 f"{_spot_url(testnet)}/accounts/{SODEX_WALLET_ADDR}/balances",
-                headers=_SIGN(payload),
-                params={"accountID": SODEX_ACCOUNT_ID},
+                headers=_PUB(),
             )
             r.raise_for_status()
             data = r.json().get("data", {})
@@ -202,14 +213,13 @@ async def get_open_orders(symbol: Optional[str] = None, testnet: bool | None = N
     if not _can_trade():
         return []
     try:
-        payload = {"accountID": SODEX_ACCOUNT_ID}
-        params = {"accountID": SODEX_ACCOUNT_ID}
+        params = {}
         if symbol:
             params["symbol"] = symbol
         async with httpx.AsyncClient(timeout=TIMEOUT) as c:
             r = await c.get(
                 f"{_spot_url(testnet)}/accounts/{SODEX_WALLET_ADDR}/orders",
-                headers=_SIGN(payload),
+                headers=_PUB(),
                 params=params,
             )
             r.raise_for_status()
@@ -225,14 +235,13 @@ async def get_trade_history(symbol: Optional[str] = None, limit: int = 50, testn
     if not _can_trade():
         return []
     try:
-        payload = {"accountID": SODEX_ACCOUNT_ID}
-        params = {"accountID": SODEX_ACCOUNT_ID, "limit": limit}
+        params = {"limit": limit}
         if symbol:
             params["symbol"] = symbol
         async with httpx.AsyncClient(timeout=TIMEOUT) as c:
             r = await c.get(
                 f"{_spot_url(testnet)}/accounts/{SODEX_WALLET_ADDR}/trades",
-                headers=_SIGN(payload),
+                headers=_PUB(),
                 params=params,
             )
             r.raise_for_status()
@@ -274,18 +283,25 @@ async def place_order(
         logger.error("SoDEX: não é possível colocar ordens sem credenciais")
         return None
 
+    # SoDEX espera inteiros para side/type/timeInForce
+    _side_map = {"BUY": 1, "SELL": 2}
+    _type_map = {"LIMIT": 1, "MARKET": 2}
+    _tif_map  = {"GTC": 1, "IOC": 2, "FOK": 3}
+
     clord_id = client_order_id or str(uuid.uuid4())[:36]
 
-    order = {
-        "symbolID": symbol_id,
-        "clOrdID":  clord_id,
-        "side":     side,
-        "type":     order_type,
-        "timeInForce": time_in_force,
-        "quantity": quantity,
+    # Ordem dos campos deve ser identica ao Go struct BatchNewOrderItem:
+    # symbolID, clOrdID, side, type, timeInForce, price (omitempty), quantity (omitempty)
+    order: Dict[str, Any] = {
+        "symbolID":    symbol_id,
+        "clOrdID":     clord_id,
+        "side":        _side_map.get(side.upper(), 1),
+        "type":        _type_map.get(order_type.upper(), 1),
+        "timeInForce": _tif_map.get(time_in_force.upper(), 1),
     }
-    if price and order_type == "LIMIT":
-        order["price"] = price
+    if price and order_type.upper() == "LIMIT":
+        order["price"] = _strip_decimal(price)  # price antes de quantity (Go struct order)
+    order["quantity"] = _strip_decimal(quantity)
 
     payload = {
         "accountID": int(SODEX_ACCOUNT_ID),
@@ -296,11 +312,15 @@ async def place_order(
         async with httpx.AsyncClient(timeout=TIMEOUT) as c:
             r = await c.post(
                 f"{_spot_url(testnet)}/trade/orders/batch",
-                headers=_SIGN(payload),
+                headers=_sign(payload, testnet, ACTION_BATCH_NEW_ORDER),
                 content=json.dumps(payload, separators=(",", ":")),
             )
             r.raise_for_status()
             result = r.json()
+            if result.get("code", 0) != 0:
+                err = result.get("error") or result.get("msg") or str(result)
+                logger.error(f"SoDEX place_order({symbol}): API error code={result.get('code')} — {err}")
+                return None
             logger.success(f"SoDEX order placed: {side} {quantity} {symbol} @ {price or 'market'}")
             return result
     except Exception as e:
@@ -321,7 +341,7 @@ async def cancel_orders(symbol: str, symbol_id: int, order_ids: List[str], testn
             r = await c.request(
                 "DELETE",
                 f"{_spot_url(testnet)}/trade/orders/batch",
-                headers=_SIGN(payload),
+                headers=_sign(payload, testnet, ACTION_BATCH_CANCEL_ORDER),
                 content=json.dumps(payload, separators=(",", ":")),
             )
             r.raise_for_status()
@@ -343,7 +363,7 @@ async def get_portfolio_snapshot(testnet: bool | None = None) -> Dict[str, Any]:
     testnet=None usa env var; True/False força o gateway correto.
     """
     balances = await get_balances(testnet=testnet)
-    tickers  = await get_all_tickers()
+    tickers  = await get_all_tickers(testnet=testnet)
 
     positions = []
     total_usd = 0.0
@@ -497,8 +517,13 @@ async def execute_buy_for_deposit(
             orders.append({"symbol": symbol, "status": "skipped_below_minimum", "usd_value": alloc_usd})
             continue
 
-        sym_key = f"{symbol}-USDC"
-        ticker  = tickers.get(sym_key) or tickers.get(f"v{symbol}-USDC") or {}
+        # SoDEX retorna tickers sem prefixo "v" e sem ponto (vETH→ETH, vMAG7.ssi→MAG7ssi)
+        clean_sym = symbol.lstrip("v").replace(".", "")
+        sym_key = f"{clean_sym}-USDC"
+        ticker  = (tickers.get(sym_key)
+                   or tickers.get(f"{symbol}-USDC")
+                   or tickers.get(f"v{symbol}_vUSDC")
+                   or {})
         price   = float(ticker.get("lastPrice") or ticker.get("lastPx") or ticker.get("c") or 0)
 
         if price <= 0:
@@ -526,7 +551,7 @@ async def execute_buy_for_deposit(
         else:
             sym_id = await get_symbol_id(sym_key, testnet=testnet)
             if not sym_id:
-                sym_id = await get_symbol_id(f"v{symbol}-USDC", testnet=testnet)
+                sym_id = await get_symbol_id(f"{symbol}-USDC", testnet=testnet)
             if sym_id:
                 result = await place_order(sym_key, sym_id, "BUY", "LIMIT", qty_str, px_str, testnet=testnet)
                 order_info["status"] = "placed" if result else "failed"
