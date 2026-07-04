@@ -164,6 +164,11 @@ async def run_scout_for_index(index_id: str, theme: str, db, macro: dict = None)
     ).all()
     current_symbols = {c.symbol: c for c in current_constituents}
 
+    # Tokens âncora: nunca podem ser removidos pelo Scout
+    anchor_symbols = {c.symbol for c in current_constituents if getattr(c, "is_anchor", False)}
+    if anchor_symbols:
+        logger.info(f"Scout [{theme}]: tokens âncora protegidos (nunca removíveis): {sorted(anchor_symbols)}")
+
     # 10. Scoring por peso SSI + momentum SoDEX
     scored_tokens = _apply_momentum_scoring(candidates)
 
@@ -182,6 +187,7 @@ async def run_scout_for_index(index_id: str, theme: str, db, macro: dict = None)
         sentiment_score=sentiment_score,
         theme=theme,
         target_n=target_n,
+        anchor_symbols=anchor_symbols,
     )
 
     # 13. Salva ScoutReport
@@ -314,12 +320,17 @@ def _compute_changes(
     sentiment_score: float,
     theme: str = "",
     target_n: int = 5,
+    anchor_symbols: set = None,
 ) -> tuple:
     """Determina inclusões/exclusões/mudanças de peso vs composição atual.
     Respeita target_n: número alvo de tokens na cesta (fixo por índice).
     Cap de MAX_WEIGHT_PCT por token para evitar concentração.
+    Tokens âncora (is_anchor=True) são IMUNES a exclusão pelo Scout.
     """
     from services.sosovalue import get_stablecoin_buffer_from_sentiment
+    from loguru import logger as _log
+
+    anchor_symbols = anchor_symbols or set()
 
     # Apenas os top N candidatos entram na cesta alvo
     top_n = candidates[:target_n]
@@ -329,7 +340,6 @@ def _compute_changes(
     # Inclusões: candidatos no top N que ainda não estão na cesta E confirmados no SoDEX TRADING
     not_on_sodex_new = [t["symbol"] for t in top_n if t["symbol"] not in current_symbol_set and not t.get("on_sodex")]
     if not_on_sodex_new:
-        from loguru import logger as _log
         _log.warning(f"Scout [{theme}]: bloqueando {not_on_sodex_new} — não listados no SoDEX TRADING")
     inclusions = [
         {"symbol": t["symbol"], "name": t["name"], "rationale": t.get("ai_rationale", "")}
@@ -338,11 +348,14 @@ def _compute_changes(
     ]
 
     # Exclusões: tokens atuais que saíram do top N
-    # Só propõe exclusão se a entrada de um novo token for necessária para respeitar target_n
-    # (evita excluir sem ter substituto qualificado)
-    current_count = len(current_symbol_set)
-    slots_to_fill = target_n - (current_count - len([s for s in current_symbol_set if s not in top_n_symbols]))
-    tokens_to_remove = [sym for sym in current_symbol_set if sym not in top_n_symbols]
+    # Tokens âncora são IMUNES — nunca removidos independente do ranking SSI
+    tokens_to_remove = [
+        sym for sym in current_symbol_set
+        if sym not in top_n_symbols and sym not in anchor_symbols
+    ]
+    protected = [sym for sym in current_symbol_set if sym not in top_n_symbols and sym in anchor_symbols]
+    if protected:
+        _log.info(f"Scout [{theme}]: âncoras protegidas contra remoção: {sorted(protected)}")
 
     exclusions = []
     for sym in tokens_to_remove:

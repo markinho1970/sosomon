@@ -58,6 +58,7 @@ class IndexConstituent(Base):
     is_stablecoin = Column(Boolean, default=False)
     network_mode = Column(String, default="mainnet")   # "mainnet" | "testnet" — coluna adicionada por migrate_constituent_network_mode.py
     in_basket = Column(Boolean, default=True)          # True = token da cesta ativa; False = candidato do universo temático
+    is_anchor = Column(Boolean, default=False)         # True = token âncora — Scout NUNCA pode remover (ex: vMAG7.ssi, WSOSO)
 
     index = relationship("AlphaIndex", back_populates="constituents")
 
