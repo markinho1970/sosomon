@@ -428,17 +428,23 @@ async def check_deposits(db, network: str = "mainnet"):
                 IndexConstituent.in_basket == True,
                 IndexConstituent.network_mode == network,
             ).all()
+            # Testnet: SoDEX é ecossistema fechado (só faucet, sem depósito externo)
+            # → ordens simuladas (dry_run=True) para não bloquear o fluxo
+            # Mainnet: ordens reais (dry_run=False)
+            use_dry_run = is_testnet
             buy_result = await execute_buy_for_deposit(
                 amount_usd=amount_usd,
                 constituents=basket,
-                dry_run=False,
+                dry_run=use_dry_run,
                 testnet=is_testnet,
             )
-            placed   = [o for o in buy_result["orders"] if o.get("status") == "placed"]
+            # Em testnet: "placed" = dry_run orders (status="dry_run"); em mainnet: status="placed"
+            placed   = [o for o in buy_result["orders"] if o.get("status") in ("placed", "dry_run")]
             skipped  = buy_result["skipped_usd"]
+            mode_label = "SIMULADO" if use_dry_run else "REAL"
             logger.info(
-                f"deposit_monitor [{network}]: compra executada — "
-                f"{len(placed)} ordens colocadas, ${skipped:.2f} em stablecoin buffer"
+                f"deposit_monitor [{network}]: compra {mode_label} — "
+                f"{len(placed)} ordens | ${skipped:.2f} em stablecoin buffer"
             )
             # Marca compra como confirmada no registro auditável
             from models import DepositTransaction
@@ -458,7 +464,7 @@ async def check_deposits(db, network: str = "mainnet"):
                 action="tokens_purchased",
                 token_symbol="USDC",
                 description=(
-                    f"[{network.upper()}] Compra de tokens após depósito de ${amount_usd:.2f} — "
+                    f"[{network.upper()}] Compra {mode_label} de tokens após depósito de ${amount_usd:.2f} — "
                     f"{len(placed)} ordens no SoDEX | buffer: ${skipped:.2f}"
                 ),
                 timestamp=datetime.now(timezone.utc),
