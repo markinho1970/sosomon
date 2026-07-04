@@ -9,7 +9,7 @@ from eth_account import Account
 
 from database import get_db
 from sqlalchemy import func
-from models import AlphaIndex, Subscriber, SubscriberPortfolio, AgentActivityLog, InvestmentIntent, InvestmentConsent, IndexConstituent, PortfolioSnapshot
+from models import AlphaIndex, Subscriber, SubscriberPortfolio, AgentActivityLog, InvestmentIntent, InvestmentConsent, IndexConstituent, PortfolioSnapshot, RedemptionTransaction
 
 router = APIRouter(prefix="/api/invest", tags=["invest"])
 
@@ -334,9 +334,13 @@ async def withdraw_execute(req: WithdrawExecuteRequest, db: Session = Depends(ge
     if tx_result["success"] and not req.simulate:
         nav = index.nav_usd if index and index.nav_usd else 1.0
         tokens_burned = req.amount_usd / nav
+        cost_basis    = (portfolio.avg_cost_basis_per_share or nav) * tokens_burned
+        pnl_usd       = preview["pnl_usd"]
+        pnl_pct       = preview["pnl_pct"]
 
         portfolio.current_value_usd  = max(0, (portfolio.current_value_usd or 0) - req.amount_usd)
         portfolio.index_tokens_held  = max(0, (portfolio.index_tokens_held or 0) - tokens_burned)
+        portfolio.total_shares_redeemed = (portfolio.total_shares_redeemed or 0) + tokens_burned
         portfolio.last_updated_at    = datetime.now(timezone.utc)
         if portfolio.current_value_usd < (portfolio.high_water_mark_usd or 0):
             portfolio.high_water_mark_usd = portfolio.current_value_usd
@@ -346,7 +350,28 @@ async def withdraw_execute(req: WithdrawExecuteRequest, db: Session = Depends(ge
             if portfolio.current_value_usd <= 0:
                 index.subscriber_count = max(0, (index.subscriber_count or 1) - 1)
 
-        # Log auditável
+        # Registro auditável do resgate
+        redemption = RedemptionTransaction(
+            subscriber_id        = subscriber.id,
+            portfolio_id         = portfolio.id,
+            index_id             = req.index_id,
+            tx_hash              = tx_result.get("tx_hash") or None,
+            amount_usd           = req.amount_usd,
+            shares_burned        = round(tokens_burned, 8),
+            nav_at_redemption    = round(nav, 6),
+            net_usd              = round(net_usd, 4),
+            management_fee_usd   = round(preview["management_fee_usd"], 4),
+            performance_fee_usd  = round(preview["performance_fee_usd"], 4),
+            gas_fee_usd          = round(preview.get("gas_fee_est_usd", 0), 4),
+            pnl_usd              = round(pnl_usd, 4),
+            pnl_pct              = round(pnl_pct, 4),
+            cost_basis_proportional = round(cost_basis, 4),
+            is_simulated         = False,
+            network_mode         = getattr(portfolio, "network_mode", "mainnet"),
+            created_at           = datetime.now(timezone.utc),
+        )
+        db.add(redemption)
+
         activity = AgentActivityLog(
             id        = str(uuid.uuid4()),
             index_id  = req.index_id,
@@ -368,8 +393,9 @@ async def withdraw_execute(req: WithdrawExecuteRequest, db: Session = Depends(ge
                 "management_fee":   preview["management_fee_usd"],
                 "performance_fee":  preview["performance_fee_usd"],
                 "gas_fee":          preview["gas_fee_est_usd"],
-                "pnl_usd":          preview["pnl_usd"],
-                "pnl_pct":          preview["pnl_pct"],
+                "pnl_usd":          pnl_usd,
+                "pnl_pct":          pnl_pct,
+                "shares_burned":    round(tokens_burned, 8),
                 "network":          "base",
                 "chain_id":         8453,
             },
@@ -394,6 +420,146 @@ async def withdraw_execute(req: WithdrawExecuteRequest, db: Session = Depends(ge
         "error":             tx_result.get("error"),
         "checks":            tx_result.get("checks", {}),
         "message":           tx_result.get("message", ""),
+    }
+
+
+class RedeemSharesRequest(BaseModel):
+    wallet_address: str
+    index_id: str
+    shares: float                  # quantidade de cotas a resgatar
+    simulate: bool = False
+    network_mode: str = "mainnet"
+
+
+@router.post("/redeem-shares")
+async def redeem_shares(req: RedeemSharesRequest, db: Session = Depends(get_db)):
+    """
+    Resgata uma quantidade específica de cotas (shares) ao invés de um valor em USD.
+    O valor em USD equivalente é calculado com o NAV atual: amount_usd = shares × NAV.
+    Permite ao investidor resgatar exatamente N cotas sem precisar calcular o USD.
+    """
+    if req.shares <= 0:
+        raise HTTPException(status_code=400, detail="Quantidade de cotas deve ser positiva")
+
+    wallet = req.wallet_address.lower()
+    subscriber = db.query(Subscriber).filter(Subscriber.wallet_address == wallet).first()
+    if not subscriber:
+        raise HTTPException(status_code=404, detail="Investidor não encontrado")
+
+    network_mode = req.network_mode if req.network_mode in ("mainnet", "testnet") else "mainnet"
+    portfolio = db.query(SubscriberPortfolio).filter(
+        SubscriberPortfolio.subscriber_id == subscriber.id,
+        SubscriberPortfolio.index_id == req.index_id,
+        SubscriberPortfolio.network_mode == network_mode,
+    ).first()
+    if not portfolio:
+        raise HTTPException(status_code=404, detail="Sem posição neste índice")
+
+    shares_held = portfolio.index_tokens_held or 0.0
+    if req.shares > shares_held:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cotas insuficientes. Você tem {shares_held:.6f} cotas, solicitou {req.shares:.6f}."
+        )
+
+    index = db.query(AlphaIndex).filter(AlphaIndex.id == req.index_id).first()
+    nav = index.nav_usd if index and index.nav_usd else 1.0
+
+    # Converte cotas → USD e delega ao fluxo normal de saque
+    amount_usd = req.shares * nav
+
+    from services.withdrawal_executor import preview_withdrawal, execute_withdrawal
+    try:
+        preview = preview_withdrawal(portfolio, index, amount_usd)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    net_usd = preview["net_usd"]
+    if net_usd <= 0 and not req.simulate:
+        raise HTTPException(status_code=400, detail="Valor líquido após taxas é zero ou negativo.")
+
+    tx_result = await execute_withdrawal(
+        recipient  = subscriber.wallet_address,
+        amount_usd = net_usd,
+        simulate   = req.simulate,
+    )
+
+    if tx_result["success"] and not req.simulate:
+        cost_basis = (portfolio.avg_cost_basis_per_share or nav) * req.shares
+
+        portfolio.current_value_usd     = max(0, (portfolio.current_value_usd or 0) - amount_usd)
+        portfolio.index_tokens_held     = max(0, shares_held - req.shares)
+        portfolio.total_shares_redeemed = (portfolio.total_shares_redeemed or 0) + req.shares
+        portfolio.last_updated_at       = datetime.now(timezone.utc)
+        if portfolio.current_value_usd < (portfolio.high_water_mark_usd or 0):
+            portfolio.high_water_mark_usd = portfolio.current_value_usd
+
+        if index:
+            index.aum_usd = max(0, (index.aum_usd or 0) - amount_usd)
+            if portfolio.current_value_usd <= 0:
+                index.subscriber_count = max(0, (index.subscriber_count or 1) - 1)
+
+        redemption = RedemptionTransaction(
+            subscriber_id           = subscriber.id,
+            portfolio_id            = portfolio.id,
+            index_id                = req.index_id,
+            tx_hash                 = tx_result.get("tx_hash") or None,
+            amount_usd              = round(amount_usd, 4),
+            shares_burned           = round(req.shares, 8),
+            nav_at_redemption       = round(nav, 6),
+            net_usd                 = round(net_usd, 4),
+            management_fee_usd      = round(preview["management_fee_usd"], 4),
+            performance_fee_usd     = round(preview["performance_fee_usd"], 4),
+            gas_fee_usd             = round(preview.get("gas_fee_est_usd", 0), 4),
+            pnl_usd                 = round(preview["pnl_usd"], 4),
+            pnl_pct                 = round(preview["pnl_pct"], 4),
+            cost_basis_proportional = round(cost_basis, 4),
+            is_simulated            = False,
+            network_mode            = network_mode,
+            created_at              = datetime.now(timezone.utc),
+        )
+        db.add(redemption)
+        db.add(AgentActivityLog(
+            id          = str(uuid.uuid4()),
+            index_id    = req.index_id,
+            agent       = "withdraw",
+            action      = "redemption_by_shares",
+            description = (
+                f"Resgate de {req.shares:.6f} cotas por {wallet[:8]}… "
+                f"| USD: ${amount_usd:.2f} | Líquido: ${net_usd:.2f} "
+                f"| NAV: ${nav:.4f}"
+            ),
+            timestamp   = datetime.now(timezone.utc),
+            data        = {
+                "tx_hash":       tx_result.get("tx_hash", ""),
+                "basescan":      tx_result.get("basescan", ""),
+                "shares_burned": round(req.shares, 8),
+                "amount_usd":    round(amount_usd, 4),
+                "net_usd":       round(net_usd, 4),
+                "nav":           round(nav, 6),
+                "network_mode":  network_mode,
+            },
+        ))
+        db.commit()
+
+    return {
+        "success":          tx_result["success"],
+        "simulate":         req.simulate,
+        "shares_redeemed":  req.shares,
+        "amount_usd":       round(amount_usd, 4),
+        "nav_at_redemption": round(nav, 6),
+        "net_usd":          net_usd,
+        "management_fee":   preview["management_fee_usd"],
+        "performance_fee":  preview["performance_fee_usd"],
+        "gas_fee":          preview.get("gas_fee_est_usd", 0),
+        "pnl_usd":          preview["pnl_usd"],
+        "pnl_pct":          preview["pnl_pct"],
+        "pnl_label":        preview["pnl_label"],
+        "tx_hash":          tx_result.get("tx_hash"),
+        "basescan":         tx_result.get("basescan"),
+        "warnings":         preview["warnings"],
+        "error":            tx_result.get("error"),
+        "message":          tx_result.get("message", ""),
     }
 
 
@@ -480,6 +646,9 @@ def get_portfolio(wallet_address: str, network_mode: str = "mainnet", db: Sessio
         profit_above_hwm = max(0, p.current_value_usd - p.high_water_mark_usd)
         accrued_fee = round(profit_above_hwm * 0.15, 2)
 
+        nav = index.nav_usd or 1.0
+        unrealized_pnl = round((nav - (p.avg_cost_basis_per_share or nav)) * (p.index_tokens_held or 0), 4)
+
         portfolios.append({
             "index_id": p.index_id,
             "index_name": index.name,
@@ -492,6 +661,12 @@ def get_portfolio(wallet_address: str, network_mode: str = "mainnet", db: Sessio
             "high_water_mark_usd": p.high_water_mark_usd,
             "days_invested": p.days_invested,
             "accrued_performance_fee_usd": accrued_fee,
+            # Campos de auditoria de cotas
+            "nav_at_first_deposit": round(p.nav_at_first_deposit or 1.0, 6),
+            "avg_cost_basis_per_share": round(p.avg_cost_basis_per_share or 1.0, 6),
+            "total_shares_deposited": round(p.total_shares_deposited or 0.0, 8),
+            "total_shares_redeemed": round(p.total_shares_redeemed or 0.0, 8),
+            "unrealized_pnl_usd": unrealized_pnl,
         })
 
     return {

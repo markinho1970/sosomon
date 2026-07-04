@@ -339,11 +339,21 @@ async def check_deposits(db, network: str = "mainnet"):
             SubscriberPortfolio.network_mode == network,
         ).first()
 
+        is_first_deposit = portfolio is None
+
         if portfolio:
-            portfolio.deposited_usd     += amount_usd
-            portfolio.current_value_usd += amount_usd
-            portfolio.index_tokens_held += tokens
-            portfolio.last_updated_at    = datetime.now(timezone.utc)
+            # Custo médio ponderado: (cotas_antigas × custo_antigo + novas_cotas × nav_atual) / total_cotas
+            old_shares  = portfolio.index_tokens_held or 0.0
+            old_avg     = portfolio.avg_cost_basis_per_share or nav
+            new_total   = old_shares + tokens
+            portfolio.avg_cost_basis_per_share = (
+                (old_shares * old_avg + tokens * nav) / new_total if new_total > 0 else nav
+            )
+            portfolio.deposited_usd          += amount_usd
+            portfolio.current_value_usd      += amount_usd
+            portfolio.index_tokens_held      += tokens
+            portfolio.total_shares_deposited  = (portfolio.total_shares_deposited or 0) + tokens
+            portfolio.last_updated_at         = datetime.now(timezone.utc)
             if portfolio.current_value_usd > portfolio.high_water_mark_usd:
                 portfolio.high_water_mark_usd = portfolio.current_value_usd
         else:
@@ -357,11 +367,33 @@ async def check_deposits(db, network: str = "mainnet"):
                 network_mode=network,
                 first_invested_at=datetime.now(timezone.utc),
                 last_updated_at=datetime.now(timezone.utc),
+                nav_at_first_deposit=nav,
+                avg_cost_basis_per_share=nav,    # primeiro depósito: custo = NAV atual
+                total_shares_deposited=tokens,
+                total_shares_redeemed=0.0,
             )
             db.add(portfolio)
             target_index.subscriber_count = (target_index.subscriber_count or 0) + 1
 
         target_index.aum_usd = (target_index.aum_usd or 0) + amount_usd
+        db.flush()  # garante portfolio.id disponível antes de criar DepositTransaction
+
+        # Registro permanente e auditável desta emissão de cotas
+        from models import DepositTransaction
+        deposit_tx = DepositTransaction(
+            subscriber_id=subscriber.id,
+            portfolio_id=portfolio.id,
+            index_id=target_index.id,
+            tx_hash=tx_hash,
+            amount_usd=amount_usd,
+            nav_at_purchase=nav,
+            shares_issued=round(tokens, 8),
+            cost_basis_per_share=round(nav, 6),
+            buy_confirmed=False,    # será atualizado após confirmação da compra
+            network_mode=network,
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(deposit_tx)
 
         db.add(AgentActivityLog(
             id=str(uuid.uuid4()),
@@ -408,6 +440,13 @@ async def check_deposits(db, network: str = "mainnet"):
                 f"deposit_monitor [{network}]: compra executada — "
                 f"{len(placed)} ordens colocadas, ${skipped:.2f} em stablecoin buffer"
             )
+            # Marca compra como confirmada no registro auditável
+            from models import DepositTransaction
+            _dtx = db.query(DepositTransaction).filter_by(tx_hash=tx_hash).first()
+            if _dtx:
+                _dtx.buy_confirmed      = len(placed) > 0
+                _dtx.buy_orders_placed  = len(placed)
+                _dtx.buy_skipped_usd    = round(skipped, 4)
             # Atualiza stablecoin_buffer_pct se houve skipped — limitado a 100%
             if skipped > 0 and amount_usd > 0:
                 extra_pct = round((skipped / amount_usd) * 100, 2)

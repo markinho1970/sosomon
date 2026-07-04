@@ -100,14 +100,19 @@ class SubscriberPortfolio(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     subscriber_id = Column(String, ForeignKey("subscribers.id"), nullable=False)
     index_id = Column(String, ForeignKey("indexes.id"), nullable=False)
-    deposited_usd = Column(Float, default=0.0)
-    current_value_usd = Column(Float, default=0.0)
-    index_tokens_held = Column(Float, default=0.0)
+    deposited_usd = Column(Float, default=0.0)           # total depositado (custo base)
+    current_value_usd = Column(Float, default=0.0)       # valor atual = cotas × NAV
+    index_tokens_held = Column(Float, default=0.0)       # cotas (shares) atuais
     high_water_mark_usd = Column(Float, default=0.0)
     days_invested = Column(Integer, default=0)
     first_invested_at = Column(DateTime, default=datetime.utcnow)
     last_updated_at = Column(DateTime, default=datetime.utcnow)
-    network_mode = Column(String, default="mainnet")  # "mainnet" | "testnet"
+    network_mode = Column(String, default="mainnet")     # "mainnet" | "testnet"
+    # Campos de auditoria de cotas
+    nav_at_first_deposit = Column(Float, default=1.0)    # NAV quando o 1º depósito ocorreu
+    avg_cost_basis_per_share = Column(Float, default=1.0) # custo médio ponderado por cota
+    total_shares_deposited = Column(Float, default=0.0)  # cotas acumuladas emitidas (histórico)
+    total_shares_redeemed = Column(Float, default=0.0)   # cotas acumuladas queimadas (histórico)
 
     subscriber = relationship("Subscriber", back_populates="portfolios")
 
@@ -182,6 +187,54 @@ class RebalanceProposal(Base):
     execution_orders = Column(JSON, default=list)   # list of executed orders with IDs from SoDEX
     execution_error = Column(Text, nullable=True)   # error message if execution failed
     network_mode = Column(String, default="mainnet")  # "mainnet" | "testnet" — coluna adicionada por migrate_proposal_network_mode.py
+
+class DepositTransaction(Base):
+    """Registro permanente e auditável de cada depósito individual.
+    Cada evento de depósito gera exatamente 1 linha nesta tabela.
+    Permite rastrear: quanto cada cota custou, se a compra foi confirmada na SoDEX,
+    e reconstruir o histórico completo de emissão de cotas por investidor."""
+    __tablename__ = "deposit_transactions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    subscriber_id = Column(String, ForeignKey("subscribers.id"), nullable=False, index=True)
+    portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=True)
+    index_id = Column(String, ForeignKey("indexes.id"), nullable=False)
+    tx_hash = Column(String, unique=True, nullable=False, index=True)  # hash on-chain
+    amount_usd = Column(Float, nullable=False)             # valor bruto depositado
+    nav_at_purchase = Column(Float, nullable=False)        # NAV no momento do processamento
+    shares_issued = Column(Float, nullable=False)          # cotas emitidas = amount / nav
+    cost_basis_per_share = Column(Float, nullable=False)   # = nav_at_purchase (preço de entrada)
+    buy_confirmed = Column(Boolean, default=False)         # tokens comprados na SoDEX?
+    buy_orders_placed = Column(Integer, default=0)         # nº de ordens colocadas
+    buy_skipped_usd = Column(Float, default=0.0)           # USD não alocado (buffer)
+    network_mode = Column(String, default="mainnet")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class RedemptionTransaction(Base):
+    """Registro permanente e auditável de cada saque/resgate.
+    Cada execução bem-sucedida de saque gera exatamente 1 linha nesta tabela."""
+    __tablename__ = "redemption_transactions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    subscriber_id = Column(String, ForeignKey("subscribers.id"), nullable=False, index=True)
+    portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=True)
+    index_id = Column(String, ForeignKey("indexes.id"), nullable=False)
+    tx_hash = Column(String, nullable=True, index=True)    # hash on-chain (Base)
+    amount_usd = Column(Float, nullable=False)             # valor bruto resgatado
+    shares_burned = Column(Float, nullable=False)          # cotas queimadas
+    nav_at_redemption = Column(Float, nullable=False)      # NAV no momento do resgate
+    net_usd = Column(Float, nullable=False)                # valor líquido recebido
+    management_fee_usd = Column(Float, default=0.0)
+    performance_fee_usd = Column(Float, default=0.0)
+    gas_fee_usd = Column(Float, default=0.0)
+    pnl_usd = Column(Float, default=0.0)                   # lucro/prejuízo realizado
+    pnl_pct = Column(Float, default=0.0)
+    cost_basis_proportional = Column(Float, default=0.0)   # custo base proporcional
+    is_simulated = Column(Boolean, default=False)
+    network_mode = Column(String, default="mainnet")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 
 class FaucetClaim(Base):
     __tablename__ = "faucet_claims"
