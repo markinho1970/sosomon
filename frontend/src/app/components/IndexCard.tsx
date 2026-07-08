@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { TrendingUp, TrendingDown, Users, RefreshCw } from "lucide-react";
-import { formatUSD, formatPct, formatRelativeTime, getThemeLabel, getThemeColor, cn } from "@/lib/utils";
+import { formatUSD, formatPct, formatRelativeTime, getThemeLabel, getThemeColor, pctColor, cn } from "@/lib/utils";
 import { useLang } from "@/lib/LanguageContext";
 import type { AlphaIndex } from "@/types";
 
@@ -12,8 +12,8 @@ interface IndexCardProps {
 
 export default function IndexCard({ index }: IndexCardProps) {
   const { t } = useLang();
-  const isPositive = index.return_30d_pct >= 0;
-  const retColor = (v: number) => v > 0 ? "text-green-400" : v < 0 ? "text-red-400" : "text-white";
+  const isPositive = parseFloat(index.return_30d_pct.toFixed(2)) > 0;
+  const retColor = (v: number) => pctColor(v, 2);
   const themeStyle = getThemeColor(index.theme);
 
   return (

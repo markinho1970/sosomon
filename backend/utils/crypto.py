@@ -46,9 +46,8 @@ def decrypt_key(encrypted: str) -> str:
 
 def get_private_key() -> str:
     """
-    Retorna a chave privada do operador para uso imediato.
-    Aceita tanto formato criptografado (SODEX_PRIVATE_KEY_ENC) quanto texto puro (SODEX_PRIVATE_KEY).
-    Prioriza a versão criptografada.
+    Retorna a chave privada do operador SoDEX (para assinar ordens).
+    Aceita formato criptografado (SODEX_PRIVATE_KEY_ENC) ou texto puro (SODEX_PRIVATE_KEY).
     """
     enc = os.getenv("SODEX_PRIVATE_KEY_ENC", "")
     if enc:
@@ -57,3 +56,17 @@ def get_private_key() -> str:
     if plain:
         return plain
     raise RuntimeError("Nenhuma chave privada SoDEX configurada (SODEX_PRIVATE_KEY ou SODEX_PRIVATE_KEY_ENC)")
+
+
+def get_fund_private_key() -> str:
+    """
+    Retorna a chave privada da fund wallet (para transferências ERC-20 on-chain na Base).
+    Usa FUND_WALLET_PRIVATE_KEY_ENC (criptografada) ou FUND_WALLET_PRIVATE_KEY (texto puro).
+    """
+    enc = os.getenv("FUND_WALLET_PRIVATE_KEY_ENC", "")
+    if enc:
+        return decrypt_key(enc)
+    plain = os.getenv("FUND_WALLET_PRIVATE_KEY", "")
+    if plain:
+        return plain
+    raise RuntimeError("Nenhuma chave privada da fund wallet configurada (FUND_WALLET_PRIVATE_KEY_ENC ou FUND_WALLET_PRIVATE_KEY)")

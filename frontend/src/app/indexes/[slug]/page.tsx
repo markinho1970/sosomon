@@ -176,16 +176,16 @@ export default function IndexDetailPage() {
           {[
             { label: t("idx_aum"),     value: fmt(idx.aum_usd ?? 0, true), neutral: true },
             { label: t("idx_nav_token"), value: `$${(idx.nav_usd ?? 0).toFixed(3)}`, neutral: true },
-            { label: t("idx_30d"),     value: `${(idx.return_30d_pct ?? 0) >= 0 ? "+" : ""}${(idx.return_30d_pct ?? 0).toFixed(1)}%`, sign: idx.return_30d_pct ?? 0 },
-            { label: t("idx_btc"),     value: `${alphaBTC >= 0 ? "+" : ""}${alphaBTC.toFixed(1)}%`, sign: alphaBTC },
-            { label: t("idx_alltime"), value: `${(idx.total_return_pct ?? 0) >= 0 ? "+" : ""}${(idx.total_return_pct ?? 0).toFixed(1)}%`, sign: idx.total_return_pct ?? 0 },
+            { label: t("idx_30d"),     value: (() => { const v = idx.return_30d_pct ?? 0; const r = parseFloat(v.toFixed(1)); return `${r > 0 ? "+" : ""}${r === 0 ? "0.0" : v.toFixed(1)}%`; })(), sign: idx.return_30d_pct ?? 0 },
+            { label: t("idx_btc"),     value: (() => { const r = parseFloat(alphaBTC.toFixed(1)); return `${r > 0 ? "+" : ""}${r === 0 ? "0.0" : alphaBTC.toFixed(1)}%`; })(), sign: alphaBTC },
+            { label: t("idx_alltime"), value: (() => { const v = idx.total_return_pct ?? 0; const r = parseFloat(v.toFixed(1)); return `${r > 0 ? "+" : ""}${r === 0 ? "0.0" : v.toFixed(1)}%`; })(), sign: idx.total_return_pct ?? 0 },
           ].map((s) => (
             <div key={s.label} className="stat-card">
               <p className="stat-label">{s.label}</p>
               <p className={`text-xl font-bold ${
                 s.neutral ? "text-white"
-                : s.sign! > 0 ? "text-green-400"
-                : s.sign! < 0 ? "text-red-400"
+                : parseFloat((s.sign! ?? 0).toFixed(1)) > 0 ? "text-green-400"
+                : parseFloat((s.sign! ?? 0).toFixed(1)) < 0 ? "text-red-400"
                 : "text-white"
               }`}>{s.value}</p>
             </div>

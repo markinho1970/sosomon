@@ -150,7 +150,7 @@ async def execute_withdrawal(recipient: str, amount_usd: float, simulate: bool =
     simulate=True: executa todas as verificações e assina a tx mas NÃO transmite.
     Retorna o mesmo formato em ambos os casos para transparência total.
     """
-    from utils.crypto import get_private_key
+    from utils.crypto import get_fund_private_key
 
     amount_units = int(round(amount_usd * 1_000_000))  # USDC: 6 decimais
 
@@ -221,7 +221,7 @@ async def execute_withdrawal(recipient: str, amount_usd: float, simulate: bool =
     }
 
     try:
-        private_key = get_private_key()
+        private_key = get_fund_private_key()
         signed      = Account.sign_transaction(tx, private_key)
         raw_tx_hex  = "0x" + signed.raw_transaction.hex()
         checks["signed_tx_hash"]   = signed.hash.hex()

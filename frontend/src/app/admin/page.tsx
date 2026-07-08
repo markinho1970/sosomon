@@ -10,7 +10,7 @@ import {
   Home, Bell, Layers, Cpu, Menu, Activity, Server,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { adminApi, type SystemAlert } from "@/lib/api";
+import { adminApi, investApi, type SystemAlert } from "@/lib/api";
 import { useLang } from "@/lib/LanguageContext";
 import { LANGUAGES, type Lang } from "@/lib/i18n/translations";
 
@@ -158,6 +158,7 @@ export default function AdminPage() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [fundWallet, setFundWallet] = useState<FundWalletInfo | null>(null);
+  const [founderPortfolio, setFounderPortfolio] = useState<Record<string, unknown>[] | null>(null);
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
   const [alertsCheckedAt, setAlertsCheckedAt] = useState("");
   const [report, setReport] = useState<Record<string, unknown> | null>(null);
@@ -258,6 +259,7 @@ export default function AdminPage() {
     setPortfolio(null);
     setFundWallet(null);
     setMovements([]);
+    setFounderPortfolio(null);
   }
 
   function expireSession() {
@@ -315,6 +317,11 @@ export default function AdminPage() {
     try {
       setPortfolio(await adminApi.getPortfolio(session.address, session.message, session.signature, net));
     } catch { /**/ } finally { setLoadingPortfolio(false); }
+    // Carrega portfolio do founder como investidor
+    try {
+      const fp = await investApi.getPortfolio(session.address, net);
+      setFounderPortfolio(Array.isArray(fp) ? fp as Record<string, unknown>[] : null);
+    } catch { /**/ }
     try {
       const tr = await adminApi.getTrades(session.address, session.message, session.signature, 20, net);
       setTrades(Array.isArray(tr) ? tr : []);
@@ -944,6 +951,11 @@ export default function AdminPage() {
                   </button>
                 </div>
                 {!fundWallet && loadingFundWallet && <p className="text-white/30 text-sm text-center py-4">{t("admin_loading")}</p>}
+                {!fundWallet && !loadingFundWallet && (
+                  <div className="bg-white/3 border border-white/8 rounded-lg p-4 text-center">
+                    <p className="text-white/40 text-sm">Clique em ↻ para carregar saldos</p>
+                  </div>
+                )}
                 {fundWallet && (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between p-3 rounded-xl bg-white/3 border border-white/5">
@@ -994,6 +1006,39 @@ export default function AdminPage() {
                 )}
               </div>
 
+              {/* Founder Portfolio — investimento pessoal do admin */}
+              {founderPortfolio && founderPortfolio.length > 0 && (
+                <div className="card border border-purple-500/20">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Users size={15} className="text-purple-400" />
+                    <h3 className="font-semibold text-white text-sm">Founder Portfolio</h3>
+                    <span className="text-xs px-1.5 py-0.5 rounded border font-medium text-purple-300 bg-purple-500/10 border-purple-500/20">Investor</span>
+                  </div>
+                  <div className="space-y-2">
+                    {founderPortfolio.map((p) => {
+                      const deposited = Number(p.deposited_usd ?? 0);
+                      const current   = Number(p.current_value_usd ?? 0);
+                      const pnl       = current - deposited;
+                      const pnlPct    = deposited > 0 ? (pnl / deposited) * 100 : 0;
+                      return (
+                        <div key={String(p.index_id)} className="flex items-center justify-between p-2.5 rounded-lg bg-white/3 border border-white/5">
+                          <div>
+                            <p className="text-white text-sm font-medium">{String(p.index_name ?? p.index_id)}</p>
+                            <p className="text-white/40 text-xs">{Number(p.index_tokens_held ?? 0).toFixed(4)} shares · deposited ${deposited.toFixed(2)}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-white font-bold text-sm">${current.toFixed(2)}</p>
+                            <p className={`text-xs font-medium ${parseFloat(pnlPct.toFixed(2)) > 0 ? "text-green-400" : parseFloat(pnlPct.toFixed(2)) < 0 ? "text-red-400" : "text-white/40"}`}>
+                              {(() => { const r = parseFloat(pnlPct.toFixed(2)); return r === 0 ? "0.00" : (r > 0 ? "+" : "") + pnlPct.toFixed(2); })()}%
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div className="card">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
@@ -1005,9 +1050,14 @@ export default function AdminPage() {
                     <RefreshCw size={13} className={loadingPortfolio ? "animate-spin" : ""} />
                   </button>
                 </div>
-                {!portfolio && !loadingPortfolio && (
+                {!portfolio && !loadingPortfolio && isMainnet && (
                   <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4 text-center">
                     <p className="text-amber-400 text-sm">{t("admin_sodex_not_configured")}</p>
+                  </div>
+                )}
+                {!portfolio && !loadingPortfolio && !isMainnet && (
+                  <div className="bg-white/3 border border-white/8 rounded-lg p-4 text-center">
+                    <p className="text-white/40 text-sm">Portfolio SoDEX disponível apenas na mainnet</p>
                   </div>
                 )}
                 {portfolio && portfolio.configured && (
@@ -1085,6 +1135,9 @@ export default function AdminPage() {
                             <span className={`text-xs px-2 py-0.5 rounded border font-medium shrink-0 ${typeColor[m.type] ?? "text-white/40 bg-white/5 border-white/10"}`}>{m.type}</span>
                             <span className="text-white font-medium text-sm">${m.amount_usd.toFixed(2)}</span>
                             <span className="text-xs text-white/40 font-mono truncate flex-1">{m.wallet.slice(0, 8)}…{m.wallet.slice(-4)}</span>
+                            {m.wallet.toLowerCase() === session.address.toLowerCase() && (
+                              <span className="text-xs px-1.5 py-0.5 rounded border font-medium shrink-0 text-purple-300 bg-purple-500/10 border-purple-500/20">Founder</span>
+                            )}
                             {m.type === "refund" && (
                               <span className={`text-xs shrink-0 ${m.refund_ok === true ? "text-green-400" : m.refund_ok === false ? "text-red-400" : "text-yellow-400"}`}>
                                 {m.refund_ok === true ? t("admin_refund_status_ok") : m.refund_ok === false ? t("admin_refund_status_failed") : t("admin_refund_status_pending")}
@@ -1151,23 +1204,48 @@ export default function AdminPage() {
                         <th className="text-left pb-2 font-normal">{t("admin_trade_side")}</th>
                         <th className="text-right pb-2 font-normal">{t("admin_trade_qty")}</th>
                         <th className="text-right pb-2 font-normal">{t("admin_trade_price")}</th>
+                        <th className="text-right pb-2 font-normal">USD</th>
                         <th className="text-right pb-2 font-normal">{t("admin_trade_status")}</th>
+                        {!isMainnet && <th className="text-left pb-2 font-normal pl-4">Investor</th>}
                         <th className="text-right pb-2 font-normal">{t("admin_trade_time")}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/3">
-                      {trades.map((tr, i) => (
-                        <tr key={tr.id ?? i}>
-                          <td className="py-2 font-mono text-white">{String(tr.symbol ?? tr.s ?? "—")}</td>
-                          <td className={`py-2 font-medium ${String(tr.side).toUpperCase() === "BUY" ? "text-green-400" : "text-red-400"}`}>{String(tr.side ?? "—").toUpperCase()}</td>
-                          <td className="py-2 text-right text-white/60">{String(tr.quantity ?? tr.qty ?? "—")}</td>
-                          <td className="py-2 text-right text-white/60">{tr.price ? `$${tr.price}` : "—"}</td>
-                          <td className="py-2 text-right">
-                            <span className={`px-1.5 py-0.5 rounded text-xs ${String(tr.status) === "placed" || String(tr.status) === "filled" ? "text-green-400" : "text-white/40"}`}>{String(tr.status ?? "—")}</span>
-                          </td>
-                          <td className="py-2 text-right text-white/30">{tr.created_at ? timeAgo(String(tr.created_at)) : "—"}</td>
-                        </tr>
-                      ))}
+                      {trades.map((tr, i) => {
+                        const wallet = String(tr.investor_wallet ?? "");
+                        const shortWallet = wallet.length >= 10 ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : wallet;
+                        const isFounder = wallet.toLowerCase() === "0x1a3ade798b60bd6e99ff3d84367cc7913115031c";
+                        return (
+                          <tr key={tr.id ?? i}>
+                            <td className="py-2 font-mono text-white">{String(tr.symbol ?? tr.s ?? "—")}</td>
+                            <td className={`py-2 font-medium ${String(tr.side).toUpperCase() === "BUY" ? "text-green-400" : "text-red-400"}`}>{String(tr.side ?? "—").toUpperCase()}</td>
+                            <td className="py-2 text-right text-white/60">{Number(tr.quantity ?? tr.qty ?? 0).toFixed(6)}</td>
+                            <td className="py-2 text-right text-white/60">{tr.price ? `$${Number(tr.price).toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 4})}` : "—"}</td>
+                            <td className="py-2 text-right text-white font-medium">{tr.usd_value ? `$${Number(tr.usd_value).toFixed(2)}` : "—"}</td>
+                            <td className="py-2 text-right">
+                              {tr.is_simulated ? (
+                                <span className={`px-1.5 py-0.5 rounded text-xs border ${String(tr.status) === "skipped" ? "text-white/30 bg-white/5 border-white/10" : "text-amber-400 bg-amber-500/10 border-amber-500/20"}`}>
+                                  {String(tr.status)}
+                                </span>
+                              ) : (
+                                <span className={`px-1.5 py-0.5 rounded text-xs ${String(tr.status) === "placed" || String(tr.status) === "filled" ? "text-green-400" : "text-white/40"}`}>{String(tr.status ?? "—")}</span>
+                              )}
+                            </td>
+                            {!isMainnet && (
+                              <td className="py-2 pl-4">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-mono text-white/50">{shortWallet || "—"}</span>
+                                  {isFounder && (
+                                    <span className="text-xs px-1 py-0.5 rounded border font-medium text-purple-300 bg-purple-500/10 border-purple-500/20">Founder</span>
+                                  )}
+                                </div>
+                                <p className="text-white/25 mt-0.5">{String(tr.index_id ?? "")}</p>
+                              </td>
+                            )}
+                            <td className="py-2 text-right text-white/30">{(tr.timestamp || tr.created_at) ? timeAgo(String(tr.timestamp ?? tr.created_at)) : "—"}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

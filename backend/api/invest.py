@@ -696,6 +696,8 @@ def get_portfolio_breakdown(wallet_address: str, network_mode: str = "mainnet", 
         if getattr(p, "network_mode", "mainnet") == network_mode
     ]
     for p in portfolios:
+        if not (p.index_tokens_held or 0) > 0 and not (p.current_value_usd or 0) > 0:
+            continue
         index = db.query(AlphaIndex).filter(AlphaIndex.id == p.index_id).first()
         if not index:
             continue

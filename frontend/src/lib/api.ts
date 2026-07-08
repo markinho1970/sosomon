@@ -168,14 +168,17 @@ export const adminApi = {
     return data;
   },
 
-  getPortfolio: async (address: string, message: string, signature: string) => {
-    const { data } = await api.get("/api/admin/portfolio", adminHeaders(address, message, signature));
+  getPortfolio: async (address: string, message: string, signature: string, networkMode = "mainnet") => {
+    const { data } = await api.get(
+      `/api/admin/portfolio?network_mode=${networkMode}`,
+      adminHeaders(address, message, signature)
+    );
     return data.data;
   },
 
-  getTrades: async (address: string, message: string, signature: string, limit = 50) => {
+  getTrades: async (address: string, message: string, signature: string, limit = 50, networkMode = "mainnet") => {
     const { data } = await api.get(
-      `/api/admin/trades?limit=${limit}`,
+      `/api/admin/trades?limit=${limit}&network_mode=${networkMode}`,
       adminHeaders(address, message, signature)
     );
     return data.data;

@@ -19,9 +19,16 @@ export function formatUSD(value: number, compact = false): string {
   }).format(value);
 }
 
-export function formatPct(value: number, showSign = true): string {
-  const sign = showSign && value > 0 ? "+" : "";
-  return `${sign}${value.toFixed(2)}%`;
+export function formatPct(value: number, showSign = true, decimals = 2): string {
+  const r = parseFloat(value.toFixed(decimals));
+  if (r === 0) return `0.${"0".repeat(decimals)}%`;
+  const sign = showSign && r > 0 ? "+" : "";
+  return `${sign}${value.toFixed(decimals)}%`;
+}
+
+export function pctColor(value: number, decimals = 1, zeroClass = "text-white"): string {
+  if (parseFloat(value.toFixed(decimals)) === 0) return zeroClass;
+  return value > 0 ? "text-green-400" : "text-red-400";
 }
 
 export function formatDate(iso: string): string {

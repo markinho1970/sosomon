@@ -36,7 +36,18 @@ function fmtUSD(v: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(v);
 }
 function fmtPct(v: number) {
-  return `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
+  const r = parseFloat(v.toFixed(2));
+  if (r === 0) return "0.00%";
+  return `${r > 0 ? "+" : ""}${v.toFixed(2)}%`;
+}
+function fmtChange(v: number, decimals = 1): string {
+  const r = parseFloat(v.toFixed(decimals));
+  if (r === 0) return `0.${"0".repeat(decimals)}%`;
+  return `${r > 0 ? "+" : ""}${v.toFixed(decimals)}%`;
+}
+function pctColor(v: number, decimals = 1, zeroClass = "text-white/50"): string {
+  if (parseFloat(v.toFixed(decimals)) === 0) return zeroClass;
+  return v > 0 ? "text-green-400" : "text-red-400";
 }
 
 interface Portfolio {
@@ -237,7 +248,7 @@ export default function DashboardPage() {
               <div className="stat-card">
                 <p className="stat-label">{t("dash_total_value")}</p>
                 <p className="stat-value">{fmtUSD(totalValue)}</p>
-                <p className={totalReturnPct >= 0 ? "stat-change-positive" : "stat-change-negative"}>
+                <p className={parseFloat(totalReturnPct.toFixed(2)) === 0 ? "text-white/40 text-xs" : totalReturnPct > 0 ? "stat-change-positive" : "stat-change-negative"}>
                   {fmtPct(totalReturnPct)} {t("dash_alltime")}
                 </p>
               </div>
@@ -253,7 +264,7 @@ export default function DashboardPage() {
                     ? portfolios.reduce((s, p) => s + p.return_30d_pct * p.current_value_usd, 0) / (totalValue || 1)
                     : null;
                   return (
-                    <p className={`stat-value ${w30d === null ? "text-white/30" : w30d >= 0 ? "text-green-400" : "text-red-400"}`}>
+                    <p className={`stat-value ${w30d === null ? "text-white/30" : pctColor(w30d, 2, "text-white")}`}>
                       {w30d !== null ? fmtPct(w30d) : "—"}
                     </p>
                   );
@@ -318,14 +329,14 @@ export default function DashboardPage() {
                             </div>
                             <div>
                               <p className="stat-label text-xs">P&L</p>
-                              <p className={`font-semibold flex items-center gap-1 ${p.all_time_return_pct >= 0 ? "text-green-400" : "text-red-400"}`}>
-                                {p.all_time_return_pct >= 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
+                              <p className={`font-semibold flex items-center gap-1 ${pctColor(p.all_time_return_pct, 2, "text-white")}`}>
+                                {parseFloat(p.all_time_return_pct.toFixed(2)) > 0 ? <TrendingUp size={13} /> : parseFloat(p.all_time_return_pct.toFixed(2)) < 0 ? <TrendingDown size={13} /> : null}
                                 {fmtPct(p.all_time_return_pct)}
                               </p>
                             </div>
                             <div>
                               <p className="stat-label text-xs">30d</p>
-                              <p className={`font-semibold ${p.return_30d_pct >= 0 ? "text-green-400" : "text-red-400"}`}>
+                              <p className={`font-semibold ${pctColor(p.return_30d_pct, 2, "text-white")}`}>
                                 {fmtPct(p.return_30d_pct)}
                               </p>
                             </div>
@@ -376,8 +387,8 @@ export default function DashboardPage() {
                                   </div>
                                   <div className="text-right">
                                     <p className="text-white text-sm font-medium">{fmtUSD(tok.usd_value)}</p>
-                                    <p className={`text-xs ${tok.change_7d >= 0 ? "text-green-400" : "text-red-400"}`}>
-                                      {tok.change_7d >= 0 ? "+" : ""}{tok.change_7d.toFixed(1)}% 7d
+                                    <p className={`text-xs ${pctColor(tok.change_7d, 1)}`}>
+                                      {fmtChange(tok.change_7d, 1)} 7d
                                     </p>
                                   </div>
                                 </div>
@@ -441,8 +452,8 @@ export default function DashboardPage() {
                       <div className="flex items-center justify-between mb-4">
                         <div>
                           <p className="text-white font-semibold">{h.index_name}</p>
-                          <p className={`text-sm font-medium ${pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
-                            {pnl >= 0 ? "+" : ""}{fmtUSD(pnl)} ({pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(2)}%) all-time
+                          <p className={`text-sm font-medium ${pctColor(pnlPct, 2, "text-white")}`}>
+                            {parseFloat(pnl.toFixed(2)) > 0 ? "+" : parseFloat(pnl.toFixed(2)) === 0 ? "" : ""}{fmtUSD(pnl)} ({fmtPct(pnlPct)}) all-time
                           </p>
                         </div>
                         <div className="text-right">

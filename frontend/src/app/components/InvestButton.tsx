@@ -5,8 +5,7 @@ import { useAccount, useSignMessage } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
-  X, Copy, CheckCircle2, ExternalLink, Info, Clock,
-  Loader2, AlertTriangle, Shield, ShieldCheck,
+  X, Copy, CheckCircle2, ExternalLink, Info, Clock, Loader2, AlertTriangle, Shield, ShieldCheck,
 } from "lucide-react";
 import api, { investApi } from "@/lib/api";
 import { useNetworkMode } from "@/lib/NetworkModeContext";
@@ -45,7 +44,6 @@ export default function InvestButton({ indexId, indexName, navUsd, minDepositUsd
   const ACTIVE_CHAIN_ID = isTestnet ? baseSepolia.id : base.id;
 
   const [open, setOpen] = useState(false);
-  const [showMainnetBlock, setShowMainnetBlock] = useState(false);
   const [step, setStep] = useState<Step>("disclaimer");
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [fundWallet, setFundWallet] = useState<string | null>(null);
@@ -70,10 +68,6 @@ export default function InvestButton({ indexId, indexName, navUsd, minDepositUsd
   }, [step]);
 
   function handleOpenClick() {
-    if (!isTestnet) {
-      setShowMainnetBlock(true);
-      return;
-    }
     if (!isConnected) {
       openConnectModal?.();
       return;
@@ -152,40 +146,6 @@ export default function InvestButton({ indexId, indexName, navUsd, minDepositUsd
       <button onClick={handleOpenClick} className="btn-primary w-full">
         {isConnected ? t("invest_btn") : t("invest_connect")}
       </button>
-
-      {/* Modal de bloqueio mainnet */}
-      <Dialog.Root open={showMainnetBlock} onOpenChange={setShowMainnetBlock}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md bg-brand-gray border border-white/10 rounded-2xl shadow-2xl p-8 text-center">
-            <button onClick={() => setShowMainnetBlock(false)} className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors">
-              <X size={18} />
-            </button>
-            <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto mb-4">
-              <Clock size={28} className="text-amber-400" />
-            </div>
-            <h2 className="text-white font-bold text-lg mb-2">{t("mainnet_block_title")}</h2>
-            <p className="text-white/50 text-sm leading-relaxed mb-6">
-              {t("mainnet_block_body")}
-            </p>
-            <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 mb-6 text-left">
-              <p className="text-blue-300 text-xs font-semibold mb-2 flex items-center gap-2">
-                <Info size={12} /> {t("mainnet_block_wave3_title")}
-              </p>
-              <ul className="text-blue-200/60 text-xs space-y-1">
-                <li>• {t("mainnet_block_f1")}</li>
-                <li>• {t("mainnet_block_f2")}</li>
-                <li>• {t("mainnet_block_f3")}</li>
-                <li>• {t("mainnet_block_f4")}</li>
-              </ul>
-            </div>
-            <p className="text-white/30 text-xs mb-4" dangerouslySetInnerHTML={{__html: t("mainnet_block_hint")}} />
-            <button onClick={() => setShowMainnetBlock(false)} className="btn-primary w-full">
-              {t("mainnet_block_ok")}
-            </button>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
 
       <Dialog.Root open={open} onOpenChange={setOpen}>
         <Dialog.Portal>

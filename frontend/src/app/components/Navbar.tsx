@@ -55,16 +55,10 @@ export default function Navbar() {
           <Link href="/indexes" className="text-sm text-white/60 hover:text-white transition-colors">{t("nav_indexes")}</Link>
           <Link href="/transparency" className="text-sm text-white/60 hover:text-white transition-colors">{t("nav_transparency")}</Link>
 
-          {/* Faucet — disabled on mainnet */}
           {isTestnet ? (
             <Link href="/faucet-sepolia" className="text-sm text-white/60 hover:text-white transition-colors">Faucet</Link>
           ) : (
-            <span
-              title="Switch to Testnet to access the faucet"
-              className="text-sm text-white/20 cursor-not-allowed select-none"
-            >
-              Faucet
-            </span>
+            <span title="Switch to Testnet to access the faucet" className="text-sm text-white/20 cursor-not-allowed select-none">Faucet</span>
           )}
 
           <Link href="/whats-new" className="flex items-center gap-1.5 text-sm text-amber-400/80 hover:text-amber-300 transition-colors font-medium">
@@ -78,7 +72,6 @@ export default function Navbar() {
             {t("nav_dashboard")}
           </Link>
 
-          {/* Seletor de idioma */}
           <div ref={langRef} className="relative">
             <button
               onClick={() => setLangOpen(v => !v)}
@@ -128,14 +121,11 @@ export default function Navbar() {
         <div className="md:hidden border-t border-brand-border bg-black px-4 py-4 flex flex-col gap-4">
           <Link href="/indexes" className="text-sm text-white/60 hover:text-white" onClick={() => setOpen(false)}>{t("nav_indexes")}</Link>
           <Link href="/transparency" className="text-sm text-white/60 hover:text-white" onClick={() => setOpen(false)}>{t("nav_transparency")}</Link>
-
-          {/* Faucet mobile — disabled on mainnet */}
           {isTestnet ? (
             <Link href="/faucet-sepolia" className="text-sm text-white/60 hover:text-white" onClick={() => setOpen(false)}>Faucet</Link>
           ) : (
             <span className="text-sm text-white/20 cursor-not-allowed">Faucet</span>
           )}
-
           <Link href="/whats-new" className="text-sm text-amber-400/80 hover:text-amber-300 font-medium" onClick={() => setOpen(false)}>{t("nav_whats_new")}</Link>
           <Link href="/dashboard" className="text-sm text-center text-white/60 border border-white/10 rounded-lg px-4 py-2" onClick={() => setOpen(false)}>{t("nav_dashboard")}</Link>
           <div className="grid grid-cols-4 gap-1">

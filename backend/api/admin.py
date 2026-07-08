@@ -3,7 +3,7 @@ import time
 import json
 import hashlib
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Header
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -154,31 +154,25 @@ class RunRebalancerRequest(BaseModel):
 
 
 @router.post("/run-rebalancer")
-async def run_rebalancer(req: RunRebalancerRequest, db: Session = Depends(get_db), _: None = Depends(require_admin)):
-    """Dispara o ciclo completo do Rebalancer agent (pode gerar nova proposta)."""
+async def run_rebalancer(background_tasks: BackgroundTasks, req: RunRebalancerRequest, db: Session = Depends(get_db), _: None = Depends(require_admin)):
+    """Dispara o ciclo completo do Rebalancer agent em background (retorna imediatamente)."""
     from agents.rebalancer import check_and_propose_rebalances
-    try:
-        await check_and_propose_rebalances()
-        pending = db.query(func.count(RebalanceProposal.id)).filter(
-            RebalanceProposal.status == "pending"
-        ).scalar() or 0
-        return {"success": True, "message": "Rebalancer executed", "pending_proposals": pending}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    background_tasks.add_task(check_and_propose_rebalances)
+    pending = db.query(func.count(RebalanceProposal.id)).filter(
+        RebalanceProposal.status == "pending"
+    ).scalar() or 0
+    return {"success": True, "message": "Rebalancer iniciado em background — verifique Proposals em instantes", "pending_proposals": pending}
 
 
 @router.post("/run-scout")
-async def run_scout(_: None = Depends(require_admin), db: Session = Depends(get_db)):
-    """Dispara o Scout agent manualmente para análise imediata de mercado."""
+async def run_scout(background_tasks: BackgroundTasks, _: None = Depends(require_admin), db: Session = Depends(get_db)):
+    """Dispara o Scout agent em background (retorna imediatamente)."""
     from agents.scout import run_all_indexes
-    try:
-        result = await run_all_indexes()
-        pending = db.query(func.count(RebalanceProposal.id)).filter(
-            RebalanceProposal.status == "pending"
-        ).scalar() or 0
-        return {"success": True, "message": f"Scout concluído. {result or 'Análise realizada.'}", "pending_proposals": pending}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    background_tasks.add_task(run_all_indexes)
+    pending = db.query(func.count(RebalanceProposal.id)).filter(
+        RebalanceProposal.status == "pending"
+    ).scalar() or 0
+    return {"success": True, "message": "Scout iniciado em background — verifique Proposals em alguns minutos", "pending_proposals": pending}
 
 
 _AUDIT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "audit", "proposals"))
@@ -285,34 +279,84 @@ async def execute_proposal(
 
 
 @router.get("/portfolio")
-async def admin_portfolio(_: None = Depends(require_admin)):
+async def admin_portfolio(network_mode: str = "mainnet", _: None = Depends(require_admin)):
     """Snapshot atual do portfolio na SoDEX: saldos, valores USD, pesos."""
     try:
-        snapshot = await get_portfolio_snapshot()
+        testnet = (network_mode == "testnet")
+        snapshot = await get_portfolio_snapshot(testnet=testnet)
         return {"data": snapshot}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/trades")
-async def admin_trades(limit: int = 50, _: None = Depends(require_admin)):
-    """Histórico de trades executados na SoDEX."""
+async def admin_trades(network_mode: str = "mainnet", limit: int = 50, db: Session = Depends(get_db), _: None = Depends(require_admin)):
+    """Histórico de trades executados na SoDEX.
+    Mainnet: busca trades reais na SoDEX API.
+    Testnet: lê ordens simuladas (dry_run) salvas na agent_activity.
+    """
     try:
-        trades = await get_trade_history(limit=limit)
+        testnet = (network_mode == "testnet")
+
+        if testnet:
+            # Mapa index_id → (wallet, deposited_usd) para rastreamento por investidor
+            portfolios = db.query(SubscriberPortfolio).filter(
+                SubscriberPortfolio.network_mode == "testnet"
+            ).all()
+            portfolio_map: dict = {}
+            for p in portfolios:
+                sub = db.query(Subscriber).filter(Subscriber.id == p.subscriber_id).first()
+                portfolio_map[p.index_id] = {
+                    "investor_wallet": sub.wallet_address if sub else "",
+                    "deposited_usd":   float(p.deposited_usd or 0),
+                }
+
+            logs = db.query(AgentActivityLog).filter(
+                AgentActivityLog.agent == "deposit_monitor",
+                AgentActivityLog.action == "tokens_purchased",
+            ).order_by(AgentActivityLog.timestamp.desc()).limit(limit).all()
+
+            trades = []
+            for log in logs:
+                data = log.data or {}
+                orders = data.get("orders", [])
+                investor_info = portfolio_map.get(log.index_id, {})
+                for o in orders:
+                    raw_status = o.get("status", "")
+                    if raw_status in ("dry_run", "placed"):
+                        display_status = "simulated"
+                    elif "skip" in raw_status:
+                        display_status = "skipped"
+                    else:
+                        continue
+                    trades.append({
+                        "symbol":           o.get("symbol", ""),
+                        "side":             o.get("side", "buy"),
+                        "quantity":         float(o.get("quantity", 0)),
+                        "price":            float(o.get("price", 0)) if o.get("price") else 0.0,
+                        "usd_value":        round(float(o.get("usd_value", 0)), 2),
+                        "status":           display_status,
+                        "index_id":         log.index_id,
+                        "timestamp":        log.timestamp.isoformat() if log.timestamp else "",
+                        "is_simulated":     True,
+                        "investor_wallet":  investor_info.get("investor_wallet", ""),
+                        "deposited_usd":    investor_info.get("deposited_usd", 0),
+                        "allocated_usd":    round(float(data.get("allocated_usd", 0)), 2),
+                    })
+            return {"data": trades, "count": len(trades)}
+
+        trades = await get_trade_history(limit=limit, testnet=testnet)
         return {"data": trades, "count": len(trades)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/run-nav-update")
-async def run_nav_update(_: None = Depends(require_admin)):
-    """Dispara atualização imediata de NAV para todos os índices (sem aguardar o scheduler)."""
+async def run_nav_update(background_tasks: BackgroundTasks, _: None = Depends(require_admin)):
+    """Dispara atualização de NAV em background (retorna imediatamente)."""
     from services.nav_updater import update_all_navs
-    try:
-        await update_all_navs()
-        return {"success": True, "message": "NAV update completed — prices, NAV and portfolios refreshed"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    background_tasks.add_task(update_all_navs)
+    return {"success": True, "message": "NAV update iniciado em background — preços e portfolios serão atualizados em ~1min"}
 
 
 @router.get("/fund-wallet")
