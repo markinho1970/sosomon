@@ -120,6 +120,9 @@ interface FundWalletInfo {
   network_mode: string;
   usdc_contract: string;
   basescan_url: string;
+  gas_price_gwei: number | null;
+  possible_txs: number | null;
+  gas_cost_usd: number | null;
 }
 
 const CHAIN_BASE_MAINNET = 8453;
@@ -559,14 +562,18 @@ export default function AdminPage() {
   const criticalAlerts = alerts.filter(a => a.severity === "critical");
   const isMainnet = networkMode === "mainnet";
   const ethBal = fundWallet?.eth_balance ?? 0;
-  const ethColor = ethBal >= 0.05 ? "text-green-400" : ethBal >= 0.01 ? "text-amber-400" : "text-red-400";
+  const possibleTxs = fundWallet?.possible_txs ?? null;
+  const ethColor = possibleTxs !== null
+    ? (possibleTxs >= 200 ? "text-green-400" : possibleTxs >= 50 ? "text-amber-400" : "text-red-400")
+    : (ethBal >= 0.05 ? "text-green-400" : ethBal >= 0.01 ? "text-amber-400" : "text-red-400");
   const showBanner = pendingCount > 0 && activeTab !== "proposals";
+  const ethLowAlert = fundWallet && possibleTxs !== null && possibleTxs < 200;
 
   const NAV_ITEMS: { id: AdminTab; icon: React.ElementType; label: string; badge: number }[] = [
     { id: "overview",   icon: Home,            label: t("admin_tab_overview"),      badge: criticalAlerts.length },
     { id: "proposals",  icon: Bell,            label: t("admin_tab_proposals"),     badge: pendingCount },
     { id: "indexes",    icon: Layers,          label: t("admin_tab_indexes"),       badge: 0 },
-    { id: "treasury",   icon: Wallet,          label: t("admin_tab_treasury"),      badge: ethBal < 0.01 && fundWallet ? 1 : 0 },
+    { id: "treasury",   icon: Wallet,          label: t("admin_tab_treasury"),      badge: ethLowAlert ? 1 : 0 },
     { id: "investors",  icon: Users,           label: t("admin_tab_investors_tab"), badge: 0 },
     { id: "trades",     icon: ArrowRightLeft,  label: t("admin_tab_trades"),        badge: 0 },
     { id: "agents",     icon: Cpu,             label: t("admin_tab_agents"),        badge: 0 },
@@ -1095,16 +1102,34 @@ export default function AdminPage() {
                 )}
                 {fundWallet && (
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-white/3 border border-white/5">
-                      <div className="flex items-center gap-2">
-                        <Fuel size={14} className={ethColor} />
-                        <span className="text-white/60 text-sm">{t("admin_eth_gas")}</span>
+                    <div className={`p-3 rounded-xl border ${possibleTxs !== null && possibleTxs < 50 ? "bg-red-500/8 border-red-500/25" : possibleTxs !== null && possibleTxs < 200 ? "bg-amber-500/8 border-amber-500/20" : "bg-white/3 border-white/5"}`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Fuel size={14} className={ethColor} />
+                          <span className="text-white/60 text-sm">{t("admin_eth_gas")}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className={`font-bold text-sm ${ethColor}`}>{fundWallet.eth_balance !== null ? fundWallet.eth_balance.toFixed(6) : "—"} ETH</span>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <span className={`font-bold text-sm ${ethColor}`}>{fundWallet.eth_balance !== null ? fundWallet.eth_balance.toFixed(6) : "—"} ETH</span>
-                        {ethBal < 0.01 && <p className="text-red-400 text-xs">{t("admin_eth_critical_simple")}</p>}
-                        {ethBal >= 0.01 && ethBal < 0.05 && <p className="text-amber-400 text-xs">{t("admin_eth_low_simple")}</p>}
+                      <div className="mt-2 flex items-center justify-between">
+                        <span className="text-white/35 text-xs">Transações possíveis</span>
+                        <span className={`font-mono font-bold text-xs ${ethColor}`}>
+                          {possibleTxs !== null ? `~${possibleTxs.toLocaleString("pt-BR")}` : "—"}
+                        </span>
                       </div>
+                      {fundWallet.gas_price_gwei !== null && (
+                        <div className="flex items-center justify-between mt-1">
+                          <span className="text-white/25 text-xs">Gas price agora</span>
+                          <span className="text-white/35 font-mono text-xs">{fundWallet.gas_price_gwei?.toFixed(4)} gwei</span>
+                        </div>
+                      )}
+                      {possibleTxs !== null && possibleTxs < 50 && (
+                        <p className="text-red-400 text-xs mt-2 font-medium">Repor ETH urgente — risco de parar operação</p>
+                      )}
+                      {possibleTxs !== null && possibleTxs >= 50 && possibleTxs < 200 && (
+                        <p className="text-amber-400 text-xs mt-2">ETH baixo — considere repor em breve</p>
+                      )}
                     </div>
                     <div className="flex items-center justify-between p-3 rounded-xl bg-white/3 border border-white/5">
                       <div className="flex items-center gap-2">

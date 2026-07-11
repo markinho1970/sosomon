@@ -520,14 +520,35 @@ async def get_fund_wallet_info(mode: str = "mainnet") -> dict:
     except Exception as e:
         logger.error(f"deposit_monitor [{mode}]: erro ao buscar saldo ETH: {e}")
 
+    # Calcula gas price e transações possíveis (custo de 1 ERC-20 transfer = 100k gas)
+    gas_price_gwei = None
+    possible_txs = None
+    gas_cost_usd = None
+    GAS_LIMIT_TX = 100_000
+    ETH_USD_ESTIMATE = 2500.0  # estimativa conservadora
+    try:
+        rpc_url = net.get("rpc", "https://mainnet.base.org")
+        gp_res = await _rpc_resilient(network, "eth_gasPrice", [])
+        gas_price_wei = int(gp_res["result"], 16)
+        gas_price_gwei = round(gas_price_wei / 1e9, 6)
+        cost_per_tx_eth = gas_price_wei * GAS_LIMIT_TX / 1e18
+        gas_cost_usd = round(cost_per_tx_eth * ETH_USD_ESTIMATE, 6)
+        if eth_bal is not None and cost_per_tx_eth > 0:
+            possible_txs = int(eth_bal / cost_per_tx_eth)
+    except Exception as e:
+        logger.warning(f"deposit_monitor [{mode}]: erro ao buscar gas price: {e}")
+
     return {
-        "address":       net["fund_wallet"],
-        "usdc_balance":  usdc_bal,
-        "eth_balance":   eth_bal,
-        "configured":    True,
-        "network":       net["label"],
-        "chain_id":      net["chain_id"],
-        "network_mode":  mode,
-        "usdc_contract": net["usdc"],
-        "basescan_url":  f"{net['basescan_addr']}{net['fund_wallet']}",
+        "address":         net["fund_wallet"],
+        "usdc_balance":    usdc_bal,
+        "eth_balance":     eth_bal,
+        "configured":      True,
+        "network":         net["label"],
+        "chain_id":        net["chain_id"],
+        "network_mode":    mode,
+        "usdc_contract":   net["usdc"],
+        "basescan_url":    f"{net['basescan_addr']}{net['fund_wallet']}",
+        "gas_price_gwei":  gas_price_gwei,
+        "possible_txs":    possible_txs,
+        "gas_cost_usd":    gas_cost_usd,
     }

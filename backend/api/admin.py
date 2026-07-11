@@ -613,7 +613,7 @@ def admin_movements(
 
 
 @router.get("/alerts")
-def admin_alerts(db: Session = Depends(get_db), _: None = Depends(require_admin)):
+async def admin_alerts(db: Session = Depends(get_db), _: None = Depends(require_admin)):
     """Retorna alertas do sistema: RPC health, tokens sem preco, scout parado, propostas pendentes."""
     import datetime as dt
     from models import IndexConstituent, ScoutReport, RebalanceProposal
@@ -693,6 +693,41 @@ def admin_alerts(db: Session = Depends(get_db), _: None = Depends(require_admin)
                 "message": f"Ha {pending_count} proposta(s) de rebalanceamento aguardando aprovacao.",
                 "since": None,
             })
+    except Exception:
+        pass
+
+    # 5. ETH gas — verifica saldo e transações possíveis
+    try:
+        from services.deposit_monitor import get_fund_wallet_info
+        winfo = await get_fund_wallet_info("mainnet")
+        possible = winfo.get("possible_txs")
+        eth_bal  = winfo.get("eth_balance") or 0
+        if possible is not None:
+            if possible < 50:
+                alerts.append({
+                    "id": "eth_gas_critical",
+                    "severity": "critical",
+                    "category": "gas",
+                    "title": "ETH crítico — repor gas urgente",
+                    "message": (
+                        f"Fund wallet com apenas {eth_bal:.6f} ETH na Base chain. "
+                        f"Restam ~{possible} transações antes de esgotar. "
+                        "Deposite ETH em 0x935b...1D0b para continuar operando."
+                    ),
+                    "since": None,
+                })
+            elif possible < 200:
+                alerts.append({
+                    "id": "eth_gas_warning",
+                    "severity": "warning",
+                    "category": "gas",
+                    "title": "ETH baixo para gas",
+                    "message": (
+                        f"Fund wallet com {eth_bal:.6f} ETH (~{possible} transações restantes). "
+                        "Considere repor ETH na Base chain em breve."
+                    ),
+                    "since": None,
+                })
     except Exception:
         pass
 
