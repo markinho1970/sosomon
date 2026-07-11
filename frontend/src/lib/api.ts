@@ -196,9 +196,9 @@ export const adminApi = {
     return data.data;
   },
 
-  getInvestors: async (address: string, message: string, signature: string, networkMode = "mainnet") => {
+  getInvestors: async (address: string, message: string, signature: string, networkMode = "mainnet", page = 1, perPage = 25) => {
     const { data } = await api.get(
-      `/api/admin/investors?network_mode=${networkMode}`,
+      `/api/admin/investors?network_mode=${networkMode}&page=${page}&per_page=${perPage}`,
       adminHeaders(address, message, signature)
     );
     return data.data;

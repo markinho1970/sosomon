@@ -360,46 +360,132 @@ async def run_nav_update(background_tasks: BackgroundTasks, _: None = Depends(re
 
 
 @router.get("/investors")
-def admin_investors(network_mode: str = "mainnet", db: Session = Depends(get_db), _: None = Depends(require_admin)):
-    """Lista todos os portfólios de investidores: wallet, índice, depositado, atual, P&L."""
-    portfolios = (
+def admin_investors(
+    network_mode: str = "mainnet",
+    page: int = 1,
+    per_page: int = 25,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    """Lista portfólios com paginação, cota no pool, cesta e histórico de depósitos."""
+    from models import IndexConstituent
+
+    all_portfolios = (
         db.query(SubscriberPortfolio)
         .filter(SubscriberPortfolio.network_mode == network_mode)
-        .order_by(SubscriberPortfolio.current_value_usd.desc())
+        .order_by(SubscriberPortfolio.first_invested_at.desc())
         .all()
     )
+
+    # Total de shares por índice → calcula % do pool de cada investidor
+    index_total_shares: dict = {}
+    for p in all_portfolios:
+        iid = p.index_id
+        index_total_shares[iid] = index_total_shares.get(iid, 0.0) + float(p.index_tokens_held or 0)
+
     rows = []
-    for p in portfolios:
+    for p in all_portfolios:
         sub = db.query(Subscriber).filter(Subscriber.id == p.subscriber_id).first()
         if not sub:
             continue
         idx = db.query(AlphaIndex).filter(AlphaIndex.id == p.index_id).first()
-        deposited = p.deposited_usd or 0.0
-        current   = p.current_value_usd or 0.0
-        pnl       = current - deposited
-        pnl_pct   = (pnl / deposited * 100) if deposited > 0 else 0.0
+
+        deposited  = float(p.deposited_usd or 0)
+        current    = float(p.current_value_usd or 0)
+        pnl        = current - deposited
+        pnl_pct    = (pnl / deposited * 100) if deposited > 0 else 0.0
+        my_shares  = float(p.index_tokens_held or 0)
+        tot_shares = index_total_shares.get(p.index_id, 1.0)
+        pool_pct   = (my_shares / tot_shares * 100) if tot_shares > 0 else 0.0
+
+        # Constituintes da cesta com valor estimado por peso
+        basket = (
+            db.query(IndexConstituent)
+            .filter(
+                IndexConstituent.index_id == p.index_id,
+                IndexConstituent.in_basket == True,
+                IndexConstituent.network_mode == network_mode,
+            )
+            .order_by(IndexConstituent.weight.desc())
+            .all()
+        )
+        basket_items = []
+        for c in basket:
+            price   = float(c.current_price_usd or 0)
+            est_usd = current * (c.weight / 100) if current > 0 and c.weight else 0
+            est_qty = (est_usd / price) if price > 0 else 0
+            basket_items.append({
+                "symbol":    c.symbol,
+                "weight":    c.weight,
+                "price":     round(price, 4),
+                "est_usd":   round(est_usd, 2),
+                "est_qty":   round(est_qty, 6),
+                "change_7d": round(float(c.price_change_7d or 0), 2),
+            })
+
+        # Histórico de depósitos
+        txs = (
+            db.query(DepositTransaction)
+            .filter(
+                DepositTransaction.subscriber_id == p.subscriber_id,
+                DepositTransaction.index_id == p.index_id,
+                DepositTransaction.network_mode == network_mode,
+            )
+            .order_by(DepositTransaction.created_at.desc())
+            .all()
+        )
+        tx_list = [
+            {
+                "tx_hash":    t.tx_hash,
+                "amount_usd": t.amount_usd,
+                "nav_at_buy": t.nav_at_purchase,
+                "shares":     t.shares_issued,
+                "confirmed":  t.buy_confirmed,
+                "date":       t.created_at.isoformat() if t.created_at else None,
+            }
+            for t in txs
+        ]
+
         rows.append({
-            "wallet_address":    sub.wallet_address,
-            "index_id":          p.index_id,
-            "index_name":        idx.name if idx else p.index_id,
-            "deposited_usd":     round(deposited, 2),
-            "current_value_usd": round(current, 2),
-            "pnl_usd":           round(pnl, 2),
-            "pnl_pct":           round(pnl_pct, 2),
-            "shares":            round(p.index_tokens_held or 0, 6),
-            "is_pro":            sub.is_pro or False,
+            "id":               str(p.id),
+            "wallet_address":   sub.wallet_address,
+            "index_id":         p.index_id,
+            "index_name":       idx.name if idx else p.index_id,
+            "deposited_usd":    round(deposited, 2),
+            "current_value_usd":round(current, 2),
+            "pnl_usd":          round(pnl, 2),
+            "pnl_pct":          round(pnl_pct, 2),
+            "shares":           round(my_shares, 6),
+            "pool_share_pct":   round(pool_pct, 2),
+            "is_pro":           sub.is_pro or False,
+            "nav_at_first":     round(float(p.nav_at_first_deposit or 0), 6),
+            "high_water_mark":  round(float(p.high_water_mark_usd or 0), 2),
+            "avg_cost":         round(float(p.avg_cost_basis_per_share or 0), 6),
+            "first_invested_at":p.first_invested_at.isoformat() if p.first_invested_at else None,
+            "last_updated_at":  p.last_updated_at.isoformat() if p.last_updated_at else None,
+            "basket":           basket_items,
+            "transactions":     tx_list,
         })
-    total_dep = sum(r["deposited_usd"] for r in rows)
-    total_cur = sum(r["current_value_usd"] for r in rows)
-    total_pnl = total_cur - total_dep
+
+    total_dep   = sum(r["deposited_usd"] for r in rows)
+    total_cur   = sum(r["current_value_usd"] for r in rows)
+    total_pnl   = total_cur - total_dep
+    total_count = len(rows)
+    per_page    = max(1, min(per_page, 100))
+    start       = (page - 1) * per_page
+    total_pages = max(1, (total_count + per_page - 1) // per_page)
+
     return {
         "data": {
-            "portfolios":          rows,
+            "portfolios":          rows[start: start + per_page],
             "total_deposited_usd": round(total_dep, 2),
             "total_current_usd":   round(total_cur, 2),
             "total_pnl_usd":       round(total_pnl, 2),
             "total_pnl_pct":       round((total_pnl / total_dep * 100) if total_dep > 0 else 0, 2),
-            "count":               len(rows),
+            "count":               total_count,
+            "page":                page,
+            "per_page":            per_page,
+            "total_pages":         total_pages,
         }
     }
 
