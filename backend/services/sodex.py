@@ -430,10 +430,17 @@ async def execute_rebalance_trades(
     dry_run=True apenas loga sem executar.
     testnet=None usa env var; True/False força o gateway correto.
     """
+    import math as _math
     snapshot  = await get_portfolio_snapshot(testnet=testnet)
     total_usd = snapshot["total_usd"]
     current   = {p["asset"]: p for p in snapshot["positions"]}
     tickers   = await get_all_tickers()
+    markets   = await get_markets(testnet=testnet)
+    mkt_info_rb: Dict[str, dict] = {}
+    for _m in markets:
+        _base = _m.get("baseCoin", "")
+        _clean = _base.lstrip("v").lstrip("V").replace(".", "").upper()
+        mkt_info_rb[_clean] = _m
 
     orders = []
 
@@ -456,10 +463,25 @@ async def execute_rebalance_trades(
             logger.warning(f"SoDEX rebalance: sem preço para {sym}")
             continue
 
-        size      = abs(diff_usd) / price
+        _mkt_rb     = mkt_info_rb.get(asset.upper()) or {}
+        _qty_prec   = int(_mkt_rb.get("quantityPrecision") or 8)
+        _px_prec    = int(_mkt_rb.get("pricePrecision") or 2)
+        _step_rb    = float(_mkt_rb.get("stepSize") or 0)
+        _min_not_rb = float(_mkt_rb.get("minNotional") or 0)
+
+        raw_size = abs(diff_usd) / price
+        if _step_rb > 0:
+            size = _math.floor(raw_size / _step_rb) * _step_rb
+            if _min_not_rb > 0 and size * price < _min_not_rb:
+                size += _step_rb
+        else:
+            size = _math.floor(raw_size * 10**_qty_prec) / 10**_qty_prec
+            if _min_not_rb > 0 and size * price < _min_not_rb:
+                size += 10**(-_qty_prec)
+
         side      = "BUY" if diff_usd > 0 else "SELL"
-        qty_str   = f"{size:.8f}"
-        price_str = f"{price:.2f}"
+        qty_str   = f"{size:.{_qty_prec}f}"
+        price_str = f"{price:.{_px_prec}f}"
 
         order_info = {
             "symbol":    sym,
@@ -507,6 +529,15 @@ async def execute_buy_for_deposit(
     MIN_ORDER_USD = 5.0
 
     tickers = await get_all_tickers(testnet=testnet)
+    markets = await get_markets(testnet=testnet)
+
+    # Índice de precisão por símbolo limpo (ex: AAVE, UNI, DEFIssi)
+    mkt_info: Dict[str, dict] = {}
+    for m in markets:
+        base = m.get("baseCoin", "")
+        clean = base.lstrip("v").lstrip("V").replace(".", "").upper()
+        mkt_info[clean] = m
+
     orders        = []
     skipped_usd   = 0.0
     allocated_usd = 0.0
@@ -537,9 +568,35 @@ async def execute_buy_for_deposit(
             orders.append({"symbol": symbol, "status": "skipped_no_price", "usd_value": alloc_usd})
             continue
 
-        qty     = alloc_usd / price
-        qty_str = f"{qty:.8f}"
-        px_str  = f"{price:.6f}"
+        # Aplica precisão do mercado (quantityPrecision e pricePrecision do SoDEX)
+        mkt = mkt_info.get(clean_sym.upper()) or mkt_info.get(symbol.lstrip("v").replace(".", "").upper()) or {}
+        qty_prec  = int(mkt.get("quantityPrecision") or 8)
+        px_prec   = int(mkt.get("pricePrecision") or 6)
+        step_size = float(mkt.get("stepSize") or 0)
+        min_qty   = float(mkt.get("minQuantity") or 0)
+
+        import math
+        raw_qty = alloc_usd / price
+        min_notional = float(mkt.get("minNotional") or 0)
+
+        if step_size > 0:
+            qty = math.floor(raw_qty / step_size) * step_size
+            # Se o notional ficar abaixo do mínimo por causa do floor, sobe um step
+            if min_notional > 0 and qty * price < min_notional:
+                qty += step_size
+        else:
+            qty = math.floor(raw_qty * 10**qty_prec) / 10**qty_prec
+            if min_notional > 0 and qty * price < min_notional:
+                qty += 10**(-qty_prec)
+
+        qty_str = f"{qty:.{qty_prec}f}"
+        px_str  = f"{price:.{px_prec}f}"
+
+        if min_qty > 0 and qty < min_qty:
+            logger.warning(f"execute_buy_for_deposit: {symbol} qty {qty_str} < minQuantity {min_qty} — pulando")
+            skipped_usd += alloc_usd
+            orders.append({"symbol": symbol, "status": "skipped_below_min_qty", "usd_value": alloc_usd})
+            continue
 
         order_info = {
             "symbol":    symbol,
@@ -594,9 +651,17 @@ async def execute_sell_for_withdrawal(
     Coloca ordens LIMIT ao preço de mercado atual para execução imediata.
     dry_run=True loga sem colocar ordens reais.
     """
+    import math as _math
     MIN_SELL_USD = 1.0
 
-    tickers = await get_all_tickers(testnet=testnet)
+    tickers  = await get_all_tickers(testnet=testnet)
+    markets  = await get_markets(testnet=testnet)
+    mkt_info_sell: Dict[str, dict] = {}
+    for _m in markets:
+        _base  = _m.get("baseCoin", "")
+        _clean = _base.lstrip("v").lstrip("V").replace(".", "").upper()
+        mkt_info_sell[_clean] = _m
+
     orders        = []
     recovered_usd = 0.0
     skipped_usd   = 0.0
@@ -626,9 +691,19 @@ async def execute_sell_for_withdrawal(
             orders.append({"symbol": symbol, "status": "skipped_no_price", "usd_value": sell_usd})
             continue
 
-        qty     = sell_usd / price
-        qty_str = f"{qty:.8f}"
-        px_str  = f"{price:.6f}"
+        _mkt_sell   = mkt_info_sell.get(clean_sym.upper()) or {}
+        _qty_prec_s = int(_mkt_sell.get("quantityPrecision") or 8)
+        _px_prec_s  = int(_mkt_sell.get("pricePrecision") or 6)
+        _step_s     = float(_mkt_sell.get("stepSize") or 0)
+
+        raw_qty = sell_usd / price
+        if _step_s > 0:
+            qty = _math.floor(raw_qty / _step_s) * _step_s
+        else:
+            qty = _math.floor(raw_qty * 10**_qty_prec_s) / 10**_qty_prec_s
+
+        qty_str = f"{qty:.{_qty_prec_s}f}"
+        px_str  = f"{price:.{_px_prec_s}f}"
 
         order_info = {
             "symbol":    symbol,
