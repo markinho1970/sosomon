@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import api from "@/lib/api";
 import { useLang } from "@/lib/LanguageContext";
+import { useNetworkMode } from "@/lib/NetworkModeContext";
 
 interface Props {
   indexId: string;
@@ -66,6 +67,7 @@ function fmtUSD(v: number) {
 export default function WithdrawButton({ indexId, indexName, currentValueUsd, navUsd, depositedUsd = 0 }: Props) {
   const { address } = useAccount();
   const { t } = useLang();
+  const { networkMode } = useNetworkMode();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>("input");
   const [amount, setAmount] = useState("");
@@ -90,6 +92,7 @@ export default function WithdrawButton({ indexId, indexName, currentValueUsd, na
         wallet_address: address,
         index_id: indexId,
         amount_usd: amountNum,
+        network_mode: networkMode,
       });
       setPreview(data);
       setStep("preview");
@@ -111,6 +114,7 @@ export default function WithdrawButton({ indexId, indexName, currentValueUsd, na
         index_id: indexId,
         amount_usd: amountNum,
         simulate,
+        network_mode: networkMode,
       });
       setResult(data);
       if (!data.success) {

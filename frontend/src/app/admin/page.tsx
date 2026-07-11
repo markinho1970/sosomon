@@ -8,6 +8,7 @@ import {
   DollarSign, AlertTriangle, ShieldCheck, Play, Zap, Wallet, ArrowRightLeft,
   Fuel, ExternalLink, ChevronDown, Copy, Download,
   Home, Bell, Layers, Cpu, Menu, Activity, Server,
+  TrendingUp, TrendingDown, Scale,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { adminApi, investApi, type SystemAlert } from "@/lib/api";
@@ -36,6 +37,27 @@ interface AdminStats {
   pending_proposals: number;
   network_mode: string;
   indexes: Array<{ id: string; name: string; aum_usd: number; subscriber_count: number; return_30d_pct: number }>;
+}
+
+interface InvestorPortfolioItem {
+  wallet_address: string;
+  index_id: string;
+  index_name: string;
+  deposited_usd: number;
+  current_value_usd: number;
+  pnl_usd: number;
+  pnl_pct: number;
+  shares: number;
+  is_pro: boolean;
+}
+
+interface InvestorsData {
+  portfolios: InvestorPortfolioItem[];
+  total_deposited_usd: number;
+  total_current_usd: number;
+  total_pnl_usd: number;
+  total_pnl_pct: number;
+  count: number;
 }
 
 interface PortfolioPosition {
@@ -159,6 +181,8 @@ export default function AdminPage() {
   const [movements, setMovements] = useState<Movement[]>([]);
   const [fundWallet, setFundWallet] = useState<FundWalletInfo | null>(null);
   const [founderPortfolio, setFounderPortfolio] = useState<Record<string, unknown>[] | null>(null);
+  const [investors, setInvestors] = useState<InvestorsData | null>(null);
+  const [loadingInvestors, setLoadingInvestors] = useState(false);
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
   const [alertsCheckedAt, setAlertsCheckedAt] = useState("");
   const [report, setReport] = useState<Record<string, unknown> | null>(null);
@@ -317,6 +341,11 @@ export default function AdminPage() {
     try {
       setPortfolio(await adminApi.getPortfolio(session.address, session.message, session.signature, net));
     } catch { /**/ } finally { setLoadingPortfolio(false); }
+    setLoadingInvestors(true);
+    try {
+      const inv = await adminApi.getInvestors(session.address, session.message, session.signature, net);
+      setInvestors(inv ?? null);
+    } catch { /**/ } finally { setLoadingInvestors(false); }
     // Carrega portfolio do founder como investidor
     try {
       const fp = await investApi.getPortfolio(session.address, net);
@@ -935,16 +964,124 @@ export default function AdminPage() {
             <>
               <h2 className="font-semibold text-white flex items-center gap-2 text-sm">
                 <Wallet size={14} className="text-brand-blue" /> {t("admin_treasury_title")}
+                <span className={`ml-auto text-xs px-2 py-0.5 rounded-full border font-medium ${isMainnet ? "text-green-400 bg-green-500/10 border-green-500/20" : "text-yellow-400 bg-yellow-500/10 border-yellow-500/20"}`}>
+                  {isMainnet ? "🟢 Base Mainnet" : "🟡 Base Sepolia"}
+                </span>
               </h2>
 
+              {/* Aviso testnet */}
+              {!isMainnet && (
+                <div className="flex items-start gap-3 p-3 rounded-xl bg-yellow-500/8 border border-yellow-500/20">
+                  <span className="text-yellow-400 text-base mt-0.5">⚠️</span>
+                  <div>
+                    <p className="text-yellow-300 text-sm font-semibold">Modo Testnet — dados financeiros não refletem a realidade</p>
+                    <p className="text-yellow-300/60 text-xs mt-0.5">
+                      Os portfólios testnet são simulados no banco de dados. O SoDEX testnet é um ambiente separado sem fundos reais — a reconciliação abaixo não tem significado financeiro.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* ── 1. RECONCILIAÇÃO ─────────────────────────────────────────── */}
+              {(() => {
+                const onchainUsdc   = fundWallet?.usdc_balance ?? 0;
+                const sodexPositions = portfolio?.positions ?? [];
+                const sodexUsdcPos  = sodexPositions.find((p: {asset: string; usd_value: number}) => p.asset === "USDC" || p.asset === "USDT" || p.asset === "vUSDC" || p.asset === "vUSDT");
+                const sodexUsdc     = sodexUsdcPos?.usd_value ?? 0;
+                const sodexTokens   = (portfolio?.total_usd ?? 0) - sodexUsdc;
+                const totalAssets   = onchainUsdc + (portfolio?.total_usd ?? 0);
+                const investorAum   = investors?.total_current_usd ?? 0;
+                // Saldo admin = tudo que não está atribuído a investidores
+                const adminBalance  = Math.max(0, totalAssets - investorAum);
+                const hasData       = fundWallet !== null || portfolio !== null || investors !== null;
+                return (
+                  <div className="card border border-brand-blue/20">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Scale size={15} className="text-brand-blue" />
+                      <h3 className="font-semibold text-white text-sm">Reconciliação do Treasury</h3>
+                    </div>
+                    {!hasData ? (
+                      <p className="text-white/30 text-sm text-center py-3">{t("admin_loading")}</p>
+                    ) : (
+                      <div className="space-y-1">
+                        {/* ── Ativos on-chain ── */}
+                        <p className="text-xs text-white/30 uppercase tracking-widest mb-2">On-chain (Base)</p>
+                        <div className="flex justify-between items-center py-1.5 px-3 rounded-lg bg-white/3">
+                          <div className="flex items-center gap-2">
+                            <Fuel size={12} className="text-amber-400/60" />
+                            <span className="text-white/60 text-sm">ETH (gas)</span>
+                            <span className="text-xs text-white/25 font-mono">{fundWallet?.eth_balance?.toFixed(6) ?? "—"} ETH</span>
+                          </div>
+                          <span className="text-white/40 text-sm font-mono">~$0.00</span>
+                        </div>
+                        <div className="flex justify-between items-center py-1.5 px-3 rounded-lg bg-white/3">
+                          <div className="flex items-center gap-2">
+                            <DollarSign size={12} className="text-white/40" />
+                            <span className="text-white/60 text-sm">USDC on-chain</span>
+                          </div>
+                          <span className="text-white text-sm font-mono">${onchainUsdc.toFixed(2)}</span>
+                        </div>
+
+                        {/* ── Ativos no SoDEX ── */}
+                        <p className="text-xs text-white/30 uppercase tracking-widest mb-2 mt-3">No SoDEX (Spot)</p>
+                        <div className="flex justify-between items-center py-1.5 px-3 rounded-lg bg-amber-500/5 border border-amber-500/10">
+                          <div className="flex items-center gap-2">
+                            <DollarSign size={12} className="text-amber-400/70" />
+                            <span className="text-white/70 text-sm">USDC livre (Spot)</span>
+                            <span className="text-xs text-amber-400/50 font-medium">admin</span>
+                          </div>
+                          <span className="text-amber-300 text-sm font-mono font-semibold">${sodexUsdc.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-1.5 px-3 rounded-lg bg-white/3">
+                          <div className="flex items-center gap-2">
+                            <Wallet size={12} className="text-brand-blue/60" />
+                            <span className="text-white/60 text-sm">Tokens investidos</span>
+                            <span className="text-xs text-white/25">({sodexPositions.filter((p: {asset: string; usd_value: number}) => p.asset !== "USDC" && p.asset !== "USDT" && p.asset !== "vUSDC" && p.asset !== "vUSDT" && p.usd_value > 0).length} ativos)</span>
+                          </div>
+                          <span className="text-white text-sm font-mono">${Math.max(0, sodexTokens).toFixed(2)}</span>
+                        </div>
+
+                        {/* Total */}
+                        <div className="flex justify-between items-center py-2 px-3 rounded-lg bg-white/5 border border-white/10 mt-2">
+                          <span className="text-white font-semibold text-sm">Total de Ativos</span>
+                          <span className="text-white font-bold text-base font-mono">${totalAssets.toFixed(2)}</span>
+                        </div>
+
+                        {/* Divisor */}
+                        <div className="border-t border-white/8 my-3" />
+
+                        {/* Distribuição */}
+                        <p className="text-xs text-white/30 uppercase tracking-widest mb-2">Distribuição</p>
+                        <div className="flex justify-between items-center py-1.5 px-3 rounded-lg bg-white/3">
+                          <div className="flex items-center gap-2">
+                            <Users size={12} className="text-white/40" />
+                            <span className="text-white/60 text-sm">AUM Investidores</span>
+                            <span className="text-xs text-white/25">({investors?.count ?? 0} portfólios)</span>
+                          </div>
+                          <span className="text-white text-sm font-mono">${investorAum.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-1.5 px-3 rounded-lg bg-amber-500/5 border border-amber-500/10">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <DollarSign size={12} className="text-amber-400/70" />
+                              <span className="text-amber-300/90 text-sm font-medium">Saldo Administrativo</span>
+                            </div>
+                            <p className="text-xs text-white/25 mt-0.5 ml-4.5">Depósitos fora do dashboard · taxas recebidas · buffer</p>
+                          </div>
+                          <span className="text-amber-300 font-bold text-base font-mono">${adminBalance.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* ── 2. FUND WALLET ───────────────────────────────────────────── */}
               <div className="card">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <Fuel size={15} className="text-amber-400" />
                     <h3 className="font-semibold text-white text-sm">{t("admin_fund_wallet_label")}</h3>
-                    <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${isMainnet ? "text-green-400 bg-green-500/10 border-green-500/20" : "text-yellow-400 bg-yellow-500/10 border-yellow-500/20"}`}>
-                      {isMainnet ? "🟢 Base Mainnet" : "🟡 Base Sepolia"}
-                    </span>
                   </div>
                   <button onClick={() => { setFundWallet(null); loadAll(networkMode); }} className="text-white/30 hover:text-white transition-colors">
                     <RefreshCw size={13} className={loadingFundWallet ? "animate-spin" : ""} />
@@ -972,10 +1109,39 @@ export default function AdminPage() {
                     <div className="flex items-center justify-between p-3 rounded-xl bg-white/3 border border-white/5">
                       <div className="flex items-center gap-2">
                         <DollarSign size={14} className="text-white/40" />
-                        <span className="text-white/60 text-sm">{t("admin_usdc_collected")}</span>
+                        <span className="text-white/60 text-sm">USDC on-chain</span>
                       </div>
                       <span className="text-white font-bold text-sm">{fundWallet.usdc_balance !== null ? `$${fundWallet.usdc_balance.toFixed(2)}` : "—"}</span>
                     </div>
+
+                    {/* SoDEX Spot breakdown */}
+                    {portfolio && portfolio.configured && portfolio.positions.length > 0 && (
+                      <div className="rounded-xl border border-brand-blue/15 bg-brand-blue/3 p-3 space-y-2">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <Wallet size={12} className="text-brand-blue/70" />
+                          <span className="text-xs font-semibold text-brand-blue/80 uppercase tracking-wider">Saldo no SoDEX</span>
+                          <span className="text-xs text-white/25 ml-auto font-mono">{portfolio.wallet?.slice(0, 8)}…{portfolio.wallet?.slice(-4)}</span>
+                        </div>
+                        {portfolio.positions.filter((p: {asset: string; usd_value: number}) => p.usd_value > 0 || p.asset === "USDC").map((pos: {asset: string; amount: number; usd_value: number}) => {
+                          const isStable = ["USDC","USDT","vUSDC","vUSDT"].includes(pos.asset);
+                          return (
+                            <div key={pos.asset} className={`flex items-center justify-between py-1 px-2 rounded-lg ${isStable ? "bg-amber-500/8 border border-amber-500/15" : "bg-white/3"}`}>
+                              <div className="flex items-center gap-2">
+                                <span className={`font-mono text-xs font-bold w-14 ${isStable ? "text-amber-300" : "text-white"}`}>{pos.asset}</span>
+                                <span className="text-white/35 text-xs font-mono">{pos.amount.toFixed(pos.asset === "USDC" ? 2 : 6)}</span>
+                                {isStable && <span className="text-xs text-amber-400/60 font-medium">admin</span>}
+                              </div>
+                              <span className={`text-xs font-mono font-semibold ${isStable ? "text-amber-300" : "text-white/80"}`}>${pos.usd_value.toFixed(2)}</span>
+                            </div>
+                          );
+                        })}
+                        <div className="flex justify-between items-center pt-1 border-t border-white/8">
+                          <span className="text-xs text-white/40">Total SoDEX</span>
+                          <span className="text-white text-xs font-bold font-mono">${portfolio.total_usd.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    )}
+
                     <div className={`rounded-xl border p-3 ${isMainnet ? "border-green-500/20 bg-green-500/5" : "border-yellow-500/20 bg-yellow-500/5"}`}>
                       <div className="flex items-center gap-1.5 mb-3">
                         <Download size={12} className={isMainnet ? "text-green-400" : "text-yellow-400"} />
@@ -1006,39 +1172,77 @@ export default function AdminPage() {
                 )}
               </div>
 
-              {/* Founder Portfolio — investimento pessoal do admin */}
-              {founderPortfolio && founderPortfolio.length > 0 && (
-                <div className="card border border-purple-500/20">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Users size={15} className="text-purple-400" />
-                    <h3 className="font-semibold text-white text-sm">Founder Portfolio</h3>
-                    <span className="text-xs px-1.5 py-0.5 rounded border font-medium text-purple-300 bg-purple-500/10 border-purple-500/20">Investor</span>
+              {/* ── 3. PORTFÓLIOS DOS INVESTIDORES ───────────────────────────── */}
+              <div className="card">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Users size={15} className="text-brand-blue" />
+                    <h3 className="font-semibold text-white text-sm">Portfólios dos Investidores</h3>
+                    {investors && (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-white/5 text-white/40">{investors.count}</span>
+                    )}
                   </div>
-                  <div className="space-y-2">
-                    {founderPortfolio.map((p) => {
-                      const deposited = Number(p.deposited_usd ?? 0);
-                      const current   = Number(p.current_value_usd ?? 0);
-                      const pnl       = current - deposited;
-                      const pnlPct    = deposited > 0 ? (pnl / deposited) * 100 : 0;
-                      return (
-                        <div key={String(p.index_id)} className="flex items-center justify-between p-2.5 rounded-lg bg-white/3 border border-white/5">
-                          <div>
-                            <p className="text-white text-sm font-medium">{String(p.index_name ?? p.index_id)}</p>
-                            <p className="text-white/40 text-xs">{Number(p.index_tokens_held ?? 0).toFixed(4)} shares · deposited ${deposited.toFixed(2)}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-white font-bold text-sm">${current.toFixed(2)}</p>
-                            <p className={`text-xs font-medium ${parseFloat(pnlPct.toFixed(2)) > 0 ? "text-green-400" : parseFloat(pnlPct.toFixed(2)) < 0 ? "text-red-400" : "text-white/40"}`}>
-                              {(() => { const r = parseFloat(pnlPct.toFixed(2)); return r === 0 ? "0.00" : (r > 0 ? "+" : "") + pnlPct.toFixed(2); })()}%
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <button onClick={() => { setLoadingInvestors(true); adminApi.getInvestors(session!.address, session!.message, session!.signature, networkMode).then(d => { setInvestors(d); setLoadingInvestors(false); }).catch(() => setLoadingInvestors(false)); }} className="text-white/30 hover:text-white transition-colors">
+                    <RefreshCw size={13} className={loadingInvestors ? "animate-spin" : ""} />
+                  </button>
                 </div>
-              )}
 
+                {loadingInvestors && <p className="text-white/30 text-sm text-center py-4">{t("admin_loading")}</p>}
+
+                {!loadingInvestors && investors && investors.count === 0 && (
+                  <p className="text-white/30 text-sm text-center py-4">Nenhum portfólio encontrado nesta rede</p>
+                )}
+
+                {!loadingInvestors && investors && investors.count > 0 && (
+                  <>
+                    {/* Cabeçalho da tabela */}
+                    <div className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-2 px-2 mb-1">
+                      <span className="text-xs text-white/25 uppercase tracking-wider">Carteira</span>
+                      <span className="text-xs text-white/25 uppercase tracking-wider">Índice</span>
+                      <span className="text-xs text-white/25 uppercase tracking-wider text-right">Investido</span>
+                      <span className="text-xs text-white/25 uppercase tracking-wider text-right">Atual</span>
+                      <span className="text-xs text-white/25 uppercase tracking-wider text-right">P&L</span>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      {investors.portfolios.map((p, i) => {
+                        const pnlPos = p.pnl_pct > 0;
+                        const pnlNeg = p.pnl_pct < 0;
+                        const shortWallet = `${p.wallet_address.slice(0, 8)}…${p.wallet_address.slice(-4)}`;
+                        const isFounder = p.wallet_address.toLowerCase() === session?.address.toLowerCase();
+                        return (
+                          <div key={i} className={`grid grid-cols-[1fr_1fr_auto_auto_auto] gap-2 items-center p-2.5 rounded-lg bg-white/3 border ${isFounder ? "border-purple-500/20" : "border-white/5"}`}>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="text-white/50 font-mono text-xs truncate">{shortWallet}</span>
+                              {isFounder && <span className="shrink-0 text-xs px-1 py-px rounded bg-purple-500/20 text-purple-300 border border-purple-500/20">founder</span>}
+                              {p.is_pro && !isFounder && <span className="shrink-0 text-xs px-1 py-px rounded bg-brand-blue/20 text-brand-blue border border-brand-blue/20">pro</span>}
+                            </div>
+                            <span className="text-white/70 text-xs truncate">{p.index_name}</span>
+                            <span className="text-white/50 text-xs text-right font-mono">${p.deposited_usd.toFixed(2)}</span>
+                            <span className="text-white text-sm text-right font-mono font-semibold">${p.current_value_usd.toFixed(2)}</span>
+                            <div className={`flex items-center gap-0.5 justify-end text-xs font-medium ${pnlPos ? "text-green-400" : pnlNeg ? "text-red-400" : "text-white/40"}`}>
+                              {pnlPos ? <TrendingUp size={11} /> : pnlNeg ? <TrendingDown size={11} /> : null}
+                              {pnlPos ? "+" : ""}{p.pnl_pct.toFixed(1)}%
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Totais */}
+                    <div className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-2 items-center px-2.5 py-2 mt-2 border-t border-white/10">
+                      <span className="text-white/60 text-xs font-semibold col-span-2">Total</span>
+                      <span className="text-white/60 text-xs text-right font-mono">${investors.total_deposited_usd.toFixed(2)}</span>
+                      <span className="text-white font-bold text-sm text-right font-mono">${investors.total_current_usd.toFixed(2)}</span>
+                      <span className={`text-xs font-bold text-right ${investors.total_pnl_pct > 0 ? "text-green-400" : investors.total_pnl_pct < 0 ? "text-red-400" : "text-white/40"}`}>
+                        {investors.total_pnl_pct > 0 ? "+" : ""}{investors.total_pnl_pct.toFixed(1)}%
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* ── 4. POSIÇÕES SODEX ────────────────────────────────────────── */}
               <div className="card">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
@@ -1046,7 +1250,7 @@ export default function AdminPage() {
                     <h3 className="font-semibold text-white text-sm">{t("admin_sodex_portfolio_title")}</h3>
                     {!isMainnet && <span className="text-xs text-white/30 italic">{t("admin_mainnet_only_note")}</span>}
                   </div>
-                  <button onClick={() => { setLoadingPortfolio(true); adminApi.getPortfolio(session.address, session.message, session.signature).then(d => { setPortfolio(d); setLoadingPortfolio(false); }).catch(() => setLoadingPortfolio(false)); }} className="text-white/30 hover:text-white transition-colors">
+                  <button onClick={() => { setLoadingPortfolio(true); adminApi.getPortfolio(session!.address, session!.message, session!.signature, networkMode).then(d => { setPortfolio(d); setLoadingPortfolio(false); }).catch(() => setLoadingPortfolio(false)); }} className="text-white/30 hover:text-white transition-colors">
                     <RefreshCw size={13} className={loadingPortfolio ? "animate-spin" : ""} />
                   </button>
                 </div>
@@ -1060,6 +1264,7 @@ export default function AdminPage() {
                     <p className="text-white/40 text-sm">Portfolio SoDEX disponível apenas na mainnet</p>
                   </div>
                 )}
+                {loadingPortfolio && <p className="text-white/30 text-sm text-center py-4">{t("admin_loading")}</p>}
                 {portfolio && portfolio.configured && (
                   <>
                     <div className="flex items-center justify-between mb-3">

@@ -31,6 +31,16 @@ TOKEN_BLACKLIST_SYMBOLS: set = {
     "SKYAI",
 }
 
+# Tokens âncora permanentes — NUNCA podem ser excluídos pelo Scout.
+# São os pilares temáticos de cada índice + token do ecossistema SoSoValue.
+# Mudanças nessa lista requerem decisão explícita do founder.
+PERMANENT_ANCHORS: set = {
+    "MAG7ssi",   # AI & Tech — pilar SSI
+    "DEFIssi",   # DeFi Infrastructure — pilar SSI
+    "USSIssi",   # Real Assets — pilar SSI
+    "WSOSO",     # Ecossistema SoSoValue — permanente em todas as cestas
+}
+
 
 async def run_all_indexes():
     """Main entry point — roda o Scout para todos os índices ativos.
@@ -88,7 +98,8 @@ async def run_scout_for_index(index_id: str, theme: str, db, macro: dict = None)
     # 4. Mercados SoDEX (enriquecimento on-chain)
     sodex_tickers = await get_all_tickers()
     sodex_markets = await get_markets()
-    sodex_symbols = {m.get("baseCurrency", m.get("base", "")).upper() for m in sodex_markets}
+    # baseCoin é o campo correto da SoDEX API (não baseCurrency/base)
+    sodex_symbols = {m.get("baseCoin", "").upper() for m in sodex_markets if m.get("baseCoin")}
     logger.info(f"Scout [{theme}]: {len(sodex_symbols)} mercados SoDEX disponíveis")
 
     # 5. Aplica blacklist
@@ -135,6 +146,14 @@ async def run_scout_for_index(index_id: str, theme: str, db, macro: dict = None)
         token.setdefault("market_cap_usd", 0.0)
         token.setdefault("on_sodex", False)
 
+    # Mapa de status HALT por baseCoin para filtrar na inclusão
+    halt_set = {
+        m.get("baseCoin", "").lstrip("v").lstrip("V").upper()
+        for m in sodex_markets
+        if m.get("status", "").upper() == "HALT"
+    }
+    logger.debug(f"Scout [{theme}]: tokens HALT no SoDEX = {sorted(halt_set)}")
+
     # 8. Enriquece com dados on-chain do SoDEX
     for token in candidates:
         sym = token["symbol"]
@@ -150,8 +169,9 @@ async def run_scout_for_index(index_id: str, theme: str, db, macro: dict = None)
             token["current_price_usd"] = float(t.get("lastPrice", t.get("price", 0)) or 0)
             token["volume_24h_usd"] = float(t.get("volume24h", t.get("volume", 0)) or 0)
             token["on_sodex"] = True
+            token["is_halt"] = sym.upper() in halt_set
             # Momentum 30d via candles SoDEX
-            candles = await get_candles(market_key, resolution="1D", limit=30)
+            candles = await get_candles(market_key, interval="1D", limit=30)
             if len(candles) >= 2:
                 first = float(candles[0].get("close", candles[0].get("c", 0)) or 0)
                 last = float(candles[-1].get("close", candles[-1].get("c", 0)) or 0)
@@ -337,29 +357,44 @@ def _compute_changes(
     top_n_symbols = {t["symbol"] for t in top_n}
     current_symbol_set = set(current_symbols.keys()) - {"USDC", "USDT"}
 
-    # Inclusões: candidatos no top N que ainda não estão na cesta E confirmados no SoDEX TRADING
+    # Inclusões: candidatos no top N que ainda não estão na cesta E confirmados no SoDEX TRADING (não HALT)
     not_on_sodex_new = [t["symbol"] for t in top_n if t["symbol"] not in current_symbol_set and not t.get("on_sodex")]
     if not_on_sodex_new:
         _log.warning(f"Scout [{theme}]: bloqueando {not_on_sodex_new} — não listados no SoDEX TRADING")
+    halt_blocked = [t["symbol"] for t in top_n if t["symbol"] not in current_symbol_set and t.get("on_sodex") and t.get("is_halt")]
+    if halt_blocked:
+        _log.warning(f"Scout [{theme}]: bloqueando {halt_blocked} — status HALT no SoDEX")
     inclusions = [
         {"symbol": t["symbol"], "name": t["name"], "rationale": t.get("ai_rationale", "")}
         for t in top_n
-        if t["symbol"] not in current_symbol_set and t.get("on_sodex", False)
+        if t["symbol"] not in current_symbol_set and t.get("on_sodex", False) and not t.get("is_halt", False)
     ]
 
     # Exclusões: tokens atuais que saíram do top N
-    # Tokens âncora são IMUNES — nunca removidos independente do ranking SSI
+    # Tokens âncora (permanentes + campo is_anchor) são IMUNES ao Scout.
+    all_anchors = anchor_symbols | PERMANENT_ANCHORS
     tokens_to_remove = [
         sym for sym in current_symbol_set
-        if sym not in top_n_symbols and sym not in anchor_symbols
+        if sym not in top_n_symbols and sym not in all_anchors
     ]
-    protected = [sym for sym in current_symbol_set if sym not in top_n_symbols and sym in anchor_symbols]
+    protected = [sym for sym in current_symbol_set if sym not in top_n_symbols and sym in all_anchors]
     if protected:
         _log.info(f"Scout [{theme}]: âncoras protegidas contra remoção: {sorted(protected)}")
 
     exclusions = []
     for sym in tokens_to_remove:
         exclusions.append({"symbol": sym, "reason": f"Replaced by better-ranked token — outside top {target_n} for {theme}"})
+
+    # REGRA CRÍTICA: não recomendar exclusão sem substituto validado no SoDEX.
+    # Se inclusions=[], não há tokens confirmados para preencher as vagas —
+    # manter a cesta como está é mais seguro que esvaziar sem substitutos.
+    if not inclusions and exclusions:
+        _log.warning(
+            f"Scout [{theme}]: {len(exclusions)} exclusões suprimidas — "
+            "nenhum substituto validado no SoDEX TRADING (inclusions vazia). "
+            "Manter cesta atual é preferível a esvaziar sem reposição."
+        )
+        exclusions = []
 
     # Pesos SSI normalizados com cap de MAX_WEIGHT_PCT sobre os top N
     target_buffer = get_stablecoin_buffer_from_sentiment(sentiment_score)

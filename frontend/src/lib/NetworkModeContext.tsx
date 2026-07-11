@@ -9,6 +9,7 @@ const STORAGE_KEY = "sosomon_network_mode";
 interface NetworkModeContextType {
   isTestnet: boolean;
   networkMode: "mainnet" | "testnet";
+  networkModeLoaded: boolean;
   toggleMode: () => void;
   resetToMainnet: () => void;
 }
@@ -16,12 +17,14 @@ interface NetworkModeContextType {
 const NetworkModeContext = createContext<NetworkModeContextType>({
   isTestnet: false,
   networkMode: "mainnet",
+  networkModeLoaded: false,
   toggleMode: () => {},
   resetToMainnet: () => {},
 });
 
 export function NetworkModeProvider({ children }: { children: React.ReactNode }) {
   const [isTestnet, setIsTestnet] = useState(false);
+  const [networkModeLoaded, setNetworkModeLoaded] = useState(false);
   const chainId = useChainId();
   const { isConnected } = useAccount();
   const { switchChain } = useSwitchChain();
@@ -36,6 +39,7 @@ export function NetworkModeProvider({ children }: { children: React.ReactNode })
       setIsTestnet(true);
       isTestnetRef.current = true;
     }
+    setNetworkModeLoaded(true);
   }, []);
 
   // Mantém ref sincronizada com o estado
@@ -78,7 +82,7 @@ export function NetworkModeProvider({ children }: { children: React.ReactNode })
   }, []);
 
   return (
-    <NetworkModeContext.Provider value={{ isTestnet, networkMode: isTestnet ? "testnet" : "mainnet", toggleMode, resetToMainnet }}>
+    <NetworkModeContext.Provider value={{ isTestnet, networkMode: isTestnet ? "testnet" : "mainnet", networkModeLoaded, toggleMode, resetToMainnet }}>
       {children}
     </NetworkModeContext.Provider>
   );

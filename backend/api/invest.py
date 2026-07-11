@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from datetime import datetime, timezone, timedelta
+from loguru import logger
 import os, uuid
 
 from eth_account.messages import encode_defunct
@@ -281,6 +282,7 @@ class WithdrawExecuteRequest(BaseModel):
     index_id: str
     amount_usd: float
     simulate: bool = False   # True = sandbox, não transmite para blockchain
+    network_mode: str = "mainnet"
 
 
 @router.post("/withdraw-execute")
@@ -303,6 +305,7 @@ async def withdraw_execute(req: WithdrawExecuteRequest, db: Session = Depends(ge
     portfolio = db.query(SubscriberPortfolio).filter(
         SubscriberPortfolio.subscriber_id == subscriber.id,
         SubscriberPortfolio.index_id == req.index_id,
+        SubscriberPortfolio.network_mode == req.network_mode,
     ).first()
     if not portfolio:
         raise HTTPException(status_code=404, detail="Sem posição neste index")
@@ -322,6 +325,26 @@ async def withdraw_execute(req: WithdrawExecuteRequest, db: Session = Depends(ge
     net_usd = preview["net_usd"]
     if net_usd <= 0 and not req.simulate:
         raise HTTPException(status_code=400, detail="Valor líquido após taxas é zero ou negativo.")
+
+    # Vender tokens no SoDEX proporcionalmente ao saque
+    basket = db.query(IndexConstituent).filter(
+        IndexConstituent.index_id == req.index_id,
+        IndexConstituent.in_basket == True,
+        IndexConstituent.network_mode == req.network_mode,
+    ).all()
+
+    from services.sodex import execute_sell_for_withdrawal
+    sell_result = await execute_sell_for_withdrawal(
+        amount_usd   = req.amount_usd,
+        constituents = basket,
+        dry_run      = req.simulate,
+    )
+    logger.info(f"withdraw_execute: sell result — recovered=${sell_result['recovered_usd']:.2f}, skipped=${sell_result['skipped_usd']:.2f}")
+
+    # Aguardar liquidação das ordens no SoDEX (LIMIT orders levam ~5s para preencher)
+    if not req.simulate:
+        import asyncio
+        await asyncio.sleep(8)
 
     # Executar (ou simular) o envio on-chain
     tx_result = await execute_withdrawal(
@@ -565,8 +588,8 @@ async def redeem_shares(req: RedeemSharesRequest, db: Session = Depends(get_db))
 
 @router.post("/withdraw")
 def withdraw(req: WithdrawRequest, db: Session = Depends(get_db)):
-    if req.amount_usd < 5:
-        raise HTTPException(status_code=400, detail="Minimum withdrawal is $5")
+    # Endpoint legado desativado — usar /withdraw-preview + /withdraw-execute
+    raise HTTPException(status_code=410, detail="Use /withdraw-preview e /withdraw-execute")
 
     req_wallet = req.wallet_address.lower()
     subscriber = db.query(Subscriber).filter(
@@ -824,8 +847,8 @@ def get_portfolio_transactions(wallet_address: str, network_mode: str = "mainnet
 
     # Get withdrawals
     withdrawals = db.query(AgentActivityLog).filter(
-        AgentActivityLog.agent == "deposit_monitor",
-        AgentActivityLog.action == "withdrawal",
+        AgentActivityLog.agent == "withdraw",
+        AgentActivityLog.action == "withdrawal_executed",
     ).order_by(AgentActivityLog.timestamp.desc()).limit(50).all()
     for a in withdrawals:
         data = a.data or {}

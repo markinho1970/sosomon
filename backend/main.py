@@ -2,6 +2,11 @@
 SoSoMon Backend — FastAPI Application
 """
 
+# load_dotenv MUST be first — module-level os.getenv() calls in services/sodex.py etc.
+# capture values at import time, so .env must be loaded before any other import.
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager

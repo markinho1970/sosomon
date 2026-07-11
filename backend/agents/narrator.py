@@ -21,8 +21,6 @@ from services.sosovalue import get_macro_context
 from services import sosovalue
 import uuid
 
-gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-
 # Output directory for generated content (founder reviews before publishing)
 CONTENT_OUTPUT_DIR = os.getenv("CONTENT_OUTPUT_DIR", "./generated_content")
 

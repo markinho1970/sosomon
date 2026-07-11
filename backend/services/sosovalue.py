@@ -159,6 +159,7 @@ THEME_INDEX_MAP = {
     "ai-crypto": "ssiAI",
     "rwa":        "ssiRWA",
     "depin":      "ssiDePIN",
+    "defi":       "ssiDEFI",
 }
 
 async def get_all_ssi_indexes() -> List[str]:

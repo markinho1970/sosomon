@@ -15,7 +15,7 @@ from eth_account import Account
 logger = logging.getLogger(__name__)
 
 from database import get_db
-from models import RebalanceProposal, AlphaIndex, AgentActivityLog, Subscriber, SubscriberPortfolio
+from models import RebalanceProposal, AlphaIndex, AgentActivityLog, Subscriber, SubscriberPortfolio, DepositTransaction
 from services.sodex import get_portfolio_snapshot, get_trade_history
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -299,18 +299,6 @@ async def admin_trades(network_mode: str = "mainnet", limit: int = 50, db: Sessi
         testnet = (network_mode == "testnet")
 
         if testnet:
-            # Mapa index_id → (wallet, deposited_usd) para rastreamento por investidor
-            portfolios = db.query(SubscriberPortfolio).filter(
-                SubscriberPortfolio.network_mode == "testnet"
-            ).all()
-            portfolio_map: dict = {}
-            for p in portfolios:
-                sub = db.query(Subscriber).filter(Subscriber.id == p.subscriber_id).first()
-                portfolio_map[p.index_id] = {
-                    "investor_wallet": sub.wallet_address if sub else "",
-                    "deposited_usd":   float(p.deposited_usd or 0),
-                }
-
             logs = db.query(AgentActivityLog).filter(
                 AgentActivityLog.agent == "deposit_monitor",
                 AgentActivityLog.action == "tokens_purchased",
@@ -320,7 +308,20 @@ async def admin_trades(network_mode: str = "mainnet", limit: int = 50, db: Sessi
             for log in logs:
                 data = log.data or {}
                 orders = data.get("orders", [])
-                investor_info = portfolio_map.get(log.index_id, {})
+                # investor_wallet gravado no log desde a correção; fallback via deposit_transaction mais próximo em timestamp
+                wallet = data.get("investor_wallet", "")
+                if not wallet and log.timestamp:
+                    dtxs = db.query(DepositTransaction).filter(
+                        DepositTransaction.index_id == log.index_id,
+                        DepositTransaction.network_mode == "testnet",
+                    ).all()
+                    if dtxs:
+                        log_ts = log.timestamp.replace(tzinfo=None)
+                        best = min(dtxs, key=lambda x: abs(
+                            ((x.created_at if isinstance(x.created_at, datetime) else datetime.fromisoformat(str(x.created_at).split("+")[0].split("Z")[0])).replace(tzinfo=None) - log_ts).total_seconds()
+                        ))
+                        sub = db.query(Subscriber).filter(Subscriber.id == best.subscriber_id).first()
+                        wallet = sub.wallet_address if sub else ""
                 for o in orders:
                     raw_status = o.get("status", "")
                     if raw_status in ("dry_run", "placed"):
@@ -339,8 +340,7 @@ async def admin_trades(network_mode: str = "mainnet", limit: int = 50, db: Sessi
                         "index_id":         log.index_id,
                         "timestamp":        log.timestamp.isoformat() if log.timestamp else "",
                         "is_simulated":     True,
-                        "investor_wallet":  investor_info.get("investor_wallet", ""),
-                        "deposited_usd":    investor_info.get("deposited_usd", 0),
+                        "investor_wallet":  wallet,
                         "allocated_usd":    round(float(data.get("allocated_usd", 0)), 2),
                     })
             return {"data": trades, "count": len(trades)}
@@ -357,6 +357,51 @@ async def run_nav_update(background_tasks: BackgroundTasks, _: None = Depends(re
     from services.nav_updater import update_all_navs
     background_tasks.add_task(update_all_navs)
     return {"success": True, "message": "NAV update iniciado em background — preços e portfolios serão atualizados em ~1min"}
+
+
+@router.get("/investors")
+def admin_investors(network_mode: str = "mainnet", db: Session = Depends(get_db), _: None = Depends(require_admin)):
+    """Lista todos os portfólios de investidores: wallet, índice, depositado, atual, P&L."""
+    portfolios = (
+        db.query(SubscriberPortfolio)
+        .filter(SubscriberPortfolio.network_mode == network_mode)
+        .order_by(SubscriberPortfolio.current_value_usd.desc())
+        .all()
+    )
+    rows = []
+    for p in portfolios:
+        sub = db.query(Subscriber).filter(Subscriber.id == p.subscriber_id).first()
+        if not sub:
+            continue
+        idx = db.query(AlphaIndex).filter(AlphaIndex.id == p.index_id).first()
+        deposited = p.deposited_usd or 0.0
+        current   = p.current_value_usd or 0.0
+        pnl       = current - deposited
+        pnl_pct   = (pnl / deposited * 100) if deposited > 0 else 0.0
+        rows.append({
+            "wallet_address":    sub.wallet_address,
+            "index_id":          p.index_id,
+            "index_name":        idx.name if idx else p.index_id,
+            "deposited_usd":     round(deposited, 2),
+            "current_value_usd": round(current, 2),
+            "pnl_usd":           round(pnl, 2),
+            "pnl_pct":           round(pnl_pct, 2),
+            "shares":            round(p.index_tokens_held or 0, 6),
+            "is_pro":            sub.is_pro or False,
+        })
+    total_dep = sum(r["deposited_usd"] for r in rows)
+    total_cur = sum(r["current_value_usd"] for r in rows)
+    total_pnl = total_cur - total_dep
+    return {
+        "data": {
+            "portfolios":          rows,
+            "total_deposited_usd": round(total_dep, 2),
+            "total_current_usd":   round(total_cur, 2),
+            "total_pnl_usd":       round(total_pnl, 2),
+            "total_pnl_pct":       round((total_pnl / total_dep * 100) if total_dep > 0 else 0, 2),
+            "count":               len(rows),
+        }
+    }
 
 
 @router.get("/fund-wallet")

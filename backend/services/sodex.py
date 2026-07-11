@@ -368,14 +368,19 @@ async def get_portfolio_snapshot(testnet: bool | None = None) -> Dict[str, Any]:
     positions = []
     total_usd = 0.0
 
+    STABLE = {"USDC", "USDT", "USD", "vUSDC", "vUSDT"}
     for coin, bal in balances.items():
         available = float(bal.get("total", 0)) - float(bal.get("locked", 0))
-        if coin in ("USDC", "USDT", "USD"):
+        if coin in STABLE:
             usd_value = available
         else:
-            sym    = f"{coin}-USDC"
-            ticker = tickers.get(sym, {})
-            price  = float(ticker.get("lastPrice") or ticker.get("lastPx") or ticker.get("c") or 0)
+            # coin pode ser "vETH" → tenta "vETH-USDC", "vETH-vUSDC", "ETH-USDC"
+            base = coin.lstrip("v")
+            for sym in (f"{coin}-USDC", f"{coin}-vUSDC", f"{base}-USDC"):
+                ticker = tickers.get(sym, {})
+                price  = float(ticker.get("lastPrice") or ticker.get("lastPx") or ticker.get("c") or 0)
+                if price:
+                    break
             usd_value = available * price
 
         positions.append({
@@ -567,6 +572,96 @@ async def execute_buy_for_deposit(
     return {
         "orders":        orders,
         "allocated_usd": round(allocated_usd, 4),
+        "skipped_usd":   round(skipped_usd, 4),
+        "dry_run":       dry_run,
+        "testnet":       USE_TESTNET if testnet is None else testnet,
+    }
+
+
+async def execute_sell_for_withdrawal(
+    amount_usd: float,
+    constituents: list,          # lista de IndexConstituent (in_basket=True)
+    dry_run: bool = True,
+    testnet: bool | None = None,
+) -> Dict[str, Any]:
+    """
+    Vende tokens no SoDEX proporcionalmente ao valor sacado.
+
+    Usa os pesos da cesta para calcular quanto vender de cada token:
+      sell_usd[token] = amount_usd * (weight / 100)
+      sell_qty[token] = sell_usd[token] / current_price
+
+    Coloca ordens LIMIT ao preço de mercado atual para execução imediata.
+    dry_run=True loga sem colocar ordens reais.
+    """
+    MIN_SELL_USD = 1.0
+
+    tickers = await get_all_tickers(testnet=testnet)
+    orders        = []
+    recovered_usd = 0.0
+    skipped_usd   = 0.0
+
+    for c in constituents:
+        symbol     = c.symbol
+        weight_pct = c.weight or 0.0
+        sell_usd   = amount_usd * (weight_pct / 100.0)
+
+        if sell_usd < MIN_SELL_USD:
+            logger.info(f"execute_sell_for_withdrawal: {symbol} pulado — ${sell_usd:.2f} < mínimo ${MIN_SELL_USD}")
+            skipped_usd += sell_usd
+            orders.append({"symbol": symbol, "status": "skipped_below_minimum", "usd_value": sell_usd})
+            continue
+
+        clean_sym = symbol.lstrip("v").replace(".", "")
+        sym_key   = f"{clean_sym}-USDC"
+        ticker    = (tickers.get(sym_key)
+                     or tickers.get(f"{symbol}-USDC")
+                     or tickers.get(f"v{symbol}_vUSDC")
+                     or {})
+        price = float(ticker.get("lastPrice") or ticker.get("lastPx") or ticker.get("c") or 0)
+
+        if price <= 0:
+            logger.warning(f"execute_sell_for_withdrawal: {symbol} sem preço no SoDEX — pulando")
+            skipped_usd += sell_usd
+            orders.append({"symbol": symbol, "status": "skipped_no_price", "usd_value": sell_usd})
+            continue
+
+        qty     = sell_usd / price
+        qty_str = f"{qty:.8f}"
+        px_str  = f"{price:.6f}"
+
+        order_info = {
+            "symbol":    symbol,
+            "side":      "SELL",
+            "quantity":  qty_str,
+            "price":     px_str,
+            "usd_value": round(sell_usd, 4),
+            "status":    None,
+        }
+
+        if dry_run:
+            logger.info(f"[DRY RUN] SELL {qty_str} {sym_key} @ ${px_str} (${sell_usd:.2f})")
+            order_info["status"] = "dry_run"
+        else:
+            sym_id = await get_symbol_id(sym_key, testnet=testnet)
+            if not sym_id:
+                sym_id = await get_symbol_id(f"{symbol}-USDC", testnet=testnet)
+
+            if sym_id:
+                result = await place_order(sym_key, sym_id, "SELL", "LIMIT", qty_str, px_str, testnet=testnet)
+                order_info["status"] = "placed" if result else "failed"
+                order_info["raw"]    = result
+            else:
+                logger.warning(f"execute_sell_for_withdrawal: symbolID não encontrado para {sym_key}")
+                order_info["status"] = "no_symbol"
+                skipped_usd += sell_usd
+
+        recovered_usd += sell_usd
+        orders.append(order_info)
+
+    return {
+        "orders":        orders,
+        "recovered_usd": round(recovered_usd, 4),
         "skipped_usd":   round(skipped_usd, 4),
         "dry_run":       dry_run,
         "testnet":       USE_TESTNET if testnet is None else testnet,

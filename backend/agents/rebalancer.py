@@ -58,47 +58,55 @@ async def _process_index(idx: AlphaIndex, sentiment_score: float, target_buffer:
         logger.info(f"Rebalancer: skipping {idx.id} — AUM=$0 (sem investidores ativos)")
         return
 
+    # CRÍTICO: apenas tokens DA CESTA ATIVA em mainnet.
+    # Candidatos (in_basket=False) e tokens testnet NÃO entram na análise.
     constituents = db.query(IndexConstituent).filter(
-        IndexConstituent.index_id == idx.id
+        IndexConstituent.index_id == idx.id,
+        IndexConstituent.in_basket == True,
+        IndexConstituent.network_mode == "mainnet",
     ).all()
 
     if not constituents:
-        logger.warning(f"Rebalancer: no constituents for {idx.id}")
+        logger.warning(f"Rebalancer: no basket constituents for {idx.id} mainnet")
         return
 
-    # Refresh prices via SoDEX + SoSoValue klines (sem CoinGecko)
+    # Refresh prices via SoDEX tickers
     try:
-        from services import sosovalue as _sv
-        await _sv._ensure_currency_cache()
         _tickers = await get_all_tickers()
         for c in constituents:
             if c.is_stablecoin:
                 continue
             sym = c.symbol
-            _t = _tickers.get(f"{sym}-USD") or _tickers.get(f"{sym}-USDC")
-            if _t:
-                _p = float(_t.get("lastPrice", _t.get("c", 0)) or 0)
-                if _p > 0:
-                    c.current_price_usd = _p
-                    c.volume_24h_usd = float(_t.get("volume24h", _t.get("v", 0)) or 0)
-            _cid = _sv._CURRENCY_CACHE.get(sym.upper())
-            if _cid:
-                _klines = await _sv.get_currency_klines(_cid, limit=8)
-                if _klines:
-                    _closes = [float(k.get("close", k.get("c", 0)) or 0) for k in _klines]
-                    _closes = [v for v in _closes if v > 0]
-                    if len(_closes) >= 2:
-                        c.price_change_7d = round((_closes[-1] - _closes[0]) / _closes[0] * 100, 2)
-                    if c.current_price_usd <= 0 and _closes:
-                        c.current_price_usd = _closes[-1]
+            for key in (f"{sym}-USD", f"{sym}-USDC", f"v{sym}-USDC", f"v{sym}-vUSDC"):
+                _t = _tickers.get(key)
+                if _t:
+                    _p = float(_t.get("lastPrice", _t.get("c", 0)) or 0)
+                    if _p > 0:
+                        c.current_price_usd = _p
+                        c.volume_24h_usd = float(_t.get("volume24h", _t.get("v", 0)) or 0)
+                    break
         db.flush()
     except Exception as _e:
         logger.warning(f"Rebalancer: erro ao refreshar preços: {_e}")
 
+    # Busca status HALT/TRADING do SoDEX mainnet para informar o LLM
+    halt_tokens: set = set()
+    try:
+        from services.sodex import get_markets
+        markets = await get_markets(testnet=False)
+        for m in markets:
+            status = m.get("status", m.get("tradingStatus", "")).upper()
+            if status == "HALT":
+                base = m.get("baseCoin", m.get("displayName", "")).replace("v", "").replace("V", "").split("/")[0]
+                halt_tokens.add(base.upper())
+        logger.debug(f"Rebalancer: HALT tokens mainnet = {halt_tokens}")
+    except Exception as _e:
+        logger.warning(f"Rebalancer: não foi possível verificar status HALT: {_e}")
+
     # Check risk overrides
     emergencies = _check_emergency_ejections(constituents)
 
-    # Check drift
+    # Check drift (usando pesos-alvo reais, não peso igual)
     drift_violations = _check_drift(constituents, target_buffer)
 
     # Get latest scout report
@@ -110,6 +118,15 @@ async def _process_index(idx: AlphaIndex, sentiment_score: float, target_buffer:
         "inclusions": latest_scout.inclusions if latest_scout else [],
         "exclusions": latest_scout.exclusions if latest_scout else [],
         "weight_changes": latest_scout.weight_changes if latest_scout else [],
+    }
+
+    # Whitelist de tokens permitidos para adição: somente o que o Scout validou via on_sodex=True
+    # O Scout já verificou contra get_all_tickers() — é a fonte confiável, não get_markets()
+    # (get_markets() usa campo "baseCoin" que tem prefixo "V" diferente dos símbolos candidatos)
+    scout_validated_additions = {
+        inc["symbol"].upper()
+        for inc in scout_changes.get("inclusions", [])
+        if inc.get("symbol")
     }
 
     # Determine if rebalance is needed
@@ -148,7 +165,37 @@ async def _process_index(idx: AlphaIndex, sentiment_score: float, target_buffer:
             _log_no_action(idx.id, db)
             return
 
-    # Generate rebalance proposal using Claude
+    # Para trigger de DRIFT: ajustar pesos somente, nunca substituir tokens.
+    # Exclusões do Scout são ignoradas — drift = preço saiu do peso-alvo,
+    # não significa que o token deva ser removido.
+    # Inclusions também são ignoradas — nova entrada só via weekly ou risk_override.
+    if trigger == "drift":
+        basket_syms = {c.symbol for c in constituents}
+        scout_exclusions = scout_changes.get("exclusions", [])
+        basket_exclusions = [e for e in scout_exclusions if e.get("symbol") in basket_syms]
+
+        # Se Scout quer excluir tokens da cesta em um drift trigger, há contradição:
+        # drift ajusta pesos, não remove tokens. Bloqueia.
+        if basket_exclusions:
+            logger.warning(
+                f"Rebalancer [{idx.id}]: drift trigger bloqueado — Scout recomenda excluir "
+                f"{[e['symbol'] for e in basket_exclusions]} mas drift só ajusta pesos, "
+                "não substitui tokens. Ignorando exclusões do Scout para drift."
+            )
+
+        # Drift usa somente weight_changes do Scout; exclusions e inclusions são zeradas.
+        scout_changes = {
+            "inclusions": [],
+            "exclusions": [],
+            "weight_changes": scout_changes.get("weight_changes", []),
+        }
+
+        # Sem dados de peso do Scout e sem violações reais de drift: nada a fazer.
+        if not scout_changes["weight_changes"] and not drift_violations:
+            _log_no_action(idx.id, db)
+            return
+
+    # Generate rebalance proposal using LLM
     proposal_changes = await _generate_proposal(
         idx=idx,
         constituents=constituents,
@@ -157,11 +204,13 @@ async def _process_index(idx: AlphaIndex, sentiment_score: float, target_buffer:
         scout_changes=scout_changes,
         target_buffer=target_buffer,
         sentiment_score=sentiment_score,
+        scout_validated_additions=scout_validated_additions,
+        halt_tokens=halt_tokens,
         db=db,
     )
 
     if proposal_changes:
-        _save_proposal(idx.id, trigger, proposal_changes, db)
+        _save_proposal(idx.id, trigger, proposal_changes, db, network_mode="mainnet")
 
 
 def _check_emergency_ejections(constituents: List[IndexConstituent]) -> List[Dict]:
@@ -181,23 +230,37 @@ def _check_emergency_ejections(constituents: List[IndexConstituent]) -> List[Dic
 
 
 def _check_drift(constituents: List[IndexConstituent], target_buffer: float) -> List[Dict]:
-    """Check if any constituent has drifted more than DRIFT_THRESHOLD from target weight."""
+    """
+    Verifica se algum token drifou do seu peso-ALVO real (c.weight).
+
+    Estima o peso de mercado atual a partir de variações de preço 7d:
+      valor_estimado_i = peso_alvo_i * (1 + price_change_7d_i / 100)
+      peso_atual_i = valor_estimado_i / total * (100 - buffer)
+
+    O drift é comparado contra o peso-alvo de CADA token (não peso igual).
+    """
     non_stable = [c for c in constituents if not c.is_stablecoin]
     if not non_stable:
         return []
 
-    usable = 100 - target_buffer
-    target_weight = usable / len(non_stable)
+    # Peso estimado de mercado baseado em variação de preço 7d
+    est_values = {
+        c.symbol: c.weight * (1 + (c.price_change_7d or 0) / 100)
+        for c in non_stable
+    }
+    total_est = sum(est_values.values()) or 1.0
+    usable = 100.0 - target_buffer
 
     violations = []
     for c in non_stable:
-        drift = abs(c.weight - target_weight)
+        est_current = est_values[c.symbol] / total_est * usable
+        drift = abs(est_current - c.weight)
         if drift > DRIFT_THRESHOLD:
             violations.append({
-                "symbol": c.symbol,
-                "current_weight": c.weight,
-                "target_weight": round(target_weight, 1),
-                "drift": round(drift, 1),
+                "symbol":         c.symbol,
+                "current_weight": round(est_current, 1),
+                "target_weight":  round(c.weight, 1),
+                "drift":          round(drift, 1),
             })
     return violations
 
@@ -210,45 +273,63 @@ def _is_weekly_rebalance_due(idx: AlphaIndex) -> bool:
 
 
 async def _generate_proposal(
-    idx, constituents, trigger, emergencies, scout_changes, target_buffer, sentiment_score, db
+    idx, constituents, trigger, emergencies, scout_changes, target_buffer, sentiment_score,
+    scout_validated_additions: set, halt_tokens: set, db
 ) -> Optional[List[Dict]]:
-    """Use Claude to generate the rebalancing proposal with full rationale."""
+    """Use LLM to generate the rebalancing proposal with full rationale."""
 
+    # Apenas tokens da cesta ativa (in_basket=True) são incluídos no estado atual
+    basket = [c for c in constituents if getattr(c, "in_basket", True)]
     current_state = "\n".join([
-        f"- {c.symbol}: {c.weight:.1f}% weight, "
+        f"- {c.symbol}: TARGET={c.weight:.1f}%, "
         f"price ${c.current_price_usd:.4f}, "
         f"7d {c.price_change_7d:+.1f}%, "
-        f"vol ${c.volume_24h_usd/1e6:.1f}M"
-        for c in constituents
+        f"SoDEX={'HALT ⚠️' if c.symbol.upper().lstrip('V') in halt_tokens else 'TRADING'}"
+        for c in basket
     ])
+
+    halt_warning = ""
+    if halt_tokens:
+        halt_warning = f"\nHALT TOKENS ON SoDEX MAINNET (cannot trade): {', '.join(sorted(halt_tokens))}\nDo NOT propose increase/add for HALT tokens — orders will be rejected by the exchange.\n"
 
     scout_summary = json.dumps(scout_changes, indent=2)
     emergency_summary = json.dumps(emergencies, indent=2) if emergencies else "None"
 
-    prompt = f"""You are the Rebalancer agent for AlphaGrid, managing the "{idx.name}" index.
+    # Tokens permitidos para adição: somente o que o Scout validou no SoDEX via on_sodex=True
+    # Exclui tokens já na cesta e WSOSO (governance token)
+    current_symbols = {c.symbol.upper() for c in constituents}
+    allowed_additions = sorted(scout_validated_additions - current_symbols - {"WSOSO"})
+    allowed_additions_str = ", ".join(allowed_additions) if allowed_additions else "none — keep existing basket unchanged"
+
+    prompt = f"""You are the Rebalancer agent for SoSoMon, managing the "{idx.name}" index.
 
 TRIGGER: {trigger.upper()}
 
-CURRENT INDEX STATE:
+CURRENT BASKET STATE (only these {len(basket)} tokens exist in the basket — do NOT reference any other token):
 {current_state}
-
-EMERGENCY EJECTIONS (execute immediately, no review needed):
+{halt_warning}
+EMERGENCY EJECTIONS (execute immediately):
 {emergency_summary}
 
 SCOUT AGENT RECOMMENDATIONS (from last daily screening):
 {scout_summary}
 
+ALLOWED TOKENS FOR ADDITION (HARD RULE — you may ONLY add symbols from this list):
+{allowed_additions_str}
+DO NOT invent token symbols. DO NOT use any symbol not in the basket or in the allowed list above.
+
 CONSTRAINTS:
-- Target stablecoin buffer: {target_buffer:.0f}% (based on sentiment score {sentiment_score}/100)
+- The TARGET weight shown for each token is its designed allocation — DO NOT change weights without a specific reason (drift, emergency, or Scout recommendation).
+- DRIFT ONLY adjusts tokens that have actually drifted. If a token is near its target weight, set action="maintain" and keep old_weight == new_weight.
+- ANCHOR TOKENS (NEVER remove, never reduce below their target): MAG7ssi, DEFIssi, USSIssi, WSOSO. These are the thematic pillars. Removing them would destroy the index thesis.
+- Target stablecoin buffer: {target_buffer:.0f}% (sentiment {sentiment_score}/100)
 - Max single token weight: {MAX_SINGLE_WEIGHT}%
-- HARD LIMIT: the basket must have EXACTLY {idx.target_constituents} non-stablecoin tokens after this rebalance. Do NOT add more.
-- Base equal weight after buffer: {(100 - target_buffer) / idx.target_constituents:.2f}% per token
-- CRITICAL: new_weight values for add/maintain/increase/decrease actions MUST sum to exactly 100.0%. remove actions always have new_weight=0.0 and are excluded from this sum.
-- Momentum boost: +20% weight for tokens with positive 30d price trend
-- EXCLUDED: WSOSO is the SoDEX governance token — never add it as an index constituent
-- CONSERVATIVE: This is a long-term index fund. Only REMOVE a token if: (1) it triggered emergency ejection (in EMERGENCY EJECTIONS list above), or (2) the Scout agent explicitly recommended removal. DO NOT restructure the basket without specific cause.
-- MINIMUM: the basket must have AT LEAST {idx.target_constituents} active tokens. If you cannot find enough replacements, keep existing constituents.
-- STABLE CORE: prefer increasing/decreasing weights of existing tokens over full replacements unless an emergency or Scout recommendation justifies it.
+- HARD LIMIT: basket must have EXACTLY {idx.target_constituents} non-stablecoin tokens after rebalance.
+- CRITICAL: new_weight of all non-remove tokens must sum to exactly 100.0%.
+- CONSERVATIVE: ONLY remove a token if it is in EMERGENCY EJECTIONS or Scout explicitly recommended removal. Do NOT restructure the basket without cause.
+- STABLE CORE: prefer small weight adjustments over full replacements.
+- HALT tokens listed above CANNOT be traded — do NOT propose add/increase for them.
+- If ALLOWED TOKENS FOR ADDITION is "none", do NOT add any new token. Maintain the existing basket exactly.
 
 Generate a rebalancing proposal. Respond ONLY with valid JSON:
 {{
@@ -286,6 +367,20 @@ Generate a rebalancing proposal. Respond ONLY with valid JSON:
         db.commit()
 
         changes = parsed.get("changes", [])
+
+        # Valida: tokens em "add" devem ter sido validados pelo Scout via SoDEX
+        # Se Scout não recomendou nenhuma inclusão, nenhum "add" é permitido
+        invalid_adds = [
+            c["symbol"] for c in changes
+            if c.get("action") == "add"
+            and c["symbol"].upper() not in scout_validated_additions
+        ]
+        if invalid_adds:
+            logger.warning(
+                f"Rebalancer [{idx.id}]: proposta adiciona tokens não validados pelo Scout: "
+                f"{invalid_adds} — descartando proposta"
+            )
+            return None
 
         # Rejeita WSOSO como constituinte — é o token do SoDEX
         changes = [c for c in changes if not (c.get("action") in ("add", "maintain") and c.get("symbol") == "WSOSO")]
@@ -328,7 +423,7 @@ Generate a rebalancing proposal. Respond ONLY with valid JSON:
         return None
 
 
-def _save_proposal(index_id: str, trigger: str, changes: List[Dict], db):
+def _save_proposal(index_id: str, trigger: str, changes: List[Dict], db, network_mode: str = "mainnet"):
     """Save rebalance proposal to DB for founder review."""
     proposal = RebalanceProposal(
         index_id=index_id,
@@ -337,6 +432,7 @@ def _save_proposal(index_id: str, trigger: str, changes: List[Dict], db):
         trigger=trigger,
         changes=changes,
         ai_rationale=f"Proposed by Rebalancer agent. Trigger: {trigger}. {len(changes)} changes.",
+        network_mode=network_mode,
     )
     db.add(proposal)
     db.commit()

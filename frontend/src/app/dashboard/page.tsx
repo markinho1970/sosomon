@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -76,7 +76,7 @@ interface Transaction { type: "deposit"|"withdrawal"; index_id: string; amount_u
 
 export default function DashboardPage() {
   const { address, isConnected, status } = useAccount();
-  const { networkMode, isTestnet } = useNetworkMode();
+  const { networkMode, isTestnet, networkModeLoaded } = useNetworkMode();
   const { t } = useLang();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
@@ -93,14 +93,24 @@ export default function DashboardPage() {
   const [breakdown, setBreakdown] = useState<BreakdownIndex[]>([]);
   const [history, setHistory] = useState<HistoryIndex[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [refreshToken, setRefreshToken] = useState(0);
+  // Garante que wagmi já viu pelo menos um estado "connected" antes de redirecionar no F5
+  const seenConnected = useRef(false);
 
   useEffect(() => { setMounted(true); }, []);
 
-  // Redireciona para home só após hydration e quando realmente desconectado
+  useEffect(() => {
+    if (status === "connected") seenConnected.current = true;
+  }, [status]);
+
+  // Redireciona para home só quando realmente desconectado (não durante reconexão do F5)
   useEffect(() => {
     if (!mounted) return;
     if (status === "reconnecting" || status === "connecting") return;
-    if (!isConnected) router.replace("/");
+    if (!isConnected) {
+      if (!seenConnected.current) return; // aguarda wagmi confirmar a reconexão
+      router.replace("/");
+    }
   }, [mounted, isConnected, status, router]);
 
   // Efeito 1: detecta desconexao e troca de conta no MetaMask
@@ -125,7 +135,7 @@ export default function DashboardPage() {
 
   // Efeito 2: busca dados quando a carteira visualizada muda
   useEffect(() => {
-    if (!viewingAddress) return;
+    if (!viewingAddress || !networkModeLoaded) return;
     setPortfolios([]);
     setSubscriber(null);
     setRefundNotices([]);
@@ -134,7 +144,9 @@ export default function DashboardPage() {
     setTransactions([]);
     let cancelled = false;
     setLoading(true);
-    Promise.all([
+
+    // allSettled: falha individual não derruba os outros dados
+    Promise.allSettled([
       investApi.getPortfolio(viewingAddress, networkMode),
       agentApi.getRecentActivity(20),
       macroApi.get(),
@@ -142,22 +154,29 @@ export default function DashboardPage() {
       investApi.getBreakdown(viewingAddress, networkMode),
       investApi.getHistory(viewingAddress, networkMode, 30),
       investApi.getTransactions(viewingAddress, networkMode),
-    ])
-      .then(([portfolioData, activityData, macroData, refundsData, bkd, hist, txs]: any[]) => {
-        if (cancelled) return;
+    ]).then((results) => {
+      if (cancelled) return;
+      const ok = (r: PromiseSettledResult<any>) => r.status === "fulfilled" ? r.value : null;
+      const [portfolioData, activityData, macroData, refundsData, bkd, hist, txs] = results.map(ok);
+      if (portfolioData) {
         setPortfolios(portfolioData.portfolios ?? []);
         setSubscriber(portfolioData.subscriber ?? null);
-        setActivities(activityData ?? []);
-        setMacro(macroData ?? null);
-        setRefundNotices(refundsData ?? []);
-        setBreakdown(bkd || []);
-        setHistory(hist || []);
-        setTransactions(txs || []);
-      })
-      .catch(console.error)
-      .finally(() => { if (!cancelled) setLoading(false); });
+      }
+      if (activityData) setActivities(activityData ?? []);
+      if (macroData)    setMacro(macroData);
+      if (refundsData)  setRefundNotices(refundsData ?? []);
+      if (bkd)          setBreakdown(bkd);
+      if (hist)         setHistory(hist);
+      if (txs)          setTransactions(txs);
+
+      // Log falhas para debug sem quebrar a UI
+      results.forEach((r, i) => {
+        if (r.status === "rejected") console.warn(`Dashboard fetch[${i}] failed:`, r.reason);
+      });
+    }).finally(() => { if (!cancelled) setLoading(false); });
+
     return () => { cancelled = true; };
-  }, [viewingAddress, networkMode]);
+  }, [viewingAddress, networkMode, networkModeLoaded, refreshToken]);
 
   const totalValue = portfolios.reduce((s, p) => s + p.current_value_usd, 0);
   const totalDeposited = portfolios.reduce((s, p) => s + p.deposited_usd, 0);
@@ -235,6 +254,13 @@ export default function DashboardPage() {
                 {t("dash_pro_member")}
               </div>
             )}
+            <button
+              onClick={() => setRefreshToken(n => n + 1)}
+              title="Atualizar dados"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-white/40 hover:text-white/70 text-xs transition-all"
+            >
+              <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+            </button>
           </div>
         </div>
 

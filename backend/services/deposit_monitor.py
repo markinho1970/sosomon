@@ -9,7 +9,7 @@ Mainnet e testnet nunca se misturam.
 import os
 import uuid
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import asyncio
 import httpx
@@ -275,11 +275,13 @@ async def check_deposits(db, network: str = "mainnet"):
             db.commit()
             continue
 
-        # Só aceita depósitos de wallets com intent registrado na mesma rede
+        # Só aceita depósitos de wallets com intent registrado na mesma rede (não expirado — 7 dias)
+        intent_expiry = datetime.now(timezone.utc) - timedelta(days=7)
         intent = db.query(InvestmentIntent).filter(
             InvestmentIntent.wallet_address == from_address,
             InvestmentIntent.fulfilled == False,
             InvestmentIntent.network_mode == network,
+            InvestmentIntent.created_at >= intent_expiry,
         ).order_by(InvestmentIntent.created_at.desc()).first()
 
         if not intent:
@@ -457,6 +459,7 @@ async def check_deposits(db, network: str = "mainnet"):
             if skipped > 0 and amount_usd > 0:
                 extra_pct = round((skipped / amount_usd) * 100, 2)
                 target_index.stablecoin_buffer_pct = min(100.0, (target_index.stablecoin_buffer_pct or 0) + extra_pct)
+            buy_result["investor_wallet"] = from_address
             db.add(AgentActivityLog(
                 id=str(uuid.uuid4()),
                 index_id=target_index.id,

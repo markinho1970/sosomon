@@ -196,6 +196,14 @@ export const adminApi = {
     return data.data;
   },
 
+  getInvestors: async (address: string, message: string, signature: string, networkMode = "mainnet") => {
+    const { data } = await api.get(
+      `/api/admin/investors?network_mode=${networkMode}`,
+      adminHeaders(address, message, signature)
+    );
+    return data.data;
+  },
+
   getMovements: async (address: string, message: string, signature: string, networkMode = "mainnet", limit = 50) => {
     const { data } = await api.get(
       `/api/admin/movements?network_mode=${networkMode}&limit=${limit}`,
