@@ -1072,71 +1072,39 @@ export default function AdminPage() {
                         <p className="text-amber-400 text-xs mt-2">ETH baixo — considere repor em breve</p>
                       )}
                     </div>
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-white/3 border border-white/5">
-                      <div className="flex items-center gap-2">
-                        <DollarSign size={14} className="text-white/40" />
-                        <span className="text-white/60 text-sm">USDC on-chain</span>
-                      </div>
-                      <span className="text-white font-bold text-sm">{fundWallet.usdc_balance !== null ? `$${fundWallet.usdc_balance.toFixed(2)}` : "—"}</span>
-                    </div>
-
-                    {/* SoDEX Spot breakdown */}
-                    {portfolio && portfolio.configured && portfolio.positions.length > 0 && (
-                      <div className="rounded-xl border border-brand-blue/15 bg-brand-blue/3 p-3 space-y-2">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <Wallet size={12} className="text-brand-blue/70" />
-                          <span className="text-xs font-semibold text-brand-blue/80 uppercase tracking-wider">Saldo no SoDEX</span>
-                          <span className="text-xs text-white/25 ml-auto font-mono">{portfolio.wallet?.slice(0, 8)}…{portfolio.wallet?.slice(-4)}</span>
-                        </div>
-                        {portfolio.positions.filter((p: {asset: string; usd_value: number}) => p.usd_value > 0 || p.asset === "USDC").map((pos: {asset: string; amount: number; usd_value: number}) => {
-                          const isStable = ["USDC","USDT","vUSDC","vUSDT"].includes(pos.asset);
-                          return (
-                            <div key={pos.asset} className={`flex items-center justify-between py-1 px-2 rounded-lg ${isStable ? "bg-amber-500/8 border border-amber-500/15" : "bg-white/3"}`}>
-                              <div className="flex items-center gap-2">
-                                <span className={`font-mono text-xs font-bold w-14 ${isStable ? "text-amber-300" : "text-white"}`}>{pos.asset}</span>
-                                <span className="text-white/35 text-xs font-mono">{pos.amount.toFixed(pos.asset === "USDC" ? 2 : 6)}</span>
-                                {isStable && <span className="text-xs text-amber-400/60 font-medium">admin</span>}
-                              </div>
-                              <span className={`text-xs font-mono font-semibold ${isStable ? "text-amber-300" : "text-white/80"}`}>${pos.usd_value.toFixed(2)}</span>
-                            </div>
-                          );
-                        })}
-                        <div className="flex justify-between items-center pt-1 border-t border-white/8">
-                          <span className="text-xs text-white/40">Total SoDEX</span>
-                          <span className="text-white text-xs font-bold font-mono">${portfolio.total_usd.toFixed(2)}</span>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className={`rounded-xl border p-3 ${isMainnet ? "border-green-500/20 bg-green-500/5" : "border-yellow-500/20 bg-yellow-500/5"}`}>
-                      <div className="flex items-center gap-1.5 mb-3">
-                        <Download size={12} className={isMainnet ? "text-green-400" : "text-yellow-400"} />
-                        <span className={`text-xs font-semibold ${isMainnet ? "text-green-400" : "text-yellow-400"}`}>
-                          {t("admin_deposit_eth_gas")} ({isMainnet ? "Base" : "Base Sepolia"})
-                        </span>
-                      </div>
-                      <div className="flex gap-4 items-center">
-                        <div className="shrink-0 rounded-lg overflow-hidden border border-white/10 bg-white p-1.5">
-                          <QRCodeSVG value={`ethereum:${fundWallet.address}@${isMainnet ? CHAIN_BASE_MAINNET : CHAIN_BASE_SEPOLIA}`} size={80} bgColor="#ffffff" fgColor="#000000" level="M" />
-                        </div>
-                        <div className="flex-1 min-w-0 space-y-2">
-                          <p className="text-white/50 font-mono text-xs truncate">{fundWallet.address}</p>
-                          <div className="flex gap-2 flex-wrap">
-                            <button onClick={copyFundAddress} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/60 hover:text-white text-xs transition-all">
-                              <Copy size={11} /> {copiedAddr ? t("admin_copied") : t("admin_copy")}
-                            </button>
-                            {fundWallet.basescan_url && (
-                              <a href={fundWallet.basescan_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/60 hover:text-white text-xs transition-all">
-                                <ExternalLink size={11} /> Basescan
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
                   </div>
                 )}
               </div>
+
+              {/* ── Deposit ETH for gas (fora do card, dentro do sticky) ── */}
+              {fundWallet && (
+                <div className={`rounded-xl border p-3 mt-3 ${isMainnet ? "border-green-500/20 bg-green-500/5" : "border-yellow-500/20 bg-yellow-500/5"}`}>
+                  <div className="flex items-center gap-1.5 mb-3">
+                    <Download size={12} className={isMainnet ? "text-green-400" : "text-yellow-400"} />
+                    <span className={`text-xs font-semibold ${isMainnet ? "text-green-400" : "text-yellow-400"}`}>
+                      {t("admin_deposit_eth_gas")} ({isMainnet ? "Base" : "Base Sepolia"})
+                    </span>
+                  </div>
+                  <div className="flex gap-4 items-center">
+                    <div className="shrink-0 rounded-lg overflow-hidden border border-white/10 bg-white p-1.5">
+                      <QRCodeSVG value={`ethereum:${fundWallet.address}@${isMainnet ? CHAIN_BASE_MAINNET : CHAIN_BASE_SEPOLIA}`} size={80} bgColor="#ffffff" fgColor="#000000" level="M" />
+                    </div>
+                    <div className="flex-1 min-w-0 space-y-2">
+                      <p className="text-white/50 font-mono text-xs truncate">{fundWallet.address}</p>
+                      <div className="flex gap-2 flex-wrap">
+                        <button onClick={copyFundAddress} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/60 hover:text-white text-xs transition-all">
+                          <Copy size={11} /> {copiedAddr ? t("admin_copied") : t("admin_copy")}
+                        </button>
+                        {fundWallet.basescan_url && (
+                          <a href={fundWallet.basescan_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/60 hover:text-white text-xs transition-all">
+                            <ExternalLink size={11} /> Basescan
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
               </div>{/* /sticky */}
 
               {/* ── PORTFÓLIO DE INVESTIDORES ─────────────────────────────────── */}
