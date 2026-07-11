@@ -367,50 +367,85 @@ def admin_investors(
     db: Session = Depends(get_db),
     _: None = Depends(require_admin),
 ):
-    """Lista portfólios com paginação, cota no pool, cesta e histórico de depósitos."""
+    """
+    Lista investimentos individuais — 1 linha por DepositTransaction.
+    Cada depósito é tratado como investimento distinto, mesmo que o mesmo
+    investidor tenha feito múltiplos depósitos no mesmo índice.
+    Valor atual e cesta são proporcionais às cotas daquele depósito específico.
+    """
     from models import IndexConstituent
 
+    # Todos os portfolios para calcular NAV atual e total de shares por índice
     all_portfolios = (
         db.query(SubscriberPortfolio)
         .filter(SubscriberPortfolio.network_mode == network_mode)
-        .order_by(SubscriberPortfolio.first_invested_at.desc())
         .all()
     )
 
-    # Total de shares por índice → calcula % do pool de cada investidor
+    # Mapa (subscriber_id, index_id) → portfolio
+    portfolio_map: dict = {}
+    for p in all_portfolios:
+        portfolio_map[(p.subscriber_id, p.index_id)] = p
+
+    # Total de shares por índice (somando todos os portfolios do índice)
     index_total_shares: dict = {}
     for p in all_portfolios:
         iid = p.index_id
         index_total_shares[iid] = index_total_shares.get(iid, 0.0) + float(p.index_tokens_held or 0)
 
+    # Constituintes da cesta por índice (cache)
+    basket_cache: dict = {}
+
+    # Todos os depósitos confirmados, do mais recente ao mais antigo
+    all_txs = (
+        db.query(DepositTransaction)
+        .filter(DepositTransaction.network_mode == network_mode)
+        .order_by(DepositTransaction.created_at.desc())
+        .all()
+    )
+
     rows = []
-    for p in all_portfolios:
-        sub = db.query(Subscriber).filter(Subscriber.id == p.subscriber_id).first()
+    for tx in all_txs:
+        sub = db.query(Subscriber).filter(Subscriber.id == tx.subscriber_id).first()
         if not sub:
             continue
-        idx = db.query(AlphaIndex).filter(AlphaIndex.id == p.index_id).first()
 
-        deposited  = float(p.deposited_usd or 0)
-        current    = float(p.current_value_usd or 0)
-        pnl        = current - deposited
-        pnl_pct    = (pnl / deposited * 100) if deposited > 0 else 0.0
-        my_shares  = float(p.index_tokens_held or 0)
-        tot_shares = index_total_shares.get(p.index_id, 1.0)
-        pool_pct   = (my_shares / tot_shares * 100) if tot_shares > 0 else 0.0
+        portfolio = portfolio_map.get((tx.subscriber_id, tx.index_id))
+        if not portfolio:
+            continue
 
-        # Constituintes da cesta com valor estimado por peso
-        basket = (
-            db.query(IndexConstituent)
-            .filter(
-                IndexConstituent.index_id == p.index_id,
-                IndexConstituent.in_basket == True,
-                IndexConstituent.network_mode == network_mode,
+        idx = db.query(AlphaIndex).filter(AlphaIndex.id == tx.index_id).first()
+
+        # NAV atual do portfolio (valor por share)
+        port_shares = float(portfolio.index_tokens_held or 0)
+        port_value  = float(portfolio.current_value_usd or 0)
+        current_nav = (port_value / port_shares) if port_shares > 0 else 0.0
+
+        # Valor atual proporcional às cotas deste depósito específico
+        tx_shares = float(tx.shares_issued or 0)
+        deposited = float(tx.amount_usd or 0)
+        current   = tx_shares * current_nav
+        pnl       = current - deposited
+        pnl_pct   = (pnl / deposited * 100) if deposited > 0 else 0.0
+
+        # % do pool total do índice para este depósito
+        tot_shares = index_total_shares.get(tx.index_id, 1.0)
+        pool_pct   = (tx_shares / tot_shares * 100) if tot_shares > 0 else 0.0
+
+        # Cesta proporcional ao valor atual deste depósito
+        if tx.index_id not in basket_cache:
+            basket_cache[tx.index_id] = (
+                db.query(IndexConstituent)
+                .filter(
+                    IndexConstituent.index_id == tx.index_id,
+                    IndexConstituent.in_basket == True,
+                    IndexConstituent.network_mode == network_mode,
+                )
+                .order_by(IndexConstituent.weight.desc())
+                .all()
             )
-            .order_by(IndexConstituent.weight.desc())
-            .all()
-        )
         basket_items = []
-        for c in basket:
+        for c in basket_cache[tx.index_id]:
             price   = float(c.current_price_usd or 0)
             est_usd = current * (c.weight / 100) if current > 0 and c.weight else 0
             est_qty = (est_usd / price) if price > 0 else 0
@@ -423,48 +458,25 @@ def admin_investors(
                 "change_7d": round(float(c.price_change_7d or 0), 2),
             })
 
-        # Histórico de depósitos
-        txs = (
-            db.query(DepositTransaction)
-            .filter(
-                DepositTransaction.subscriber_id == p.subscriber_id,
-                DepositTransaction.index_id == p.index_id,
-                DepositTransaction.network_mode == network_mode,
-            )
-            .order_by(DepositTransaction.created_at.desc())
-            .all()
-        )
-        tx_list = [
-            {
-                "tx_hash":    t.tx_hash,
-                "amount_usd": t.amount_usd,
-                "nav_at_buy": t.nav_at_purchase,
-                "shares":     t.shares_issued,
-                "confirmed":  t.buy_confirmed,
-                "date":       t.created_at.isoformat() if t.created_at else None,
-            }
-            for t in txs
-        ]
-
         rows.append({
-            "id":               str(p.id),
-            "wallet_address":   sub.wallet_address,
-            "index_id":         p.index_id,
-            "index_name":       idx.name if idx else p.index_id,
-            "deposited_usd":    round(deposited, 2),
-            "current_value_usd":round(current, 2),
-            "pnl_usd":          round(pnl, 2),
-            "pnl_pct":          round(pnl_pct, 2),
-            "shares":           round(my_shares, 6),
-            "pool_share_pct":   round(pool_pct, 2),
-            "is_pro":           sub.is_pro or False,
-            "nav_at_first":     round(float(p.nav_at_first_deposit or 0), 6),
-            "high_water_mark":  round(float(p.high_water_mark_usd or 0), 2),
-            "avg_cost":         round(float(p.avg_cost_basis_per_share or 0), 6),
-            "first_invested_at":p.first_invested_at.isoformat() if p.first_invested_at else None,
-            "last_updated_at":  p.last_updated_at.isoformat() if p.last_updated_at else None,
-            "basket":           basket_items,
-            "transactions":     tx_list,
+            "id":                str(tx.id),            # ID do depósito (único por investimento)
+            "portfolio_id":      str(portfolio.id),
+            "wallet_address":    sub.wallet_address,
+            "index_id":          tx.index_id,
+            "index_name":        idx.name if idx else tx.index_id,
+            "deposited_usd":     round(deposited, 2),
+            "current_value_usd": round(current, 2),
+            "pnl_usd":           round(pnl, 2),
+            "pnl_pct":           round(pnl_pct, 2),
+            "shares":            round(tx_shares, 6),
+            "pool_share_pct":    round(pool_pct, 2),
+            "is_pro":            sub.is_pro or False,
+            "nav_at_buy":        round(float(tx.nav_at_purchase or 0), 6),
+            "high_water_mark":   round(float(portfolio.high_water_mark_usd or 0), 2),
+            "deposit_date":      tx.created_at.isoformat() if tx.created_at else None,
+            "buy_confirmed":     tx.buy_confirmed or False,
+            "tx_hash":           tx.tx_hash or None,
+            "basket":            basket_items,
         })
 
     total_dep   = sum(r["deposited_usd"] for r in rows)

@@ -48,17 +48,9 @@ interface InvestorBasketItem {
   change_7d: number;
 }
 
-interface InvestorTx {
-  tx_hash: string;
-  amount_usd: number;
-  nav_at_buy: number;
-  shares: number;
-  confirmed: boolean;
-  date: string | null;
-}
-
 interface InvestorPortfolioItem {
-  id: string;
+  id: string;            // DepositTransaction id — único por investimento
+  portfolio_id: string;
   wallet_address: string;
   index_id: string;
   index_name: string;
@@ -69,13 +61,12 @@ interface InvestorPortfolioItem {
   shares: number;
   pool_share_pct: number;
   is_pro: boolean;
-  nav_at_first: number;
+  nav_at_buy: number;    // NAV na data do depósito
   high_water_mark: number;
-  avg_cost: number;
-  first_invested_at: string | null;
-  last_updated_at: string | null;
+  deposit_date: string | null;
+  buy_confirmed: boolean;
+  tx_hash: string | null;
   basket: InvestorBasketItem[];
-  transactions: InvestorTx[];
 }
 
 interface InvestorsData {
@@ -1076,6 +1067,33 @@ export default function AdminPage() {
                 )}
               </div>
 
+              {/* ── Reserva Admin (vUSDC no SoDEX = sempre do admin) ── */}
+              {portfolio && portfolio.configured && (
+                <div className="card mt-3 py-2.5">
+                  {(() => {
+                    const usdcPos = portfolio.positions.find((p: PortfolioPosition) =>
+                      ["USDC", "vUSDC", "usdc"].includes(p.asset)
+                    );
+                    const adminUsdc = usdcPos?.usd_value ?? 0;
+                    const adminAmt  = usdcPos?.amount ?? 0;
+                    return (
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <DollarSign size={13} className="text-amber-400" />
+                          <div>
+                            <p className="text-xs font-semibold text-white/60 uppercase tracking-wider">Reserva Admin</p>
+                            <p className="text-white/25 text-xs font-mono">{adminAmt.toFixed(4)} USDC · SoDEX</p>
+                          </div>
+                        </div>
+                        <span className={`font-mono font-bold text-sm ${adminUsdc > 0 ? "text-amber-300" : "text-white/30"}`}>
+                          ${adminUsdc.toFixed(2)}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
               {/* ── Deposit ETH for gas (fora do card, dentro do sticky) ── */}
               {fundWallet && (
                 <div className={`rounded-xl border p-3 mt-3 ${isMainnet ? "border-green-500/20 bg-green-500/5" : "border-yellow-500/20 bg-yellow-500/5"}`}>
@@ -1152,7 +1170,7 @@ export default function AdminPage() {
                       {investors.portfolios.map((inv) => {
                         const pPos = inv.pnl_pct > 0, pNeg = inv.pnl_pct < 0;
                         const isFounder = inv.wallet_address.toLowerCase() === session?.address.toLowerCase();
-                        const entryDate = inv.first_invested_at ? new Date(inv.first_invested_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "—";
+                        const entryDate = inv.deposit_date ? new Date(inv.deposit_date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "—";
                         return (
                           <div
                             key={inv.id}
@@ -1185,7 +1203,7 @@ export default function AdminPage() {
 
                     {/* Totais */}
                     <div className="grid grid-cols-[1.4fr_1fr_72px_80px_80px_96px_72px_60px_24px] gap-1 items-center px-2.5 py-2 mt-2 border-t border-white/10 min-w-[680px]">
-                      <span className="text-white/50 text-xs font-semibold col-span-3">Total ({investors.count} investidores)</span>
+                      <span className="text-white/50 text-xs font-semibold col-span-3">Total ({investors.count} {investors.count === 1 ? "investimento" : "investimentos"})</span>
                       <span className="text-white/50 text-xs text-right font-mono">${investors.total_deposited_usd.toFixed(2)}</span>
                       <span className="text-white font-bold text-xs text-right font-mono">${investors.total_current_usd.toFixed(2)}</span>
                       <span className={`text-xs font-bold text-right ${investors.total_pnl_pct > 0 ? "text-green-400" : investors.total_pnl_pct < 0 ? "text-red-400" : "text-white/40"}`}>
@@ -1236,13 +1254,15 @@ export default function AdminPage() {
                           {selectedInvestor.is_pro && <span className="text-xs px-1.5 py-0.5 rounded bg-brand-blue/20 text-brand-blue border border-brand-blue/20">pro</span>}
                           <span className={`text-xs px-1.5 py-0.5 rounded border font-medium ${isMainnet ? "text-green-400 bg-green-500/10 border-green-500/20" : "text-yellow-400 bg-yellow-500/10 border-yellow-500/20"}`}>{isMainnet ? "Mainnet" : "Testnet"}</span>
                         </div>
-                        <p className="text-white/50 text-xs mt-1">{selectedInvestor.index_name} · desde {selectedInvestor.first_invested_at ? new Date(selectedInvestor.first_invested_at).toLocaleDateString("pt-BR") : "—"}</p>
+                        <p className="text-white/50 text-xs mt-1">
+                          {selectedInvestor.index_name} · {selectedInvestor.deposit_date ? new Date(selectedInvestor.deposit_date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—"}
+                        </p>
                       </div>
                       <button onClick={() => setSelectedInvestor(null)} className="text-white/30 hover:text-white text-xl leading-none ml-4">×</button>
                     </div>
 
                     <div className="p-5 space-y-5">
-                      {/* Resumo financeiro */}
+                      {/* Resumo financeiro + status */}
                       <div className="grid grid-cols-3 gap-3">
                         {[
                           { label: "Depositado", value: `$${selectedInvestor.deposited_usd.toFixed(2)}`, cls: "text-white" },
@@ -1256,36 +1276,56 @@ export default function AdminPage() {
                         ))}
                       </div>
 
-                      {/* Cotas e participação */}
+                      {/* Info do depósito: TX, status, NAV */}
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-white/3 border border-white/8">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs px-1.5 py-0.5 rounded border ${selectedInvestor.buy_confirmed ? "text-green-400 bg-green-500/10 border-green-500/20" : "text-amber-400 bg-amber-500/10 border-amber-500/20"}`}>
+                              {selectedInvestor.buy_confirmed ? "✓ compras OK" : "⏳ pendente"}
+                            </span>
+                            <span className="text-white/30 text-xs font-mono">NAV entrada: ${selectedInvestor.nav_at_buy.toFixed(6)}</span>
+                          </div>
+                          {selectedInvestor.tx_hash && (
+                            <a href={`${isMainnet ? "https://basescan.org" : "https://sepolia.basescan.org"}/tx/${selectedInvestor.tx_hash}`} target="_blank" rel="noopener noreferrer" className="text-white/25 hover:text-white/60 text-xs font-mono transition-colors">
+                              TX: {selectedInvestor.tx_hash.slice(0, 14)}… ↗
+                            </a>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <p className="text-white/40 text-xs">HWM</p>
+                          <p className="text-white/60 font-mono text-xs">${selectedInvestor.high_water_mark.toFixed(2)}</p>
+                        </div>
+                      </div>
+
+                      {/* Cotas e participação no pool */}
                       <div className="bg-brand-blue/8 border border-brand-blue/20 rounded-xl p-4">
                         <p className="text-brand-blue/70 text-xs uppercase tracking-wider mb-2 font-semibold">Participação no Pool</p>
-                        <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <p className="text-white/40 text-xs">Cotas emitidas</p>
+                            <p className="text-white/40 text-xs">Cotas deste investimento</p>
                             <p className="text-white font-mono font-semibold">{selectedInvestor.shares.toFixed(4)}</p>
                           </div>
                           <div>
                             <p className="text-white/40 text-xs">% do Pool</p>
                             <p className="text-brand-blue font-mono font-bold text-lg">{selectedInvestor.pool_share_pct.toFixed(2)}%</p>
                           </div>
-                          <div>
-                            <p className="text-white/40 text-xs">NAV de entrada</p>
-                            <p className="text-white/70 font-mono text-xs">${selectedInvestor.nav_at_first.toFixed(6)}</p>
-                          </div>
-                          <div>
-                            <p className="text-white/40 text-xs">High Water Mark</p>
-                            <p className="text-white/70 font-mono text-xs">${selectedInvestor.high_water_mark.toFixed(2)}</p>
-                          </div>
                         </div>
                       </div>
 
-                      {/* Composição da cesta */}
+                      {/* Composição da cesta com % de cada token no pool SoDEX */}
                       {selectedInvestor.basket.length > 0 && (
                         <div>
                           <p className="text-white/50 text-xs uppercase tracking-wider mb-2 font-semibold">Composição da Cesta</p>
                           <div className="space-y-2">
                             {selectedInvestor.basket.map(token => {
                               const ch7 = token.change_7d;
+                              // % deste investimento no total de cada token no SoDEX
+                              const sodexPos = portfolio?.positions.find((p: PortfolioPosition) =>
+                                p.asset.replace(/\./g, "").toLowerCase() === token.symbol.replace(/\./g, "").toLowerCase()
+                              );
+                              const tokenPoolPct = sodexPos && sodexPos.amount > 0
+                                ? (token.est_qty / sodexPos.amount * 100)
+                                : null;
                               return (
                                 <div key={token.symbol} className="flex items-center gap-3 p-2.5 rounded-lg bg-white/4">
                                   <div className="w-14 shrink-0">
@@ -1297,6 +1337,9 @@ export default function AdminPage() {
                                   <div className="flex-1 min-w-0">
                                     <span className="text-white text-xs font-mono font-semibold">{token.symbol}</span>
                                     <p className="text-white/30 text-xs font-mono">{token.est_qty.toFixed(4)} @ ${token.price < 1 ? token.price.toFixed(4) : token.price.toFixed(2)}</p>
+                                    {tokenPoolPct !== null && (
+                                      <p className="text-brand-blue/60 text-xs font-mono">{tokenPoolPct.toFixed(1)}% do pool SoDEX</p>
+                                    )}
                                   </div>
                                   <div className="text-right shrink-0">
                                     <p className="text-white text-xs font-mono font-semibold">${token.est_usd.toFixed(2)}</p>
@@ -1305,33 +1348,6 @@ export default function AdminPage() {
                                 </div>
                               );
                             })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Histórico de depósitos */}
-                      {selectedInvestor.transactions.length > 0 && (
-                        <div>
-                          <p className="text-white/50 text-xs uppercase tracking-wider mb-2 font-semibold">Histórico de Depósitos</p>
-                          <div className="space-y-1.5">
-                            {selectedInvestor.transactions.map((tx, i) => (
-                              <div key={i} className="flex items-center justify-between p-2.5 rounded-lg bg-white/4">
-                                <div>
-                                  <p className="text-white text-xs font-mono font-semibold">${tx.amount_usd.toFixed(2)} USDC</p>
-                                  <p className="text-white/30 text-xs">{tx.date ? new Date(tx.date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—"}</p>
-                                </div>
-                                <div className="text-right">
-                                  <span className={`text-xs px-1.5 py-0.5 rounded border ${tx.confirmed ? "text-green-400 bg-green-500/10 border-green-500/20" : "text-amber-400 bg-amber-500/10 border-amber-500/20"}`}>
-                                    {tx.confirmed ? "✓ compras OK" : "pendente"}
-                                  </span>
-                                  {tx.tx_hash && (
-                                    <a href={`${isMainnet ? "https://basescan.org" : "https://sepolia.basescan.org"}/tx/${tx.tx_hash}`} target="_blank" rel="noopener noreferrer" className="block text-white/20 hover:text-white/50 text-xs font-mono mt-1 transition-colors">
-                                      {tx.tx_hash.slice(0, 10)}…
-                                    </a>
-                                  )}
-                                </div>
-                              </div>
-                            ))}
                           </div>
                         </div>
                       )}
