@@ -430,6 +430,20 @@ async def check_deposits(db, network: str = "mainnet"):
                 IndexConstituent.in_basket == True,
                 IndexConstituent.network_mode == network,
             ).all()
+
+            # Mainnet: envia USDC do investor da fund wallet → SoDEX deposit address
+            # antes de colocar ordens de compra (vUSDC precisa ser creditado primeiro)
+            if not is_testnet:
+                from services.sodex import deposit_usdc_to_sodex, SODEX_DEPOSIT_WAIT_SEC
+                dep = await deposit_usdc_to_sodex(amount_usd)
+                if not dep.get("success"):
+                    raise RuntimeError(f"depósito SoDEX falhou: {dep.get('error')}")
+                logger.info(
+                    f"deposit_monitor [{network}]: ${amount_usd:.2f} USDC → SoDEX | "
+                    f"tx={dep['tx_hash'][:20]}… | aguardando {SODEX_DEPOSIT_WAIT_SEC}s para crédito"
+                )
+                await asyncio.sleep(SODEX_DEPOSIT_WAIT_SEC)
+
             # Testnet: SoDEX é ecossistema fechado (só faucet, sem depósito externo)
             # → ordens simuladas (dry_run=True) para não bloquear o fluxo
             # Mainnet: ordens reais (dry_run=False)

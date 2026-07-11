@@ -509,6 +509,82 @@ async def execute_rebalance_trades(
     return orders
 
 
+SODEX_DEPOSIT_ADDRESS = "0x47D3CC0Ceacc2f5c69CF91A0592C4A90d9B541cA"
+USDC_BASE_CONTRACT    = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+BASE_RPC_URL          = os.getenv("BASE_RPC_URL", "https://mainnet.base.org")
+CHAIN_ID_BASE         = 8453
+GAS_LIMIT_TRANSFER    = 100_000
+
+# Crédito demora ~2min na Base após confirmação on-chain
+SODEX_DEPOSIT_WAIT_SEC = 150
+
+
+async def deposit_usdc_to_sodex(amount_usd: float, simulate: bool = False) -> dict:
+    """
+    Transfere USDC da fund wallet (on-chain Base) para o endereço de depósito do SoDEX.
+    SoDEX credita como vUSDC em ~2 minutos após confirmação.
+
+    simulate=True: assina a tx mas NÃO transmite (para testes).
+    """
+    from eth_account import Account
+    from utils.crypto import get_fund_private_key
+
+    fund_wallet = os.getenv("FUND_WALLET_ADDRESS", "").lower()
+    amount_units = int(round(amount_usd * 1_000_000))  # USDC 6 decimais
+
+    async def _rpc(method, params):
+        payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+        async with httpx.AsyncClient(timeout=15) as c:
+            r = await c.post(BASE_RPC_URL, json=payload)
+            return r.json()
+
+    def _encode_transfer(to: str, units: int) -> str:
+        selector  = "a9059cbb"
+        to_padded = to.lower().removeprefix("0x").zfill(64)
+        amt_pad   = hex(units)[2:].zfill(64)
+        return "0x" + selector + to_padded + amt_pad
+
+    # Verifica saldo USDC on-chain
+    data_call = "0x70a08231" + fund_wallet.removeprefix("0x").zfill(64)
+    res = await _rpc("eth_call", [{"to": USDC_BASE_CONTRACT, "data": data_call}, "latest"])
+    usdc_bal = int(res.get("result", "0x0"), 16) / 1_000_000
+
+    if usdc_bal < amount_usd and not simulate:
+        return {"success": False, "error": f"Saldo USDC insuficiente: ${usdc_bal:.2f} disponível, ${amount_usd:.2f} necessário"}
+
+    nonce_res = await _rpc("eth_getTransactionCount", [fund_wallet, "pending"])
+    nonce = int(nonce_res["result"], 16)
+    gas_res = await _rpc("eth_gasPrice", [])
+    gas_price = int(gas_res["result"], 16)
+
+    tx = {
+        "to":       USDC_BASE_CONTRACT,
+        "data":     _encode_transfer(SODEX_DEPOSIT_ADDRESS, amount_units),
+        "nonce":    nonce,
+        "gasPrice": gas_price,
+        "gas":      GAS_LIMIT_TRANSFER,
+        "chainId":  CHAIN_ID_BASE,
+        "value":    0,
+    }
+
+    private_key = get_fund_private_key()
+    signed = Account.sign_transaction(tx, private_key)
+    raw_tx = "0x" + signed.raw_transaction.hex()
+
+    if simulate:
+        return {"success": True, "simulate": True, "tx_hash": "(simulação)", "amount_usd": amount_usd}
+
+    result = await _rpc("eth_sendRawTransaction", [raw_tx])
+    if "error" in result:
+        return {"success": False, "error": str(result["error"])}
+
+    tx_hash = result.get("result", "")
+    logger.info(f"deposit_usdc_to_sodex: ${amount_usd:.2f} USDC → SoDEX | tx={tx_hash[:16]}…")
+    return {"success": True, "tx_hash": tx_hash, "amount_usd": amount_usd,
+            "basescan": f"https://basescan.org/tx/{tx_hash}",
+            "wait_sec": SODEX_DEPOSIT_WAIT_SEC}
+
+
 async def execute_buy_for_deposit(
     amount_usd: float,
     constituents: list,          # lista de IndexConstituent (in_basket=True)
