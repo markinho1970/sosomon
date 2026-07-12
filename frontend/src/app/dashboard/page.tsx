@@ -94,10 +94,27 @@ export default function DashboardPage() {
   const [history, setHistory] = useState<HistoryIndex[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [refreshToken, setRefreshToken] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [secondsSince, setSecondsSince] = useState(0);
   // Garante que wagmi já viu pelo menos um estado "connected" antes de redirecionar no F5
   const seenConnected = useRef(false);
 
   useEffect(() => { setMounted(true); }, []);
+
+  // Auto-refresh a cada 30s
+  useEffect(() => {
+    if (!viewingAddress) return;
+    const id = setInterval(() => setRefreshToken(n => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, [viewingAddress]);
+
+  // Contador "updated X ago"
+  useEffect(() => {
+    const id = setInterval(() => {
+      setSecondsSince(prev => prev + 1);
+    }, 1_000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (status === "connected") seenConnected.current = true;
@@ -173,7 +190,13 @@ export default function DashboardPage() {
       results.forEach((r, i) => {
         if (r.status === "rejected") console.warn(`Dashboard fetch[${i}] failed:`, r.reason);
       });
-    }).finally(() => { if (!cancelled) setLoading(false); });
+    }).finally(() => {
+      if (!cancelled) {
+        setLoading(false);
+        setLastUpdated(new Date());
+        setSecondsSince(0);
+      }
+    });
 
     return () => { cancelled = true; };
   }, [viewingAddress, networkMode, networkModeLoaded, refreshToken]);
@@ -256,10 +279,26 @@ export default function DashboardPage() {
             )}
             <button
               onClick={() => setRefreshToken(n => n + 1)}
-              title="Atualizar dados"
+              title="Atualizar dados agora"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-white/40 hover:text-white/70 text-xs transition-all"
             >
-              <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+              {loading ? (
+                <RefreshCw size={12} className="animate-spin" />
+              ) : (
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                </span>
+              )}
+              <span>
+                {loading
+                  ? "updating…"
+                  : lastUpdated
+                  ? secondsSince < 60
+                    ? `${secondsSince}s ago`
+                    : `${Math.floor(secondsSince / 60)}m ago`
+                  : "live"}
+              </span>
             </button>
           </div>
         </div>

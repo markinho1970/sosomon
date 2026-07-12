@@ -209,6 +209,8 @@ export default function AdminPage() {
   const [loadingInvestors, setLoadingInvestors] = useState(false);
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
   const [alertsCheckedAt, setAlertsCheckedAt] = useState("");
+  const [liveUpdatedAt, setLiveUpdatedAt] = useState<Date | null>(null);
+  const [liveSecs, setLiveSecs] = useState(0);
   const [report, setReport] = useState<Record<string, unknown> | null>(null);
   const [showReport, setShowReport] = useState(false);
 
@@ -388,6 +390,8 @@ export default function AdminPage() {
       const mv = await adminApi.getMovements(session.address, session.message, session.signature, net);
       setMovements((mv?.movements ?? []) as Movement[]);
     } catch { /**/ } finally { setLoadingMovements(false); }
+    setLiveUpdatedAt(new Date());
+    setLiveSecs(0);
   }, [session]);
 
   useEffect(() => {
@@ -415,6 +419,40 @@ export default function AdminPage() {
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
+
+  // Auto-refresh dados financeiros a cada 60s
+  const loadLive = useCallback(async (net: "mainnet" | "testnet") => {
+    if (!session || loading) return;
+    try {
+      const [s, fw, p] = await Promise.all([
+        adminApi.getStats(session.address, session.message, session.signature, net),
+        adminApi.getFundWallet(session.address, session.message, session.signature, net),
+        adminApi.getPortfolio(session.address, session.message, session.signature, net),
+      ]);
+      if (s)  setStats(s);
+      if (fw) setFundWallet(fw);
+      if (p)  setPortfolio(p);
+    } catch { /**/ }
+    try {
+      const inv = await adminApi.getInvestors(session.address, session.message, session.signature, net, investorPage, investorPerPage);
+      if (inv) setInvestors(inv);
+    } catch { /**/ }
+    setLiveUpdatedAt(new Date());
+    setLiveSecs(0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, loading, investorPage, investorPerPage]);
+
+  useEffect(() => {
+    if (!session) return;
+    const id = setInterval(() => loadLive(networkMode), 60_000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, networkMode]);
+
+  useEffect(() => {
+    const id = setInterval(() => setLiveSecs(s => s + 1), 1_000);
+    return () => clearInterval(id);
+  }, []);
 
   // ── Action handlers ──────────────────────────────────────────────────────────
   async function handleApprove(id: number) {
@@ -628,8 +666,24 @@ export default function AdminPage() {
               🟡 {t("admin_network_testnet")}
             </button>
           </div>
-          <button onClick={() => loadAll(networkMode)} className="text-white/30 hover:text-white transition-colors">
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+          <button
+            onClick={() => { loadAll(networkMode); setLiveUpdatedAt(null); }}
+            title="Atualizar todos os dados"
+            className="flex items-center gap-1.5 text-white/30 hover:text-white transition-colors text-xs"
+          >
+            {loading ? (
+              <RefreshCw size={14} className="animate-spin" />
+            ) : (
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+              </span>
+            )}
+            {!loading && liveUpdatedAt && (
+              <span className="text-white/20 hidden sm:inline">
+                {liveSecs < 60 ? `${liveSecs}s` : `${Math.floor(liveSecs / 60)}m`}
+              </span>
+            )}
           </button>
           <LangPicker />
         </div>
