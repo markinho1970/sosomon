@@ -239,8 +239,6 @@ async def update_all_navs():
         if not indexes:
             return
 
-        total_aum_all = sum(i.aum_usd or 0 for i in indexes) or 1.0
-
         for index in indexes:
             try:
                 old_nav = index.nav_usd or 1.0
@@ -249,34 +247,70 @@ async def update_all_navs():
                     IndexConstituent.network_mode == 'mainnet',
                 ).all()
 
-                new_nav, ret_7d, ret_30d = _weighted_return_from_prices(constituents, prices, old_nav)
-
-                # Guarda de sanidade — rejeita qualquer variação horária > 5%
-                # Isso é fisicamente impossível em condições normais de mercado.
-                # Protege contra preços corrompidos no DB contaminarem o NAV.
-                nav_change_pct = abs((new_nav - old_nav) / old_nav * 100) if old_nav > 0 else 0
-                if nav_change_pct > 5.0:
-                    logger.error(
-                        f"NAV Updater [{index.name}]: BLOQUEADO — variação de {nav_change_pct:.2f}% "
-                        f"em 1h é inválida (max 5%). NAV mantido em ${old_nav:.4f}. "
-                        f"Verifique price_at_nav_ref dos constituintes."
-                    )
-                    continue
+                # Retorno ponderado por preços (delta incremental desde último ciclo)
+                nav_price, ret_7d, ret_30d = _weighted_return_from_prices(constituents, prices, old_nav)
 
                 portfolios = db.query(SubscriberPortfolio).filter(
                     SubscriberPortfolio.index_id == index.id
                 ).all()
-                total_tokens = sum(p.index_tokens_held or 0 for p in portfolios)
+                mainnet_portfolios = [p for p in portfolios if getattr(p, 'network_mode', 'mainnet') == 'mainnet']
+                mainnet_tokens     = sum(p.index_tokens_held or 0 for p in mainnet_portfolios)
 
-                if sodex_ok and sodex_total > 0 and total_tokens > 0:
-                    index_share = (index.aum_usd or 0) / total_aum_all
-                    real_total  = sodex_total + fund_usdc
-                    nav_real    = (real_total * index_share) / total_tokens
-                    new_nav     = round(0.70 * new_nav + 0.30 * nav_real, 6)
-                    new_nav     = max(new_nav, 0.0001)
+                # ── NAV via SoDEX (ground truth mainnet) ──────────────────────────
+                # Calcula valor dos investidores somando preço × quantidade de cada
+                # token da cesta no SoDEX — resolve o bug de vDEFI.ssi retornar
+                # usd_value=0 na API de portfolio; exclui posições admin (USDC, ETH)
+                nav_sodex = 0.0
+                if sodex_ok and mainnet_tokens > 0:
+                    basket_norm = {
+                        c.symbol.replace('.', '').lower()
+                        for c in constituents
+                        if not c.is_stablecoin and (c.weight or 0) > 0
+                    }
+                    investor_sodex = 0.0
+                    for pos in sodex_snapshot.get('positions', []):
+                        raw_asset  = pos.get('asset', '')
+                        asset      = raw_asset[1:] if raw_asset.startswith('v') else raw_asset
+                        asset_norm = asset.replace('.', '').lower()
+                        if asset_norm not in basket_norm:
+                            continue
+                        amount  = float(pos.get('amount', 0))
+                        usd_val = float(pos.get('usd_value', 0))
+                        if usd_val == 0 and amount > 0:
+                            # API não retornou preço — calcular via preços obtidos
+                            price_data = prices.get(asset) or next(
+                                (pd for sym, pd in prices.items()
+                                 if sym.replace('.', '').lower() == asset_norm),
+                                None
+                            )
+                            if price_data:
+                                usd_val = amount * price_data.get('current_price_usd', 0)
+                        investor_sodex += usd_val
+                    if investor_sodex > 0:
+                        nav_sodex = investor_sodex / mainnet_tokens
+                        logger.info(
+                            f"NAV [{index.name}]: SoDEX investor=${investor_sodex:.4f} / "
+                            f"tokens={mainnet_tokens:.4f} → nav_sodex=${nav_sodex:.6f}"
+                        )
 
+                # SoDEX é a fonte verdade para mainnet; fallback price-based com
+                # guarda de sanidade (5%/hora) quando SoDEX está indisponível
+                if nav_sodex > 0:
+                    new_nav = round(nav_sodex, 6)
+                else:
+                    nav_change_pct = abs((nav_price - old_nav) / old_nav * 100) if old_nav > 0 else 0
+                    if nav_change_pct > 5.0:
+                        logger.error(
+                            f"NAV Updater [{index.name}]: BLOQUEADO — variação de {nav_change_pct:.2f}% "
+                            f"sem dados SoDEX. NAV mantido em ${old_nav:.4f}."
+                        )
+                        new_nav = old_nav
+                    else:
+                        new_nav = nav_price
+
+                all_tokens = sum(p.index_tokens_held or 0 for p in portfolios)
                 index.nav_usd           = new_nav
-                index.aum_usd           = round(total_tokens * new_nav, 2)
+                index.aum_usd           = round((mainnet_tokens if mainnet_tokens > 0 else all_tokens) * new_nav, 2)
                 index.total_return_pct  = round((new_nav - 1.0) * 100, 2)
                 index.return_7d_pct     = ret_7d
                 index.return_30d_pct    = ret_30d
@@ -285,7 +319,9 @@ async def update_all_navs():
                 _update_constituent_prices(constituents, prices)
 
                 for p in portfolios:
-                    p.current_value_usd = round((p.index_tokens_held or 0) * new_nav, 4)
+                    p_mode = getattr(p, 'network_mode', 'mainnet')
+                    p_nav  = new_nav if p_mode == 'mainnet' else nav_price
+                    p.current_value_usd = round((p.index_tokens_held or 0) * p_nav, 4)
                     p.last_updated_at   = datetime.now(timezone.utc)
                     if p.first_invested_at:
                         delta = datetime.now(timezone.utc) - p.first_invested_at.replace(tzinfo=timezone.utc)
@@ -293,16 +329,15 @@ async def update_all_navs():
                     if p.current_value_usd > (p.high_water_mark_usd or 0):
                         p.high_water_mark_usd = p.current_value_usd
 
-                    # Store hourly snapshot for value evolution chart
                     try:
                         snapshot = PortfolioSnapshot(
                             portfolio_id=p.id,
                             index_id=p.index_id,
-                            network_mode=getattr(p, "network_mode", "mainnet"),
+                            network_mode=p_mode,
                             snapshot_at=datetime.now(timezone.utc),
                             value_usd=p.current_value_usd,
                             deposited_usd=p.deposited_usd,
-                            nav_per_token=new_nav,
+                            nav_per_token=p_nav,
                         )
                         db.add(snapshot)
                     except Exception:
@@ -313,7 +348,7 @@ async def update_all_navs():
                     f"NAV Updater [{index.name}]: "
                     f"NAV {old_nav:.4f} → {new_nav:.4f} ({nav_chg:+.3f}%) | "
                     f"30d: {ret_30d:+.2f}% | "
-                    f"Portfolios: {len(portfolios)}"
+                    f"Mainnet: {len(mainnet_portfolios)}/{len(portfolios)} portfolios"
                 )
 
             except Exception as e:
