@@ -10,7 +10,7 @@ from eth_account import Account
 
 from database import get_db
 from sqlalchemy import func
-from models import AlphaIndex, Subscriber, SubscriberPortfolio, AgentActivityLog, InvestmentIntent, InvestmentConsent, IndexConstituent, PortfolioSnapshot, RedemptionTransaction
+from models import AlphaIndex, Subscriber, SubscriberPortfolio, AgentActivityLog, InvestmentIntent, InvestmentConsent, IndexConstituent, PortfolioSnapshot, RedemptionTransaction, DepositTransaction
 
 router = APIRouter(prefix="/api/invest", tags=["invest"])
 
@@ -811,39 +811,32 @@ def get_portfolio_transactions(wallet_address: str, network_mode: str = "mainnet
     """Histórico de depósitos e saques."""
     wallet_address = wallet_address.lower()
 
-    # Só mostra transações de índices onde a carteira tem portfolio ativo nessa rede
     subscriber = db.query(Subscriber).filter(
         Subscriber.wallet_address == wallet_address
     ).first()
-    active_index_ids = set()
-    if subscriber:
-        active_index_ids = {
-            p.index_id for p in subscriber.portfolios
-            if getattr(p, "network_mode", "mainnet") == network_mode
-        }
-
-    # Get deposits from agent_activity (deposit_detected events)
-    activities = db.query(AgentActivityLog).filter(
-        AgentActivityLog.agent == "deposit_monitor",
-        AgentActivityLog.action == "deposit_detected",
-    ).order_by(AgentActivityLog.timestamp.desc()).limit(100).all()
 
     txs = []
-    for a in activities:
-        data = a.data or {}
-        tx_wallet = (data.get("from") or data.get("wallet") or data.get("from_wallet") or "").lower()
-        if tx_wallet != wallet_address:
-            continue
-        if active_index_ids and a.index_id not in active_index_ids:
-            continue
-        txs.append({
-            "type": "deposit",
-            "index_id": a.index_id,
-            "amount_usd": data.get("amount_usdc") or data.get("amount_usd") or 0,
-            "tx_hash": data.get("tx_hash", ""),
-            "timestamp": a.timestamp.strftime("%Y-%m-%dT%H:%M:%S") if a.timestamp else "",
-            "status": "completed",
-        })
+
+    # Depósitos: usa DepositTransaction (tem network_mode — sem risco de misturar testnet/mainnet)
+    if subscriber:
+        deposits = db.query(DepositTransaction).filter(
+            DepositTransaction.subscriber_id == subscriber.id,
+            DepositTransaction.network_mode == network_mode,
+        ).order_by(DepositTransaction.created_at.desc()).all()
+        index_cache = {}
+        for tx in deposits:
+            if tx.index_id not in index_cache:
+                idx = db.query(AlphaIndex).filter(AlphaIndex.id == tx.index_id).first()
+                index_cache[tx.index_id] = idx.slug if idx else tx.index_id
+            txs.append({
+                "type": "deposit",
+                "index_id": tx.index_id,
+                "index_slug": index_cache[tx.index_id],
+                "amount_usd": float(tx.amount_usd or 0),
+                "tx_hash": tx.tx_hash or "",
+                "timestamp": tx.created_at.strftime("%Y-%m-%dT%H:%M:%S") if tx.created_at else "",
+                "status": "completed" if tx.buy_confirmed else "pending",
+            })
 
     # Get withdrawals
     withdrawals = db.query(AgentActivityLog).filter(
