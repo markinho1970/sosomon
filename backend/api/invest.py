@@ -704,14 +704,39 @@ def get_portfolio(wallet_address: str, network_mode: str = "mainnet", db: Sessio
 
 
 @router.get("/portfolio/{wallet_address}/breakdown")
-def get_portfolio_breakdown(wallet_address: str, network_mode: str = "mainnet", db: Session = Depends(get_db)):
-    """Breakdown de holdings por token baseado nos pesos da cesta e valor atual do portfolio."""
+async def get_portfolio_breakdown(wallet_address: str, network_mode: str = "mainnet", db: Session = Depends(get_db)):
+    """Breakdown de holdings por token usando posições reais do SoDEX × cota do pool."""
+    from services.sodex import get_portfolio_snapshot
     wallet_address = wallet_address.lower()
     subscriber = db.query(Subscriber).filter(
         Subscriber.wallet_address == wallet_address
     ).first()
     if not subscriber:
         return []
+
+    # Posições reais do SoDEX — fonte verdade para quantidades
+    sodex_positions: dict = {}
+    try:
+        snap = await get_portfolio_snapshot()
+        for pos in snap.get("positions", []):
+            raw = pos.get("asset", "")
+            asset = raw[1:] if raw.startswith("v") else raw
+            key = asset.replace(".", "").lower()
+            sodex_positions[key] = {
+                "amount":    float(pos.get("amount", 0)),
+                "usd_value": float(pos.get("usd_value", 0)),
+            }
+    except Exception:
+        pass  # fallback para estimativa se SoDEX indisponível
+
+    # Total de shares por índice (para calcular cota proporcional do investidor)
+    all_portfolios = db.query(SubscriberPortfolio).filter(
+        SubscriberPortfolio.network_mode == network_mode
+    ).all()
+    index_total_shares: dict = {}
+    for ap in all_portfolios:
+        iid = ap.index_id
+        index_total_shares[iid] = index_total_shares.get(iid, 0.0) + float(ap.index_tokens_held or 0)
 
     result = []
     portfolios = [
@@ -724,31 +749,50 @@ def get_portfolio_breakdown(wallet_address: str, network_mode: str = "mainnet", 
         index = db.query(AlphaIndex).filter(AlphaIndex.id == p.index_id).first()
         if not index:
             continue
+
+        # Cota proporcional deste portfolio no pool total do índice
+        tot_shares = index_total_shares.get(p.index_id, 1.0)
+        pool_pct = float(p.index_tokens_held or 0) / tot_shares if tot_shares > 0 else 1.0
+
         constituents = db.query(IndexConstituent).filter(
             IndexConstituent.index_id == p.index_id,
             IndexConstituent.in_basket == True,
             IndexConstituent.network_mode == network_mode,
             IndexConstituent.weight > 0,
         ).all()
-        total_weight = sum(c.weight for c in constituents)
         tokens = []
         for c in constituents:
-            share = c.weight / total_weight if total_weight > 0 else 0
-            usd_value = round((p.current_value_usd or 0) * share, 2)
-            price = c.current_price_usd or 0
-            qty = round(usd_value / price, 6) if price > 0 else 0
+            price    = float(c.current_price_usd or 0)
+            sym_norm = c.symbol.replace(".", "").lower()
+            sodex_p  = sodex_positions.get(sym_norm)
+
+            if sodex_p and sodex_p["amount"] > 0:
+                # Posição real SoDEX × cota proporcional deste investidor
+                total_qty = sodex_p["amount"]
+                qty       = round(total_qty * pool_pct, 6)
+                total_usd = sodex_p["usd_value"]
+                if total_usd == 0 and price > 0:
+                    total_usd = total_qty * price  # DEFIssi: API retorna $0
+                usd_value = round(total_usd * pool_pct, 2)
+            else:
+                # Fallback: estimativa por peso quando SoDEX indisponível
+                total_weight = sum(c2.weight for c2 in constituents)
+                share = c.weight / total_weight if total_weight > 0 else 0
+                usd_value = round(float(p.current_value_usd or 0) * share, 2)
+                qty = round(usd_value / price, 6) if price > 0 else 0
+
             tokens.append({
-                "symbol": c.symbol,
-                "name": c.name,
-                "weight": c.weight,
+                "symbol":    c.symbol,
+                "name":      c.name,
+                "weight":    c.weight,
                 "usd_value": usd_value,
-                "quantity": qty,
-                "price": price,
-                "change_7d": round(c.price_change_7d or 0, 2),
-                "change_30d": round(c.price_change_30d or 0, 2),
+                "quantity":  qty,
+                "price":     price,
+                "change_7d":  round(float(c.price_change_7d  or 0), 2),
+                "change_30d": round(float(c.price_change_30d or 0), 2),
             })
         result.append({
-            "index_id": p.index_id,
+            "index_id":   p.index_id,
             "index_name": index.name,
             "total_value": p.current_value_usd,
             "tokens": tokens,
