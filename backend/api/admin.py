@@ -360,7 +360,7 @@ async def run_nav_update(background_tasks: BackgroundTasks, _: None = Depends(re
 
 
 @router.get("/investors")
-def admin_investors(
+async def admin_investors(
     network_mode: str = "mainnet",
     page: int = 1,
     per_page: int = 25,
@@ -371,9 +371,25 @@ def admin_investors(
     Lista investimentos individuais — 1 linha por DepositTransaction.
     Cada depósito é tratado como investimento distinto, mesmo que o mesmo
     investidor tenha feito múltiplos depósitos no mesmo índice.
-    Valor atual e cesta são proporcionais às cotas daquele depósito específico.
+    Quantidade de tokens usa posições reais do SoDEX × cota do pool.
     """
     from models import IndexConstituent
+
+    # Posições reais do SoDEX — fonte verdade para quantidades de tokens
+    # Keyed por símbolo normalizado (sem 'v' prefix e sem pontos): defissi, aave, uni, link
+    sodex_positions: dict = {}
+    try:
+        snap = await get_portfolio_snapshot()
+        for pos in snap.get("positions", []):
+            raw = pos.get("asset", "")
+            asset = raw[1:] if raw.startswith("v") else raw
+            key = asset.replace(".", "").lower()
+            sodex_positions[key] = {
+                "amount":    float(pos.get("amount", 0)),
+                "usd_value": float(pos.get("usd_value", 0)),
+            }
+    except Exception:
+        pass  # fallback para estimativa se SoDEX indisponível
 
     # Todos os portfolios para calcular NAV atual e total de shares por índice
     all_portfolios = (
@@ -446,9 +462,23 @@ def admin_investors(
             )
         basket_items = []
         for c in basket_cache[tx.index_id]:
-            price   = float(c.current_price_usd or 0)
-            est_usd = current * (c.weight / 100) if current > 0 and c.weight else 0
-            est_qty = (est_usd / price) if price > 0 else 0
+            price    = float(c.current_price_usd or 0)
+            sym_norm = c.symbol.replace(".", "").lower()
+            sodex_p  = sodex_positions.get(sym_norm)
+
+            if sodex_p and sodex_p["amount"] > 0:
+                # Posição real do SoDEX × cota proporcional deste depósito
+                total_qty = sodex_p["amount"]
+                est_qty   = total_qty * (pool_pct / 100)
+                total_usd = sodex_p["usd_value"]
+                if total_usd == 0 and price > 0:
+                    total_usd = total_qty * price  # DEFIssi: SoDEX retorna $0 — usa preço ticker
+                est_usd = total_usd * (pool_pct / 100)
+            else:
+                # Fallback: estimar por valor × peso quando SoDEX indisponível
+                est_usd = current * (c.weight / 100) if current > 0 and c.weight else 0
+                est_qty = (est_usd / price) if price > 0 else 0
+
             basket_items.append({
                 "symbol":    c.symbol,
                 "weight":    c.weight,
