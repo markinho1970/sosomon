@@ -87,13 +87,24 @@ async def run_scout_for_index(index_id: str, theme: str, db, macro: dict = None)
 
     logger.info(f"Scout [{theme}]: {len(candidates)} candidatos do SSI: {[c['symbol'] for c in candidates]}")
 
+    # 2b. Enriquecer candidatos com performance real da SoSoValue
+    # (marketcap, volume_24h, mcap_rank, roi_7d, roi_30d, roi_3m via klines)
+    logger.info(f"Scout [{theme}]: enriquecendo {len(candidates)} candidatos com performance SoSoValue...")
+    candidates = await sosovalue.enrich_candidates_with_performance(candidates)
+    for c in candidates:
+        logger.info(
+            f"  {c['symbol']:12} | ssi_w={c.get('ssi_weight',0)*100:.1f}% "
+            f"| mcap_rank=#{c.get('mcap_rank',999)} "
+            f"| 7d={c.get('roi_7d',0):+.1f}% 30d={c.get('roi_30d',0):+.1f}% 3m={c.get('roi_3m',0):+.1f}%"
+        )
+
     # 3. Notícias temáticas e benchmark
     theme_news = await sosovalue.get_news_for_theme(theme, limit=3)
     news_summary = "; ".join([n.get("title", "") or "" for n in theme_news[:3] if n]) if theme_news else ""
 
     benchmark = await sosovalue.get_benchmark_for_theme(theme)
     if benchmark:
-        logger.info(f"Scout [{theme}]: benchmark {benchmark.get('ssi_ticker')} → 30d: {benchmark.get('1month_roi', 0)*100:.1f}%")
+        logger.info(f"Scout [{theme}]: benchmark {benchmark.get('ssi_ticker')} → 30d: {benchmark.get('roi_1m', benchmark.get('1month_roi', 0))*100:.1f}%")
 
     # 4. Mercados SoDEX (enriquecimento on-chain)
     sodex_tickers = await get_all_tickers()
@@ -245,20 +256,39 @@ async def run_scout_for_index(index_id: str, theme: str, db, macro: dict = None)
 
 def _apply_momentum_scoring(tokens: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Score = peso SSI (ranking da SoSoValue) ajustado por momentum SoDEX.
-    Tokens com SoDEX têm boost/penalty por price_change_30d.
+    Score multi-dimensional usando dados reais da SoSoValue:
+    - Base: peso SSI normalizado (posição relativa no índice da SoSoValue)
+    - Momentum: ROI ponderado 7d(30%) + 30d(40%) + 3m(30%) — via klines SoSoValue
+    - Qualidade: bônus por mcap_rank (top 50 = +10%, top 100 = +5%)
+    Fallback para price_change_30d do SoDEX se klines não disponíveis.
     """
     max_weight = max(t.get("ssi_weight", 0) for t in tokens) if tokens else 1.0
     if max_weight == 0:
         max_weight = 1.0
 
     for token in tokens:
-        base_score = token.get("ssi_weight", 0) / max_weight
-        if token.get("price_change_30d", 0) > 0:
-            base_score *= 1.20
-        elif token.get("price_change_30d", 0) < -15:
-            base_score *= 0.80
-        token["scout_score"] = base_score
+        base = token.get("ssi_weight", 0) / max_weight  # 0..1
+
+        # ROI: usa dados SoSoValue quando disponíveis, fallback para SoDEX 30d
+        roi_7d  = token.get("roi_7d")  or token.get("price_change_7d",  0) or 0
+        roi_30d = token.get("roi_30d") or token.get("price_change_30d", 0) or 0
+        roi_3m  = token.get("roi_3m",  0) or 0
+
+        # Normaliza retornos para escala -1..+1 (referência: ±20% em 30d, ±40% em 3m)
+        m7  = max(-1.0, min(1.0, roi_7d  / 20.0))
+        m30 = max(-1.0, min(1.0, roi_30d / 20.0))
+        m3m = max(-1.0, min(1.0, roi_3m  / 40.0))
+        momentum = 0.30 * m7 + 0.40 * m30 + 0.30 * m3m  # -1..+1
+
+        # Bônus por market cap rank (qualidade institucional)
+        rank = token.get("mcap_rank", 999)
+        quality = 0.10 if rank <= 50 else (0.05 if rank <= 100 else 0.0)
+
+        token["scout_score"] = base * (1 + 0.25 * momentum) + quality
+        # Guardar componentes para o prompt AI
+        token["roi_7d"]  = roi_7d
+        token["roi_30d"] = roi_30d
+        token["roi_3m"]  = roi_3m
 
     tokens.sort(key=lambda x: x["scout_score"], reverse=True)
     return tokens
@@ -275,10 +305,11 @@ async def _generate_ai_rationale(
 
     token_summaries = "\n".join([
         f"- {t['symbol']}: SSI weight {t.get('ssi_weight', 0)*100:.1f}%"
+        + (f", mcap rank #{t['mcap_rank']}" if t.get("mcap_rank") and t["mcap_rank"] < 999 else "")
         + (f", price ${t['current_price_usd']:.4f}" if t.get("current_price_usd") else "")
-        + (f", 24h vol ${t['volume_24h_usd']/1e6:.1f}M" if t.get("volume_24h_usd") else "")
-        + f", 30d {t.get('price_change_30d', 0):+.1f}%"
-        + (" [listed on SoDEX]" if t.get("on_sodex") else "")
+        + (f", mcap ${t['marketcap']/1e9:.2f}B" if t.get("marketcap", 0) > 1e8 else "")
+        + f", 7d {t.get('roi_7d', 0):+.1f}% / 30d {t.get('roi_30d', 0):+.1f}% / 3m {t.get('roi_3m', 0):+.1f}%"
+        + (" [on SoDEX]" if t.get("on_sodex") else " [not on SoDEX]")
         for t in tokens
     ])
 

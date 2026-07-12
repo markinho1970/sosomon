@@ -150,6 +150,51 @@ async def get_ssi_candidates_for_theme(theme: str) -> List[Dict]:
     return result
 
 
+async def enrich_candidates_with_performance(candidates: List[Dict]) -> List[Dict]:
+    """
+    Enriquece candidatos com dados de performance real da SoSoValue:
+    - market snapshot: marketcap, volume_24h, mcap_rank (1 req por token, sem delay)
+    - klines 91d: roi_7d, roi_30d, roi_3m calculados dos closes (3.5s entre chamadas)
+
+    Atualiza os dicts in-place e retorna a lista para facilitar encadeamento.
+    """
+    import asyncio as _asyncio
+    from loguru import logger as _log
+
+    for token in candidates:
+        cid = token.get("currency_id", "")
+        sym = token.get("symbol", "?")
+        if not cid:
+            continue
+
+        # Market snapshot (mcap, volume, rank) — sem rate limit crítico
+        try:
+            snap = await get_currency_market_snapshot(cid)
+            if snap:
+                token["marketcap"]  = float(snap.get("marketcap") or 0)
+                token["volume_24h"] = float(snap.get("turnover_24h") or 0)
+                token["mcap_rank"]  = int(snap.get("marketcap_rank") or 999)
+        except Exception as e:
+            _log.debug(f"enrich [{sym}]: snapshot falhou: {e}")
+
+        # Klines 91d → ROI 7d / 30d / 3m
+        try:
+            await _asyncio.sleep(3.5)  # 20 req/min rate limit
+            klines = await get_currency_klines(cid, limit=91)
+            if klines:
+                closes = [float(k.get("close") or k.get("c") or 0) for k in klines]
+                closes = [c for c in closes if c > 0]
+                if len(closes) >= 2:
+                    last = closes[-1]
+                    token["roi_7d"]  = round((last - closes[-8])  / closes[-8]  * 100, 2) if len(closes) >= 8  else 0.0
+                    token["roi_30d"] = round((last - closes[-31]) / closes[-31] * 100, 2) if len(closes) >= 31 else 0.0
+                    token["roi_3m"]  = round((last - closes[0])   / closes[0]   * 100, 2) if len(closes) >= 60 else 0.0
+        except Exception as e:
+            _log.debug(f"enrich [{sym}]: klines falhou: {e}")
+
+    return candidates
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 #  SSI INDEXES (SoSoValue próprios — benchmark)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -159,7 +204,7 @@ THEME_INDEX_MAP = {
     "ai-crypto": "ssiAI",
     "rwa":        "ssiRWA",
     "depin":      "ssiDePIN",
-    "defi":       "ssiDEFI",
+    "defi":       "ssiDeFi",   # era "ssiDEFI" — case-sensitive, índice real é ssiDeFi
 }
 
 async def get_all_ssi_indexes() -> List[str]:
