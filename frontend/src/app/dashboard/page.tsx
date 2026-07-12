@@ -94,25 +94,73 @@ export default function DashboardPage() {
   const [history, setHistory] = useState<HistoryIndex[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [refreshToken, setRefreshToken] = useState(0);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [lastPriceCheck, setLastPriceCheck] = useState<Date | null>(null);
   const [secondsSince, setSecondsSince] = useState(0);
+  // { symbol: 'up' | 'down' } — tokens com valor em flash momentâneo
+  const [flashed, setFlashed] = useState<Record<string, "up" | "down">>({});
+  // Ref para o breakdown atual sem ser dependência do interval
+  const breakdownRef = useRef<BreakdownIndex[]>([]);
   // Garante que wagmi já viu pelo menos um estado "connected" antes de redirecionar no F5
   const seenConnected = useRef(false);
 
   useEffect(() => { setMounted(true); }, []);
 
-  // Auto-refresh a cada 30s
+  // Mantém ref do breakdown sempre atual (evita re-criar o interval a cada mudança)
+  useEffect(() => { breakdownRef.current = breakdown; }, [breakdown]);
+
+  // Polling de preços ao vivo a cada 5s — atualiza só os valores que mudaram
   useEffect(() => {
     if (!viewingAddress) return;
-    const id = setInterval(() => setRefreshToken(n => n + 1), 30_000);
-    return () => clearInterval(id);
-  }, [viewingAddress]);
+    const poll = async () => {
+      if (!breakdownRef.current.length) return;
+      try {
+        const { prices } = await investApi.getLivePrices(networkMode);
+        if (!prices || !Object.keys(prices).length) return;
 
-  // Contador "updated X ago"
+        const newFlash: Record<string, "up" | "down"> = {};
+        let anyChange = false;
+
+        // Normaliza símbolo para buscar no mapa de preços:
+        // "vDEFI.ssi" → strip 'v' → "DEFI.ssi" → remove '.' → "DEFIssi"
+        const normSym = (sym: string) => (sym.startsWith("v") ? sym.slice(1) : sym).replace(/\./g, "");
+
+        setBreakdown(prev => prev.map(b => {
+          let indexChanged = false;
+          const newTokens = b.tokens.map(tok => {
+            const newPrice = prices[normSym(tok.symbol)]; // ex: prices["AAVE"] = 97.5
+            if (!newPrice || newPrice <= 0) return tok;
+            // Ignora mudanças abaixo de 0.01% (ruído de arredondamento)
+            if (Math.abs(newPrice - tok.price) / tok.price < 0.0001) return tok;
+            const dir = newPrice > tok.price ? "up" : "down";
+            newFlash[tok.symbol] = dir;
+            anyChange = true;
+            indexChanged = true;
+            const newUsd = Math.round(tok.quantity * newPrice * 100) / 100;
+            return { ...tok, price: newPrice, usd_value: newUsd };
+          });
+          if (!indexChanged) return b;
+          const newTotal = Math.round(newTokens.reduce((s, t) => s + t.usd_value, 0) * 100) / 100;
+          return { ...b, tokens: newTokens, total_value: newTotal };
+        }));
+
+        if (anyChange) {
+          setFlashed(newFlash);
+          setTimeout(() => setFlashed({}), 800);
+        }
+
+        setLastPriceCheck(new Date());
+        setSecondsSince(0);
+      } catch { /**/ }
+    };
+
+    poll(); // primeira verificação imediata
+    const id = setInterval(poll, 5_000);
+    return () => clearInterval(id);
+  }, [viewingAddress, networkMode]);
+
+  // Contador "checked X ago"
   useEffect(() => {
-    const id = setInterval(() => {
-      setSecondsSince(prev => prev + 1);
-    }, 1_000);
+    const id = setInterval(() => setSecondsSince(s => s + 1), 1_000);
     return () => clearInterval(id);
   }, []);
 
@@ -193,7 +241,7 @@ export default function DashboardPage() {
     }).finally(() => {
       if (!cancelled) {
         setLoading(false);
-        setLastUpdated(new Date());
+        setLastPriceCheck(new Date());
         setSecondsSince(0);
       }
     });
@@ -279,7 +327,7 @@ export default function DashboardPage() {
             )}
             <button
               onClick={() => setRefreshToken(n => n + 1)}
-              title="Atualizar dados agora"
+              title="Forçar atualização completa dos dados"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-white/40 hover:text-white/70 text-xs transition-all"
             >
               {loading ? (
@@ -293,10 +341,8 @@ export default function DashboardPage() {
               <span>
                 {loading
                   ? "updating…"
-                  : lastUpdated
-                  ? secondsSince < 60
-                    ? `${secondsSince}s ago`
-                    : `${Math.floor(secondsSince / 60)}m ago`
+                  : lastPriceCheck
+                  ? `${Math.min(secondsSince, 5)}s`
                   : "live"}
               </span>
             </button>
@@ -439,25 +485,35 @@ export default function DashboardPage() {
                               <span className="text-white/60 text-xs">{fmtUSD(b.total_value)}</span>
                             </div>
                             <div className="divide-y divide-white/5">
-                              {b.tokens.map(tok => (
-                                <div key={tok.symbol} className="px-4 py-3 flex items-center justify-between">
-                                  <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
-                                      <span className="text-white/70 text-xs font-bold">{tok.symbol.slice(0,2)}</span>
+                              {b.tokens.map(tok => {
+                                const flashDir = flashed[tok.symbol];
+                                return (
+                                  <div key={tok.symbol} className="px-4 py-3 flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
+                                        <span className="text-white/70 text-xs font-bold">{tok.symbol.replace("v","").slice(0,3)}</span>
+                                      </div>
+                                      <div>
+                                        <p className="text-white text-sm font-medium">{tok.symbol.startsWith("v") ? tok.symbol.slice(1) : tok.symbol}</p>
+                                        <p className="text-white/40 text-xs">
+                                          {tok.quantity.toFixed(4)} @ $
+                                          <span className={`transition-colors duration-500 ${flashDir === "up" ? "text-green-300" : flashDir === "down" ? "text-red-300" : "text-white/40"}`}>
+                                            {tok.price < 1 ? tok.price.toFixed(4) : tok.price.toFixed(2)}
+                                          </span>
+                                        </p>
+                                      </div>
                                     </div>
-                                    <div>
-                                      <p className="text-white text-sm font-medium">{tok.symbol}</p>
-                                      <p className="text-white/40 text-xs">{tok.quantity.toFixed(4)} tokens @ ${tok.price < 1 ? tok.price.toFixed(4) : tok.price.toFixed(2)}</p>
+                                    <div className="text-right">
+                                      <p className={`text-sm font-semibold transition-colors duration-500 ${flashDir === "up" ? "text-green-300" : flashDir === "down" ? "text-red-300" : "text-white"}`}>
+                                        {fmtUSD(tok.usd_value)}
+                                      </p>
+                                      <p className={`text-xs ${pctColor(tok.change_7d, 1)}`}>
+                                        {fmtChange(tok.change_7d, 1)} 7d
+                                      </p>
                                     </div>
                                   </div>
-                                  <div className="text-right">
-                                    <p className="text-white text-sm font-medium">{fmtUSD(tok.usd_value)}</p>
-                                    <p className={`text-xs ${pctColor(tok.change_7d, 1)}`}>
-                                      {fmtChange(tok.change_7d, 1)} 7d
-                                    </p>
-                                  </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           </div>
                         ))}

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from datetime import datetime, timezone, timedelta
 from loguru import logger
-import os, uuid
+import os, uuid, time as _time
 
 from eth_account.messages import encode_defunct
 from eth_account import Account
@@ -798,6 +798,45 @@ async def get_portfolio_breakdown(wallet_address: str, network_mode: str = "main
             "tokens": tokens,
         })
     return result
+
+
+# ── Live prices — polling endpoint para o dashboard (5s cache) ────────────────
+_LIVE_PRICE_CACHE: dict = {}
+
+@router.get("/live-prices")
+async def get_live_prices(network_mode: str = "mainnet"):
+    """
+    Retorna preços ao vivo do SoDEX para todos os tokens negociáveis.
+    Cache de 5 segundos para não sobrecarregar a API do SoDEX com polling frequente.
+    Chave do preço = símbolo SoDEX sem sufixo (ex: 'vAAVE', 'vDEFI.ssi', 'WSOSO').
+    """
+    global _LIVE_PRICE_CACHE
+    now = _time.monotonic()
+    cached = _LIVE_PRICE_CACHE.get(network_mode, {})
+    if now - cached.get("at", 0.0) < 5.0 and cached.get("prices"):
+        return {"prices": cached["prices"], "cached": True}
+    try:
+        from services.sodex import get_all_tickers
+        tickers = await get_all_tickers(testnet=(network_mode == "testnet"))
+        prices: dict = {}
+        for key, ticker in tickers.items():
+            # get_all_tickers retorna dois formatos:
+            # - Par de mercado: "vAAVE_vUSDC" ou "AAVE-USDC" (contém '-' ou '_') → ignorar
+            # - Símbolo limpo: "AAVE", "DEFIssi", "MAG7ssi" (sem separador) → usar
+            if "-" in key or "_" in key:
+                continue
+            price = float(ticker.get("lastPrice", ticker.get("c", 0)) or 0)
+            if price <= 0:
+                continue
+            prices[key] = round(price, 8)
+        _LIVE_PRICE_CACHE[network_mode] = {"prices": prices, "at": now}
+        return {"prices": prices, "cached": False}
+    except Exception as e:
+        logger.warning(f"live-prices: erro ao buscar tickers SoDEX: {e}")
+        # Retorna cache antigo se disponível
+        if cached.get("prices"):
+            return {"prices": cached["prices"], "cached": True}
+        return {"prices": {}, "cached": False}
 
 
 @router.get("/portfolio/{wallet_address}/history")

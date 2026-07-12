@@ -104,6 +104,9 @@ export const investApi = {
     axios.get(`/api/invest/portfolio/${walletAddress}/history?network_mode=${networkMode}&days=${days}`).then(r => r.data),
   getTransactions: (walletAddress: string, networkMode: string) =>
     axios.get(`/api/invest/portfolio/${walletAddress}/transactions?network_mode=${networkMode}`).then(r => r.data),
+
+  getLivePrices: (networkMode: string): Promise<{ prices: Record<string, number>; cached: boolean }> =>
+    axios.get(`/api/invest/live-prices?network_mode=${networkMode}`).then(r => r.data),
 };
 
 // ─── Admin ────────────────────────────────────────────────────────────────────
