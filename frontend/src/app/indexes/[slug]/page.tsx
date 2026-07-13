@@ -347,6 +347,42 @@ export default function IndexDetailPage() {
                   ))}
                 </div>
 
+                {/* Concentration risk — HHI gauge */}
+                {risk.concentration && (
+                  <div className="bg-white/3 rounded-lg p-3 mb-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs text-white/30">Concentration Risk (HHI)</p>
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${
+                        risk.concentration.level === "low"
+                          ? "text-green-400 border-green-500/30 bg-green-500/8"
+                          : risk.concentration.level === "medium"
+                          ? "text-yellow-400 border-yellow-500/30 bg-yellow-500/8"
+                          : "text-red-400 border-red-500/30 bg-red-500/8"
+                      }`}>
+                        {risk.concentration.level.toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="relative h-2 rounded-full bg-white/10 overflow-hidden mb-2">
+                      <div
+                        className={`absolute left-0 top-0 h-full rounded-full transition-all ${
+                          risk.concentration.level === "low" ? "bg-green-500" :
+                          risk.concentration.level === "medium" ? "bg-yellow-500" : "bg-red-500"
+                        }`}
+                        style={{ width: `${Math.min(100, risk.concentration.hhi * 100)}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-xs text-white/40">
+                      <span>
+                        HHI = <span className="text-white font-mono">{risk.concentration.hhi.toFixed(3)}</span>
+                        <span className="ml-2 text-white/30">· n_efetivo: <span className="text-white font-mono">{risk.concentration.effective_n}</span></span>
+                      </span>
+                      <span className="text-white/30">
+                        maior: <span className="text-white/60 font-mono">{risk.concentration.max_token}</span> {risk.concentration.max_weight_pct}%
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="bg-white/3 rounded-lg p-3 mb-3">
                   <p className="text-xs text-white/30 mb-1.5">Sentiment-driven buffer triggers</p>
                   <div className="space-y-1.5">

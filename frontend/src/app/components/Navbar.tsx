@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useState, useRef, useEffect } from "react";
 import { usePathname } from "next/navigation";
-import { Menu, X, FlaskConical, ChevronDown } from "lucide-react";
+import { Menu, X, FlaskConical, ChevronDown, Bot } from "lucide-react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useAccount } from "wagmi";
 import { useRouter } from "next/navigation";
@@ -54,6 +54,10 @@ export default function Navbar() {
         <div className="hidden md:flex items-center gap-6">
           <Link href="/indexes" className="text-sm text-white/60 hover:text-white transition-colors">{t("nav_indexes")}</Link>
           <Link href="/transparency" className="text-sm text-white/60 hover:text-white transition-colors">{t("nav_transparency")}</Link>
+          <Link href="/ai-insights" className="flex items-center gap-1 text-sm text-white/60 hover:text-white transition-colors">
+            <Bot size={13} />
+            AI Insights
+          </Link>
 
           {isTestnet ? (
             <Link href="/faucet-sepolia" className="text-sm text-white/60 hover:text-white transition-colors">Faucet</Link>
@@ -121,6 +125,10 @@ export default function Navbar() {
         <div className="md:hidden border-t border-brand-border bg-black px-4 py-4 flex flex-col gap-4">
           <Link href="/indexes" className="text-sm text-white/60 hover:text-white" onClick={() => setOpen(false)}>{t("nav_indexes")}</Link>
           <Link href="/transparency" className="text-sm text-white/60 hover:text-white" onClick={() => setOpen(false)}>{t("nav_transparency")}</Link>
+          <Link href="/ai-insights" className="flex items-center gap-1 text-sm text-white/60 hover:text-white" onClick={() => setOpen(false)}>
+            <Bot size={13} />
+            AI Insights
+          </Link>
           {isTestnet ? (
             <Link href="/faucet-sepolia" className="text-sm text-white/60 hover:text-white" onClick={() => setOpen(false)}>Faucet</Link>
           ) : (

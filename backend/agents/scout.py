@@ -200,6 +200,20 @@ async def run_scout_for_index(index_id: str, theme: str, db, macro: dict = None)
     if anchor_symbols:
         logger.info(f"Scout [{theme}]: tokens âncora protegidos (nunca removíveis): {sorted(anchor_symbols)}")
 
+    # 9.5. Correlação entre tokens da cesta atual (detecção de exposição redundante)
+    basket_market_keys: dict = {}
+    for sym, c in current_symbols.items():
+        if not getattr(c, "in_basket", True):
+            continue
+        sym_dot = sym.replace("ssi", ".ssi") if sym.endswith("ssi") else sym
+        for k in [f"{sym}-USD", f"{sym_dot}-USD", sym, sym_dot]:
+            if k in sodex_tickers:
+                basket_market_keys[sym] = k
+                break
+    correlation_ctx = await _compute_basket_correlation(basket_market_keys)
+    if correlation_ctx:
+        logger.info(f"Scout [{theme}]: {correlation_ctx}")
+
     # 10. Scoring por peso SSI + momentum SoDEX
     scored_tokens = _apply_momentum_scoring(candidates)
 
@@ -209,6 +223,7 @@ async def run_scout_for_index(index_id: str, theme: str, db, macro: dict = None)
         top_candidates, theme, sentiment_score,
         news_context=news_summary,
         benchmark=benchmark,
+        correlation_ctx=correlation_ctx,
     )
 
     # 12. Calcula inclusões / exclusões / mudanças de peso
@@ -252,6 +267,60 @@ async def run_scout_for_index(index_id: str, theme: str, db, macro: dict = None)
         f"Scout [{theme}]: completo | candidatos={len(candidates)} | "
         f"+{len(inclusions)} -{len(exclusions)} peso_changes={len(weight_changes)}"
     )
+
+
+async def _compute_basket_correlation(basket_market_keys: dict) -> str:
+    """
+    Busca candles 30d para tokens da cesta e calcula correlação de Pearson par-a-par.
+    Retorna texto de aviso para pares com |r| > 0.80 (exposição redundante).
+    """
+    if len(basket_market_keys) < 2:
+        return ""
+
+    closes_map: dict = {}
+    for sym, market_key in basket_market_keys.items():
+        try:
+            candles = await get_candles(market_key, interval="1D", limit=32)
+            closes = [float(c.get("close", c.get("c", 0)) or 0) for c in candles]
+            closes = [p for p in closes if p > 0]
+            if len(closes) >= 10:
+                closes_map[sym] = closes
+        except Exception as exc:
+            logger.debug(f"Scout correlação: candles {market_key} falhou: {exc}")
+
+    if len(closes_map) < 2:
+        return ""
+
+    def to_returns(ps):
+        return [(ps[i] - ps[i - 1]) / ps[i - 1] for i in range(1, len(ps)) if ps[i - 1] > 0]
+
+    def pearson(xs, ys):
+        n = min(len(xs), len(ys))
+        if n < 5:
+            return 0.0
+        xs, ys = xs[-n:], ys[-n:]
+        mx, my = sum(xs) / n, sum(ys) / n
+        num = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+        denom = (sum((x - mx) ** 2 for x in xs) * sum((y - my) ** 2 for y in ys)) ** 0.5
+        return round(num / denom, 3) if denom > 0 else 0.0
+
+    rets = {sym: to_returns(closes) for sym, closes in closes_map.items()}
+    syms = list(rets.keys())
+
+    high_pairs = []
+    for i in range(len(syms)):
+        for j in range(i + 1, len(syms)):
+            r = pearson(rets[syms[i]], rets[syms[j]])
+            if abs(r) >= 0.80:
+                high_pairs.append((syms[i], syms[j], r))
+
+    if not high_pairs:
+        return ""
+
+    lines = ["BASKET CORRELATION ALERT (30d daily returns — possible redundant exposure):"]
+    for a, b, r in sorted(high_pairs, key=lambda x: -abs(x[2])):
+        lines.append(f"- {a} & {b}: r={r:.2f} ({'positive' if r > 0 else 'negative'} correlation)")
+    return "\n".join(lines)
 
 
 def _apply_momentum_scoring(tokens: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -300,6 +369,7 @@ async def _generate_ai_rationale(
     sentiment_score: float,
     news_context: str = "",
     benchmark: dict = None,
+    correlation_ctx: str = "",
 ) -> List[Dict[str, Any]]:
     """Gemini gera rationale usando dados SSI + SoDEX."""
 
@@ -321,17 +391,19 @@ async def _generate_ai_rationale(
         benchmark_line = f"\nSoSoValue {ticker} benchmark: 7d {roi_7*100:+.1f}%, 30d {roi_30*100:+.1f}%"
 
     news_line = f"\nLatest news: {news_context}" if news_context else ""
+    correlation_line = f"\n\n{correlation_ctx}" if correlation_ctx else ""
 
     prompt = f"""You are a crypto analyst managing a thematic index: {theme.upper()}.
 All candidates are pre-qualified by SoSoValue's SSI index — a trusted institutional crypto index.
 
-Market sentiment: {sentiment_score}/100 ({_sentiment_label(sentiment_score)}){benchmark_line}{news_line}
+Market sentiment: {sentiment_score}/100 ({_sentiment_label(sentiment_score)}){benchmark_line}{news_line}{correlation_line}
 
 Candidates (ranked by SSI weight + momentum):
 {token_summaries}
 
 For each token, write ONE sentence (max 20 words) explaining why it belongs in this index.
 Focus on: role in the theme, momentum, and institutional recognition by SoSoValue SSI.
+When relevant, reference correlation data above to justify diversification choices.
 
 Respond ONLY with a JSON array:
 [

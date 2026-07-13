@@ -107,6 +107,9 @@ export const investApi = {
 
   getLivePrices: (networkMode: string): Promise<{ prices: Record<string, number>; cached: boolean }> =>
     axios.get(`/api/invest/live-prices?network_mode=${networkMode}`).then(r => r.data),
+
+  getInsights: (walletAddress: string, networkMode: string): Promise<{ insights: import("@/types").InvestorInsight[]; total: number }> =>
+    axios.get(`/api/invest/insights?wallet_address=${walletAddress}&network_mode=${networkMode}`).then(r => r.data),
 };
 
 // ─── Admin ────────────────────────────────────────────────────────────────────

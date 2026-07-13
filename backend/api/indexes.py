@@ -127,6 +127,23 @@ def get_index_risk(slug: str, network_mode: str = Query("mainnet"), db: Session 
             "ai_rationale": last_proposal.ai_rationale or "",
         }
 
+    # Concentration risk (HHI — Herfindahl-Hirschman Index)
+    basket = [c for c in constituents if getattr(c, "in_basket", True) and c.weight and c.weight > 0]
+    concentration = None
+    if basket:
+        total_w = sum(c.weight for c in basket) or 1.0
+        norm_w = [c.weight / total_w for c in basket]
+        hhi = round(sum(w * w for w in norm_w), 3)
+        dominant = max(basket, key=lambda c: c.weight)
+        concentration = {
+            "hhi": hhi,
+            "effective_n": round(1 / hhi, 1) if hhi > 0 else 0,
+            "level": "high" if hhi > 0.35 else "medium" if hhi > 0.20 else "low",
+            "max_token": dominant.symbol,
+            "max_weight_pct": round(dominant.weight, 1),
+            "token_count": len(basket),
+        }
+
     return ApiResponse(data={
         "index_id":              idx.id,
         "network_mode":          network_mode,
@@ -143,4 +160,5 @@ def get_index_risk(slug: str, network_mode: str = Query("mainnet"), db: Session 
         "tokens":           tokens_at_risk,
         "cooldown_tokens":  cooldown_tokens,
         "last_proposal":    proposal_data,
+        "concentration":    concentration,
     })

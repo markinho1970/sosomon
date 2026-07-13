@@ -234,12 +234,12 @@ export default function DashboardPage() {
         setPortfolios(portfolioData.portfolios ?? []);
         setSubscriber(portfolioData.subscriber ?? null);
       }
-      if (activityData) setActivities(activityData ?? []);
-      if (macroData)    setMacro(macroData);
-      if (refundsData)  setRefundNotices(refundsData ?? []);
-      if (bkd)          setBreakdown(bkd);
-      if (hist)         setHistory(hist);
-      if (txs)          setTransactions(txs);
+      if (activityData)  setActivities(activityData ?? []);
+      if (macroData)     setMacro(macroData);
+      if (refundsData)   setRefundNotices(refundsData ?? []);
+      if (bkd)           setBreakdown(bkd);
+      if (hist)          setHistory(hist);
+      if (txs)           setTransactions(txs);
 
       // Log falhas para debug sem quebrar a UI
       results.forEach((r, i) => {

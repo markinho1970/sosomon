@@ -103,6 +103,7 @@ SoDEX mainnet has **34 markets total** — 25 TRADING + 9 HALT.
 - **HALT guard:** tokens with HALT status on SoDEX are blocked from inclusion even if SSI-ranked
 - **Anchor protection:** `vMAG7.ssi`, `vDEFI.ssi`, `vUSSI`, `WSOSO` are immune to Scout exclusions
 - **Replacement rule:** Scout only recommends removing a token if it has a validated SoDEX-listed replacement ready. No replacements available → no removals recommended
+- **Correlation analysis:** computes Pearson correlation (30d daily returns) between all basket token pairs. High-correlation pairs (|r| ≥ 0.80) are surfaced in the AI prompt to guide diversification reasoning
 - Powered by Google Gemini
 
 ### Rebalancer — Portfolio Maintenance (Mon 08:00 UTC + drift check every 4h)
@@ -170,6 +171,7 @@ No signature → no deposit attribution.
 | Human approval | Mandatory | No rebalance executes without founder sign-off |
 | Anchor tokens | 4 tokens immune | MAG7ssi, DEFIssi, USSIssi, WSOSO cannot be removed by agents |
 | Drift-only rule | Drift trigger = weight adjust only | Token replacement requires weekly or emergency trigger |
+| Concentration risk (HHI) | Displayed in risk panel | Herfindahl-Hirschman Index — measures basket concentration; effective token count computed |
 
 ### Audit Trail — Two Layers
 
@@ -199,6 +201,66 @@ Permanent, immutable, verifiable on Basescan without trusting SoSoMon.
 - SoDEX private key stored encrypted with **AES-256-GCM** at rest
 - `MASTER_ENCRYPTION_KEY` set only in server environment — never in source code
 - `.env` files excluded via `.gitignore` — never committed
+
+---
+
+## What's New — July 2026 (Wave 3 Final)
+
+### AI Insights — Dedicated Intelligence Page
+New `/ai-insights` page accessible from the main navigation (between Transparency and Faucet):
+- **General view:** all three indexes ranked by 30d performance vs BTC benchmark — visible to any visitor
+- **Personalized view (wallet connected):** opportunities in indexes the investor hasn't entered yet, filtered by outperformance vs BTC; concentration warnings for current positions
+- Powered by the same Scout data pipeline and the new `/api/invest/insights` endpoint
+
+### Concentration Risk — HHI Gauge
+Every index risk panel (`/indexes/[slug]` → Risk Controls) now shows:
+- **Herfindahl-Hirschman Index (HHI):** sum of squared weight shares — measures basket concentration
+- **Effective token count:** `1/HHI` — how many equal-weight tokens the basket behaves like
+- **Color-coded level:** LOW (green, HHI < 0.20) / MEDIUM (yellow, 0.20–0.35) / HIGH (red, > 0.35)
+- Dominant token and its weight always visible
+
+### Scout Correlation Analysis
+The Scout now computes **Pearson correlation** between all basket token pairs using 30d daily closing prices from SoDEX candles:
+- Identifies high-correlation pairs (|r| ≥ 0.80) — potentially redundant exposure
+- Correlation findings injected into the Gemini AI prompt so rationale can explicitly mention diversification value or redundancy risk
+- Runs silently within the daily Scout job — no scheduler change required
+
+### Live Dashboard — 5-Second Price Polling
+Investor dashboard updates token values without page reload:
+- `setInterval` polls `/api/invest/live-prices` every 5s
+- Only changed values are updated via React state diff — no full re-render
+- Visual flash: green for price increase, red for decrease, 800ms duration
+- `breakdownRef` pattern ensures the interval never restarts on state changes
+
+### NAV Analytics in Dashboard
+- **NAV % chart:** evolution since entry, normalized from first snapshot
+- **BTC 30d benchmark line:** amber dashed reference on the same chart
+- **Weekly alerts:** banner shown when `|return_7d_pct| ≥ 3%` — green for gain, yellow/red for loss
+
+### Admin Dashboard — Live Refresh
+- Auto-refresh every 60s (stats + portfolio + fund wallet + investors)
+- No full page reload — only live data sections update
+- Animated pulsing dot + age counter ("atualizado Xs atrás")
+
+### SoDEX Order Precision Fix (Critical)
+All buy/sell/rebalance orders now use pair-specific `quantityPrecision`, `pricePrecision`, `stepSize`, and `minNotional` fetched from SoDEX `/markets/symbols`:
+- Fixed "quantity is invalid" errors for tokens like LINK (precision=1), ADA (precision=0)
+- Fixed "notional is invalid" errors — quantity is ceiling-adjusted by 1 step when `qty × price < minNotional`
+- Applied to all three trade functions: `execute_buy_for_deposit`, `execute_rebalance_trades`, `execute_sell_for_withdrawal`
+
+### Fully Automated SoDEX Deposit Flow (Mainnet)
+End-to-end deposit flow now requires zero manual steps:
+1. Investor sends USDC to fund wallet on Base
+2. Deposit Monitor detects transfer (`eth_getLogs`)
+3. `deposit_usdc_to_sodex()` transfers USDC on-chain to SoDEX deposit address
+4. System waits 150s for vUSDC credit
+5. Buys all basket tokens proportionally at current prices
+6. Portfolio and shares updated automatically
+
+### First Real Mainnet Deposit
+- Investor `031c` deposited **$25 USDC** into DeFi Infrastructure Index on Base Mainnet
+- 4 orders executed: DEFIssi 26.44 + AAVE 0.05 + UNI 1.34 + LINK 0.7
+- Portfolio: **432.31 shares @ NAV $0.057829**
 
 ---
 
@@ -280,7 +342,8 @@ English · Portuguese BR · Chinese · Japanese · Hindi · Indonesian · Korean
 │  ├── /                  Home — live stats, network selector    │
 │  ├── /indexes           Index list with NAV, return, min deposit│
 │  ├── /indexes/[slug]    Detail — constituents, risk panel, invest│
-│  ├── /dashboard         Investor portfolio — P&L, history       │
+│  ├── /dashboard         Investor portfolio — live prices, NAV   │
+│  ├── /ai-insights       AI market intelligence + personal alerts│
 │  ├── /transparency      Agent activity log, rebalance history   │
 │  ├── /faucet-sepolia    Testnet ETH faucet (Base Sepolia)       │
 │  ├── /whats-new         Feature changelog                       │
@@ -515,7 +578,7 @@ python migrate_add_in_basket.py
 | `backend/services/onchain_logger.py` | 0 ETH Base tx with rebalance calldata |
 | `backend/api/admin.py` | Admin endpoints — EIP-191 auth, Treasury reconciliation |
 | `backend/api/audit.py` | Public audit: `/deposits` + `/proposals` with SHA-256 verification |
-| `backend/api/indexes.py` | Index data + `/risk` — ejection risk, cooldown tokens |
+| `backend/api/indexes.py` | Index data + `/risk` — ejection risk, cooldown tokens, HHI concentration |
 
 ---
 
@@ -527,7 +590,7 @@ python migrate_add_in_basket.py
 |---|---|---|
 | GET | `/api/indexes` | List all active indexes |
 | GET | `/api/indexes/{slug}` | Index detail with constituents |
-| GET | `/api/indexes/{slug}/risk` | Risk data: ejection risk, cooldown tokens, risk rules |
+| GET | `/api/indexes/{slug}/risk` | Risk data: ejection risk, cooldown tokens, HHI concentration |
 | GET | `/api/macro` | SoSoValue macro context + sentiment score |
 | GET | `/api/stats` | Platform stats (AUM, subscribers, rebalances) |
 | GET | `/api/audit/deposits` | On-chain deposits detected by Deposit Monitor |
@@ -540,6 +603,11 @@ python migrate_add_in_basket.py
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | `/api/invest/portfolio/{wallet}` | Investor portfolio with P&L |
+| GET | `/api/invest/portfolio/{wallet}/breakdown` | Live token quantities × real SoDEX positions |
+| GET | `/api/invest/portfolio/{wallet}/history` | NAV history for charting |
+| GET | `/api/invest/portfolio/{wallet}/transactions` | Deposit and withdrawal history |
+| GET | `/api/invest/live-prices` | Live SoDEX prices (5s cache) — 33 tokens |
+| GET | `/api/invest/insights` | AI insights: opportunities + concentration risk |
 | GET | `/api/invest/fund-wallet` | Fund wallet address + USDC balance |
 | POST | `/api/invest/register-consent` | Record signed risk disclosure |
 | POST | `/api/invest/withdraw` | Execute withdrawal |

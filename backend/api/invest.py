@@ -841,6 +841,90 @@ async def get_live_prices(network_mode: str = "mainnet"):
         return {"prices": {}, "cached": False}
 
 
+# ── Insights de médio prazo — oportunidades + riscos de concentração ───────────
+
+@router.get("/insights")
+async def get_insights(wallet_address: str, network_mode: str = "mainnet", db: Session = Depends(get_db)):
+    """
+    Retorna insights personalizados de médio prazo para o investidor:
+    - Oportunidades em índices que ainda não investe (outperformance vs BTC)
+    - Alertas de alta concentração de risco (HHI) nas cestas atuais
+    """
+    wallet = wallet_address.lower()
+    subscriber = db.query(Subscriber).filter(Subscriber.wallet_address == wallet).first()
+
+    active_index_ids: set = set()
+    if subscriber:
+        active_portfolios = db.query(SubscriberPortfolio).filter(
+            SubscriberPortfolio.subscriber_id == subscriber.id,
+            SubscriberPortfolio.network_mode == network_mode,
+            SubscriberPortfolio.current_value_usd > 0,
+        ).all()
+        active_index_ids = {p.index_id for p in active_portfolios}
+
+    all_indexes = db.query(AlphaIndex).filter(AlphaIndex.is_active == True).all()
+    insights = []
+
+    # 1. Oportunidades — índices com outperformance vs BTC que o investidor não tem
+    for idx in all_indexes:
+        if idx.id in active_index_ids:
+            continue
+        r30 = getattr(idx, "return_30d_pct", None) or 0.0
+        r7  = getattr(idx, "return_7d_pct",  None) or 0.0
+        btc = getattr(idx, "btc_benchmark_30d", None) or 0.0
+        outperf = round(r30 - btc, 2)
+        if outperf >= 3.0:
+            insights.append({
+                "type": "opportunity",
+                "index_id":          idx.id,
+                "index_slug":        idx.slug,
+                "index_name":        idx.name,
+                "return_30d_pct":    round(r30, 2),
+                "return_7d_pct":     round(r7, 2),
+                "btc_benchmark_30d": round(btc, 2),
+                "outperformance_pct": outperf,
+                "nav_usd":           idx.nav_usd,
+                "message": (
+                    f"{idx.name} superou o BTC em {outperf:.1f}% nos últimos 30 dias"
+                    + (f" · 7d: {r7:+.1f}%" if r7 != 0 else "")
+                ),
+            })
+
+    # 2. Concentração — HHI nas cestas onde o investidor está
+    for idx_id in active_index_ids:
+        idx = db.query(AlphaIndex).filter(AlphaIndex.id == idx_id).first()
+        if not idx:
+            continue
+        constituents = db.query(IndexConstituent).filter(
+            IndexConstituent.index_id == idx_id,
+            IndexConstituent.network_mode == network_mode,
+        ).all()
+        basket = [c for c in constituents if getattr(c, "in_basket", True) and c.weight and c.weight > 0]
+        if not basket:
+            continue
+        total_w = sum(c.weight for c in basket) or 1.0
+        norm_w = [c.weight / total_w for c in basket]
+        hhi = sum(w * w for w in norm_w)
+        if hhi > 0.35:
+            dominant = max(basket, key=lambda c: c.weight)
+            insights.append({
+                "type": "concentration",
+                "index_id":       idx_id,
+                "index_slug":     idx.slug,
+                "index_name":     idx.name,
+                "hhi":            round(hhi, 3),
+                "effective_n":    round(1 / hhi, 1),
+                "dominant_token": dominant.symbol,
+                "max_weight_pct": round(dominant.weight, 1),
+                "message": (
+                    f"{dominant.symbol} representa {dominant.weight:.0f}% da cesta — "
+                    f"alta concentração (HHI={hhi:.2f}, n_efetivo={1/hhi:.1f})"
+                ),
+            })
+
+    return {"insights": insights, "total": len(insights)}
+
+
 @router.get("/portfolio/{wallet_address}/history")
 def get_portfolio_history(wallet_address: str, network_mode: str = "mainnet", days: int = 30, db: Session = Depends(get_db)):
     """Histórico de valor do portfolio para gráfico de evolução."""

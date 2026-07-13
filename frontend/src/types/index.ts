@@ -39,6 +39,15 @@ export interface IndexRiskCooldownToken {
   reason: string;
 }
 
+export interface IndexConcentration {
+  hhi: number;
+  effective_n: number;
+  level: "low" | "medium" | "high";
+  max_token: string;
+  max_weight_pct: number;
+  token_count: number;
+}
+
 export interface IndexRiskData {
   index_id: string;
   network_mode: string;
@@ -61,6 +70,26 @@ export interface IndexRiskData {
     changes: Array<{ symbol: string; action: string; old_weight: number; new_weight: number; rationale: string }>;
     ai_rationale: string;
   } | null;
+  concentration: IndexConcentration | null;
+}
+
+export interface InvestorInsight {
+  type: "opportunity" | "concentration";
+  index_id: string;
+  index_slug: string;
+  index_name: string;
+  message: string;
+  // opportunity fields
+  return_30d_pct?: number;
+  return_7d_pct?: number;
+  btc_benchmark_30d?: number;
+  outperformance_pct?: number;
+  nav_usd?: number;
+  // concentration fields
+  hhi?: number;
+  effective_n?: number;
+  dominant_token?: string;
+  max_weight_pct?: number;
 }
 
 export interface AlphaIndex {
