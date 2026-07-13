@@ -680,7 +680,9 @@ def get_portfolio(wallet_address: str, network_mode: str = "mainnet", db: Sessio
             "current_value_usd": p.current_value_usd,
             "index_tokens_held": p.index_tokens_held,
             "all_time_return_pct": round(all_time_return, 2),
-            "return_30d_pct": index.return_30d_pct,
+            "return_7d_pct": round(index.return_7d_pct or 0, 2),
+            "return_30d_pct": round(index.return_30d_pct or 0, 2),
+            "btc_benchmark_30d": round(index.btc_benchmark_30d or 0, 2),
             "high_water_mark_usd": p.high_water_mark_usd,
             "days_invested": p.days_invested,
             "accrued_performance_fee_usd": accrued_fee,
@@ -870,12 +872,14 @@ def get_portfolio_history(wallet_address: str, network_mode: str = "mainnet", da
                 "date": (p.first_invested_at or datetime.utcnow()).strftime("%Y-%m-%dT%H:%M:%S"),
                 "value": p.current_value_usd,
                 "deposited": p.deposited_usd,
+                "nav": index.nav_usd if index else None,
             }]
         else:
             points = [{
                 "date": s.snapshot_at.strftime("%Y-%m-%dT%H:%M:%S"),
                 "value": s.value_usd,
                 "deposited": s.deposited_usd or p.deposited_usd,
+                "nav": s.nav_per_token,
             } for s in snapshots]
 
         result.append({
@@ -884,6 +888,9 @@ def get_portfolio_history(wallet_address: str, network_mode: str = "mainnet", da
             "theme": index.theme if index else "",
             "current_value": p.current_value_usd,
             "deposited": p.deposited_usd,
+            "return_7d_pct": round(index.return_7d_pct or 0, 2) if index else 0,
+            "return_30d_pct": round(index.return_30d_pct or 0, 2) if index else 0,
+            "btc_benchmark_30d": round(index.btc_benchmark_30d or 0, 2) if index else 0,
             "points": points,
         })
     return result

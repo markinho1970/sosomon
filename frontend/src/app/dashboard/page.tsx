@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { AreaChart, Area, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine, Legend } from "recharts";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAccount } from "wagmi";
@@ -58,7 +58,9 @@ interface Portfolio {
   current_value_usd: number;
   index_tokens_held: number;
   all_time_return_pct: number;
+  return_7d_pct: number;
   return_30d_pct: number;
+  btc_benchmark_30d: number;
   high_water_mark_usd: number;
   days_invested: number;
   accrued_performance_fee_usd: number;
@@ -70,8 +72,13 @@ interface TokenHolding {
   change_7d: number; change_30d: number;
 }
 interface BreakdownIndex { index_id: string; index_name: string; total_value: number; tokens: TokenHolding[]; }
-interface HistoryPoint { date: string; value: number; deposited: number; }
-interface HistoryIndex { index_id: string; index_name: string; theme: string; current_value: number; deposited: number; points: HistoryPoint[]; }
+interface HistoryPoint { date: string; value: number; deposited: number; nav?: number; }
+interface HistoryIndex {
+  index_id: string; index_name: string; theme: string;
+  current_value: number; deposited: number;
+  return_7d_pct: number; return_30d_pct: number; btc_benchmark_30d: number;
+  points: HistoryPoint[];
+}
 interface Transaction { type: "deposit"|"withdrawal"; index_id: string; amount_usd: number; net_usd?: number; tx_hash: string; timestamp: string; status: string; }
 
 export default function DashboardPage() {
@@ -419,6 +426,32 @@ export default function DashboardPage() {
                   </div>
                 ) : (
                   <>
+                    {/* ── Alertas de performance semanal ─────────────────────────── */}
+                    {portfolios.filter(p => Math.abs(p.return_7d_pct ?? 0) >= 3).map(p => {
+                      const r7 = p.return_7d_pct ?? 0;
+                      const up = r7 > 0;
+                      return (
+                        <div key={`alert-${p.index_id}`} className={`rounded-xl border px-4 py-3 flex items-center gap-3 mb-1 ${
+                          up
+                            ? "border-green-500/30 bg-green-500/8 text-green-300"
+                            : r7 < -10
+                            ? "border-red-500/40 bg-red-500/10 text-red-300"
+                            : "border-yellow-500/30 bg-yellow-500/8 text-yellow-300"
+                        }`}>
+                          <span className="text-lg">{up ? "🚀" : r7 < -10 ? "⚠️" : "📉"}</span>
+                          <div className="flex-1">
+                            <span className="font-semibold text-sm">{p.index_name}</span>
+                            <span className="text-xs ml-2 opacity-80">
+                              {up ? "subiu" : "caiu"} <strong>{Math.abs(r7).toFixed(2)}%</strong> esta semana
+                              {p.btc_benchmark_30d !== 0 && (
+                                <span className="opacity-60 ml-2">· BTC 30d: {p.btc_benchmark_30d > 0 ? "+" : ""}{p.btc_benchmark_30d.toFixed(2)}%</span>
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+
                     {portfolios.map((p) => (
                       <div key={p.index_id} className={`card border-l-4 ${THEME_BORDER[p.theme] ?? "border-l-white/10"} hover:border-white/10 transition-all`}>
                         <div className="flex flex-col md:flex-row gap-4">
@@ -561,47 +594,115 @@ export default function DashboardPage() {
                 {history.length === 0 ? (
                   <div className="text-center text-white/40 py-16">No performance data yet — chart fills in hourly.</div>
                 ) : history.map(h => {
-                  const chartData = h.points.map(p => ({
+                  // Normaliza NAV para % de retorno desde o primeiro snapshot
+                  const navPoints = h.points.filter(p => p.nav && p.nav > 0);
+                  const navBase = navPoints.length > 0 ? navPoints[0].nav! : null;
+                  const navChartData = navPoints.map(p => ({
+                    date: new Date(p.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+                    nav_pct: navBase && navBase > 0 ? parseFloat(((p.nav! - navBase) / navBase * 100).toFixed(2)) : 0,
+                    value: p.value,
+                    deposited: p.deposited,
+                  }));
+
+                  // Se não há pontos de NAV, usa dados de valor absoluto
+                  const useNav = navChartData.length > 1;
+                  const absChartData = h.points.map(p => ({
                     date: new Date(p.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
                     value: p.value,
                     deposited: p.deposited,
                   }));
+
                   const pnl = h.current_value - h.deposited;
                   const pnlPct = h.deposited > 0 ? (pnl / h.deposited * 100) : 0;
+                  const btc30d = h.btc_benchmark_30d ?? 0;
+                  const r7d = h.return_7d_pct ?? 0;
+                  const r30d = h.return_30d_pct ?? 0;
+
                   return (
                     <div key={h.index_id} className="bg-white/5 rounded-xl p-5 border border-white/10">
-                      <div className="flex items-center justify-between mb-4">
+                      {/* Header com métricas */}
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-5">
                         <div>
-                          <p className="text-white font-semibold">{h.index_name}</p>
-                          <p className={`text-sm font-medium ${pctColor(pnlPct, 2, "text-white")}`}>
-                            {parseFloat(pnl.toFixed(2)) > 0 ? "+" : parseFloat(pnl.toFixed(2)) === 0 ? "" : ""}{fmtUSD(pnl)} ({fmtPct(pnlPct)}) all-time
-                          </p>
+                          <p className="text-white font-semibold text-base mb-1">{h.index_name}</p>
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <span className={`text-sm font-medium ${pctColor(pnlPct, 2, "text-white")}`}>
+                              {fmtUSD(pnl)} ({fmtPct(pnlPct)}) all-time
+                            </span>
+                            <span className="text-white/20">·</span>
+                            <span className={`text-xs ${pctColor(r7d, 1)}`}>{fmtChange(r7d, 1)} 7d</span>
+                            <span className={`text-xs ${pctColor(r30d, 1)}`}>{fmtChange(r30d, 1)} 30d</span>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <p className="text-white font-bold text-lg">{fmtUSD(h.current_value)}</p>
-                          <p className="text-white/40 text-xs">current value</p>
+                        <div className="flex gap-4 shrink-0 text-right">
+                          <div>
+                            <p className="text-white font-bold text-lg">{fmtUSD(h.current_value)}</p>
+                            <p className="text-white/40 text-xs">current value</p>
+                          </div>
+                          {btc30d !== 0 && (
+                            <div className="border-l border-white/10 pl-4">
+                              <p className={`font-semibold text-sm ${pctColor(btc30d, 1)}`}>{fmtChange(btc30d, 1)}</p>
+                              <p className="text-white/30 text-xs">BTC 30d</p>
+                            </div>
+                          )}
                         </div>
                       </div>
-                      <ResponsiveContainer width="100%" height={200}>
-                        <AreaChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                          <defs>
-                            <linearGradient id={`grad-${h.index_id}`} x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#f97316" stopOpacity={0.3} />
-                              <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                          <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 11 }} axisLine={false} tickLine={false} />
-                          <YAxis tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v.toFixed(0)}`} width={48} />
-                          <Tooltip
-                            contentStyle={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#fff" }}
-                            formatter={(v: number) => [`$${v.toFixed(2)}`, ""]}
-                          />
-                          <Area type="monotone" dataKey="value" stroke="#f97316" strokeWidth={2} fill={`url(#grad-${h.index_id})`} dot={false} name="Value" />
-                          <Area type="monotone" dataKey="deposited" stroke="rgba(255,255,255,0.2)" strokeWidth={1} strokeDasharray="4 4" fill="none" dot={false} name="Invested" />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                      {chartData.length <= 1 && (
+
+                      {/* Gráfico NAV % (principal) */}
+                      {useNav ? (
+                        <>
+                          <p className="text-white/40 text-xs mb-2 uppercase tracking-widest">NAV Return % since inception</p>
+                          <ResponsiveContainer width="100%" height={200}>
+                            <LineChart data={navChartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                              <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 10 }} axisLine={false} tickLine={false} />
+                              <YAxis tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `${v > 0 ? "+" : ""}${v.toFixed(1)}%`} width={52} />
+                              <Tooltip
+                                contentStyle={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#fff" }}
+                                formatter={(v: number, name: string) => [
+                                  name === "nav_pct" ? `${v > 0 ? "+" : ""}${v.toFixed(2)}%` : `$${v.toFixed(2)}`,
+                                  name === "nav_pct" ? "NAV return" : name,
+                                ]}
+                              />
+                              <ReferenceLine y={0} stroke="rgba(255,255,255,0.15)" strokeDasharray="4 4" />
+                              {btc30d !== 0 && (
+                                <ReferenceLine
+                                  y={btc30d}
+                                  stroke="#f59e0b"
+                                  strokeDasharray="6 3"
+                                  strokeWidth={1.5}
+                                  label={{ value: `BTC 30d ${btc30d > 0 ? "+" : ""}${btc30d.toFixed(1)}%`, fill: "#f59e0b", fontSize: 10, position: "right" }}
+                                />
+                              )}
+                              <Line type="monotone" dataKey="nav_pct" stroke="#f97316" strokeWidth={2} dot={false} name="nav_pct" />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-white/40 text-xs mb-2 uppercase tracking-widest">Portfolio Value (USD)</p>
+                          <ResponsiveContainer width="100%" height={200}>
+                            <AreaChart data={absChartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                              <defs>
+                                <linearGradient id={`grad-${h.index_id}`} x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%" stopColor="#f97316" stopOpacity={0.3} />
+                                  <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
+                                </linearGradient>
+                              </defs>
+                              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                              <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 10 }} axisLine={false} tickLine={false} />
+                              <YAxis tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v.toFixed(0)}`} width={48} />
+                              <Tooltip
+                                contentStyle={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#fff" }}
+                                formatter={(v: number) => [`$${v.toFixed(2)}`, ""]}
+                              />
+                              <Area type="monotone" dataKey="value" stroke="#f97316" strokeWidth={2} fill={`url(#grad-${h.index_id})`} dot={false} name="Value" />
+                              <Area type="monotone" dataKey="deposited" stroke="rgba(255,255,255,0.2)" strokeWidth={1} strokeDasharray="4 4" fill="none" dot={false} name="Invested" />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        </>
+                      )}
+
+                      {navChartData.length <= 1 && (
                         <p className="text-white/30 text-xs text-center mt-2">Chart accumulates hourly — check back later for the full curve.</p>
                       )}
                     </div>
