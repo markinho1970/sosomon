@@ -165,6 +165,46 @@ async def run_scout_for_index(index_id: str, theme: str, db, macro: dict = None)
     }
     logger.debug(f"Scout [{theme}]: tokens HALT no SoDEX = {sorted(halt_set)}")
 
+    # 7b. Tokens da cesta que não vieram do SSI (vXAUt, vBTC, WSOSO etc.)
+    # O SSI cobre apenas os tokens que ele próprio indexa — tokens estratégicos
+    # escolhidos pelo founder ficam de fora do universo SSI e eram avaliados
+    # sem dados históricos. Aqui os adicionamos como candidatos para que o
+    # scoring (step 10) use roi_7d/30d/3m reais da SoSoValue, não zero.
+    _candidate_syms_set = {c["symbol"].upper() for c in candidates}
+    _basket_rows = db.query(IndexConstituent).filter(
+        IndexConstituent.index_id == index_id,
+        IndexConstituent.in_basket == True,
+    ).all()
+    _basket_extras = []
+    for _bc in _basket_rows:
+        if _bc.symbol.upper() in _candidate_syms_set or _bc.symbol.upper() in {"USDC", "USDT"}:
+            continue
+        # Resolve currency_id: remove prefixo 'v' e busca no cache SoSoValue
+        _stripped = _bc.symbol[1:] if _bc.symbol.lower().startswith("v") and len(_bc.symbol) > 1 else _bc.symbol
+        _cid = sosovalue._CURRENCY_CACHE.get(_stripped.upper(), "")
+        _is_halt = _bc.symbol.lstrip("vV").upper() in halt_set
+        _basket_extras.append({
+            "symbol": _bc.symbol,
+            "name": _bc.name or _bc.symbol,
+            "currency_id": _cid,
+            "ssi_weight": float(_bc.weight or 0) / 100.0,
+            "current_price_usd": 0.0,
+            "volume_24h_usd": 0.0,
+            "price_change_7d": 0.0,
+            "price_change_30d": 0.0,
+            "market_cap_usd": 0.0,
+            "on_sodex": True,
+            "is_halt": _is_halt,
+            "in_current_basket": True,
+        })
+    if _basket_extras:
+        logger.info(
+            f"Scout [{theme}]: {len(_basket_extras)} tokens da cesta fora do SSI — "
+            f"buscando klines SoSoValue: {[t['symbol'] for t in _basket_extras]}"
+        )
+        _basket_extras = await sosovalue.enrich_candidates_with_performance(_basket_extras)
+        candidates.extend(_basket_extras)
+
     # 8. Enriquece com dados on-chain do SoDEX
     for token in candidates:
         sym = token["symbol"]

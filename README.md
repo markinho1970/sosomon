@@ -97,7 +97,8 @@ SoDEX mainnet has **34 markets total** — 25 TRADING + 9 HALT.
 
 ### Scout — Daily Screening (06:00 UTC)
 - Fetches SSI constituents from SoSoValue API for each theme (ssiAI, ssiRWA, ssiDEFI)
-- Enriches candidates with live SoDEX prices and 30d momentum from candles
+- **Full basket coverage:** enriches ALL active basket tokens with SoSoValue klines (91 days OHLCV) — including tokens not covered by the SSI (e.g. `vXAUt`, `vBTC` in RWA, `WSOSO`). Strips the `v` prefix to resolve the SoSoValue `currency_id` from the currencies cache, then fetches `roi_7d`, `roi_30d`, `roi_3m`. Previously, non-SSI basket tokens were scored with zero historical data.
+- Enriches all candidates with live SoDEX prices and 30d momentum from SoDEX candles
 - **Ejection rule:** any basket token with >−40% loss in 7 days → immediate ejection proposal
 - **Cooldown:** ejected tokens cannot re-enter for 90 days
 - **HALT guard:** tokens with HALT status on SoDEX are blocked from inclusion even if SSI-ranked
