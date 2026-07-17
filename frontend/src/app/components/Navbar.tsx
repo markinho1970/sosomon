@@ -56,13 +56,13 @@ export default function Navbar() {
           <Link href="/transparency" className="text-sm text-white/60 hover:text-white transition-colors">{t("nav_transparency")}</Link>
           <Link href="/ai-insights" className="flex items-center gap-1 text-sm text-white/60 hover:text-white transition-colors">
             <Bot size={13} />
-            AI Insights
+            {t("nav_ai_insights")}
           </Link>
 
           {isTestnet ? (
-            <Link href="/faucet-sepolia" className="text-sm text-white/60 hover:text-white transition-colors">Faucet</Link>
+            <Link href="/faucet-sepolia" className="text-sm text-white/60 hover:text-white transition-colors">{t("nav_faucet")}</Link>
           ) : (
-            <span title="Switch to Testnet to access the faucet" className="text-sm text-white/20 cursor-not-allowed select-none">Faucet</span>
+            <span title={t("nav_faucet_locked_hint")} className="text-sm text-white/20 cursor-not-allowed select-none">{t("nav_faucet")}</span>
           )}
 
           <Link href="/whats-new" className="flex items-center gap-1.5 text-sm text-amber-400/80 hover:text-amber-300 transition-colors font-medium">
@@ -72,9 +72,15 @@ export default function Navbar() {
         </div>
 
         <div className="hidden md:flex items-center gap-2">
-          <Link href="/dashboard" className="text-sm text-white/60 hover:text-white px-4 py-2 rounded-lg border border-white/10 hover:border-white/20 transition-all">
-            {t("nav_dashboard")}
-          </Link>
+          {isConnected ? (
+            <Link href="/dashboard" className="text-sm text-white/60 hover:text-white px-4 py-2 rounded-lg border border-white/10 hover:border-white/20 transition-all">
+              {t("nav_dashboard")}
+            </Link>
+          ) : (
+            <span title={t("nav_dashboard_locked")} className="text-sm text-white/20 cursor-not-allowed select-none px-4 py-2 rounded-lg border border-white/5">
+              {t("nav_dashboard")}
+            </span>
+          )}
 
           <div ref={langRef} className="relative">
             <button
@@ -127,15 +133,19 @@ export default function Navbar() {
           <Link href="/transparency" className="text-sm text-white/60 hover:text-white" onClick={() => setOpen(false)}>{t("nav_transparency")}</Link>
           <Link href="/ai-insights" className="flex items-center gap-1 text-sm text-white/60 hover:text-white" onClick={() => setOpen(false)}>
             <Bot size={13} />
-            AI Insights
+            {t("nav_ai_insights")}
           </Link>
           {isTestnet ? (
-            <Link href="/faucet-sepolia" className="text-sm text-white/60 hover:text-white" onClick={() => setOpen(false)}>Faucet</Link>
+            <Link href="/faucet-sepolia" className="text-sm text-white/60 hover:text-white" onClick={() => setOpen(false)}>{t("nav_faucet")}</Link>
           ) : (
-            <span className="text-sm text-white/20 cursor-not-allowed">Faucet</span>
+            <span className="text-sm text-white/20 cursor-not-allowed">{t("nav_faucet")}</span>
           )}
           <Link href="/whats-new" className="text-sm text-amber-400/80 hover:text-amber-300 font-medium" onClick={() => setOpen(false)}>{t("nav_whats_new")}</Link>
-          <Link href="/dashboard" className="text-sm text-center text-white/60 border border-white/10 rounded-lg px-4 py-2" onClick={() => setOpen(false)}>{t("nav_dashboard")}</Link>
+          {isConnected ? (
+            <Link href="/dashboard" className="text-sm text-center text-white/60 border border-white/10 rounded-lg px-4 py-2" onClick={() => setOpen(false)}>{t("nav_dashboard")}</Link>
+          ) : (
+            <span className="text-sm text-center text-white/20 cursor-not-allowed select-none border border-white/5 rounded-lg px-4 py-2">{t("nav_dashboard")}</span>
+          )}
           <div className="grid grid-cols-4 gap-1">
             {LANGUAGES.map(l => (
               <button key={l.code} onClick={() => { setLang(l.code as Lang); setOpen(false); }}
