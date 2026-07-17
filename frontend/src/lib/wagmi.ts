@@ -1,17 +1,17 @@
-import { getDefaultConfig } from "@rainbow-me/rainbowkit";
-import { metaMaskWallet, injectedWallet } from "@rainbow-me/rainbowkit/wallets";
+import { createConfig, http } from "wagmi";
+import { metaMask, injected } from "wagmi/connectors";
 import { base, baseSepolia, mainnet } from "wagmi/chains";
 
-// Ambas as chains sempre disponíveis — o contexto NetworkModeContext controla qual usar
-export const wagmiConfig = getDefaultConfig({
-  appName: "SoSoMon",
-  projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "demo-project-id",
-  wallets: [
-    {
-      groupName: "Browser Extension",
-      wallets: [metaMaskWallet, injectedWallet],
-    },
-  ],
+// Usa somente conectores injetados (MetaMask/browser extension) sem WalletConnect.
+// WalletConnect v2 valida origens contra projectId registrado — falha silenciosamente
+// em domínios customizados quando o projectId é inválido, quebrando isConnected no wagmi.
+export const wagmiConfig = createConfig({
   chains: [base, baseSepolia, mainnet],
+  connectors: [metaMask(), injected()],
+  transports: {
+    [base.id]: http(),
+    [baseSepolia.id]: http(),
+    [mainnet.id]: http(),
+  },
   ssr: true,
 });
