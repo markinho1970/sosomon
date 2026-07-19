@@ -225,7 +225,9 @@ async def update_all_navs():
     fund_usdc      = await _fetch_fund_usdc()
     sodex_snapshot = await _fetch_sodex_portfolio()
     sodex_total    = sodex_snapshot.get("total_usd", 0.0)
-    sodex_ok       = sodex_snapshot.get("configured", False)
+    # sodex_ok só é True quando recebemos posições reais — "configured" apenas indica
+    # que as credenciais estão setadas, não que get_balances retornou dados válidos.
+    sodex_ok       = sodex_snapshot.get("configured", False) and len(sodex_snapshot.get("positions", [])) > 0
 
     if not prices:
         logger.warning("NAV Updater: nenhum preço obtido — abortando")
@@ -311,7 +313,13 @@ async def update_all_navs():
                 all_tokens = sum(p.index_tokens_held or 0 for p in portfolios)
                 index.nav_usd           = new_nav
                 index.aum_usd           = round((mainnet_tokens if mainnet_tokens > 0 else all_tokens) * new_nav, 2)
-                index.total_return_pct  = round((new_nav - 1.0) * 100, 2)
+                # total_return_pct relativo ao NAV de entrada dos investidores mainnet,
+                # não de 1.0 (que era o NAV hipotético de inception paper trading).
+                inception_nav = (
+                    min(p.nav_at_first_deposit for p in mainnet_portfolios if (p.nav_at_first_deposit or 0) > 0)
+                    if mainnet_portfolios else (old_nav or 1.0)
+                )
+                index.total_return_pct  = round((new_nav - inception_nav) / inception_nav * 100, 2)
                 index.return_7d_pct     = ret_7d
                 index.return_30d_pct    = ret_30d
                 index.btc_benchmark_30d = btc_30d
