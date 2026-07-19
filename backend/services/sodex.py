@@ -13,6 +13,7 @@ Endpoints base:
 import os
 import json
 import uuid
+import asyncio
 import httpx
 from typing import Optional, Dict, Any, List
 from loguru import logger
@@ -98,36 +99,42 @@ async def get_all_tickers(testnet: bool | None = None) -> Dict[str, Dict]:
       "BTC-USDC", "BTC-USD", "vBTC_vUSDC" todos apontam para o mesmo ticker.
     Campos normalizados: lastPx -> lastPrice, volume -> volume24h
     testnet=None usa env var; True/False força o gateway correto.
+    Retry automático: 3 tentativas com 5s de intervalo.
     """
-    try:
-        async with httpx.AsyncClient(timeout=TIMEOUT) as c:
-            r = await c.get(f"{_spot_url(testnet)}/markets/tickers", headers=_PUB())
-            r.raise_for_status()
-            items = r.json().get("data", [])
-            if not isinstance(items, list):
-                return {}
-        result = {}
-        for item in items:
-            raw_sym = item.get("symbol", "")  # ex: "vBTC_vUSDC"
-            # Normaliza para campos conhecidos
-            normalized = dict(item)
-            normalized["lastPrice"] = item.get("lastPx") or item.get("lastPrice") or item.get("c") or "0"
-            normalized["volume24h"] = item.get("quoteVolume") or item.get("volume24h") or item.get("v") or "0"
-            normalized["change24h"] = item.get("changePct") or item.get("change24h") or 0
-            # Remove prefixo "v" e converte underscore para dash: vBTC_vUSDC -> BTC-USDC
-            clean = raw_sym.replace("_vUSDC","").replace("_USDC","").lstrip("v")
-            # Trata casos especiais: vDEFIssi -> DEFIssi, WSOSO -> SOSO
-            if clean.endswith("ssi"):
-                clean = clean  # mantém: DEFIssi, MAG7ssi, MEMEssi
-            # Registra aliases
-            result[raw_sym] = normalized           # vBTC_vUSDC
-            result[clean + "-USDC"] = normalized   # BTC-USDC
-            result[clean + "-USD"] = normalized    # BTC-USD
-            result[clean] = normalized             # BTC
-        return result
-    except Exception as e:
-        logger.error(f"SoDEX get_all_tickers: {e}")
-        return {}
+    last_exc = None
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT) as c:
+                r = await c.get(f"{_spot_url(testnet)}/markets/tickers", headers=_PUB())
+                r.raise_for_status()
+                items = r.json().get("data", [])
+                if not isinstance(items, list):
+                    return {}
+            result = {}
+            for item in items:
+                raw_sym = item.get("symbol", "")  # ex: "vBTC_vUSDC"
+                # Normaliza para campos conhecidos
+                normalized = dict(item)
+                normalized["lastPrice"] = item.get("lastPx") or item.get("lastPrice") or item.get("c") or "0"
+                normalized["volume24h"] = item.get("quoteVolume") or item.get("volume24h") or item.get("v") or "0"
+                normalized["change24h"] = item.get("changePct") or item.get("change24h") or 0
+                # Remove prefixo "v" e converte underscore para dash: vBTC_vUSDC -> BTC-USDC
+                clean = raw_sym.replace("_vUSDC","").replace("_USDC","").lstrip("v")
+                # Trata casos especiais: vDEFIssi -> DEFIssi, WSOSO -> SOSO
+                if clean.endswith("ssi"):
+                    clean = clean  # mantém: DEFIssi, MAG7ssi, MEMEssi
+                # Registra aliases
+                result[raw_sym] = normalized           # vBTC_vUSDC
+                result[clean + "-USDC"] = normalized   # BTC-USDC
+                result[clean + "-USD"] = normalized    # BTC-USD
+                result[clean] = normalized             # BTC
+            return result
+        except Exception as e:
+            last_exc = e
+            if attempt < 2:
+                await asyncio.sleep(5)
+    logger.error(f"SoDEX get_all_tickers: {last_exc}")
+    return {}
 
 
 async def get_ticker(symbol: str, testnet: bool | None = None) -> Optional[Dict]:
@@ -183,16 +190,15 @@ async def get_candles(symbol: str, interval: str = "1D", limit: int = 30, testne
 # ═══════════════════════════════════════════════════════════════════════════════
 
 async def get_balances(testnet: bool | None = None) -> Dict[str, Any]:
-    """Saldos da fund wallet. testnet=None usa env var; True/False força o gateway."""
-    if not _can_trade():
-        logger.warning("SoDEX: credenciais não configuradas")
+    """Saldos da fund wallet. Endpoint público — não requer API key.
+    testnet=None usa env var; True/False força o gateway correto."""
+    wallet = os.getenv("SODEX_WALLET_ADDRESS", "") or SODEX_WALLET_ADDR
+    if not wallet:
+        logger.warning("SoDEX get_balances: SODEX_WALLET_ADDRESS não configurado")
         return {}
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as c:
-            r = await c.get(
-                f"{_spot_url(testnet)}/accounts/{SODEX_WALLET_ADDR}/balances",
-                headers=_PUB(),
-            )
+            r = await c.get(f"{_spot_url(testnet)}/accounts/{wallet}/balances")
             r.raise_for_status()
             data = r.json().get("data", {})
             # SoDEX retorna {"blockTime":..., "blockHeight":..., "balances":[...]}
@@ -374,9 +380,13 @@ async def get_portfolio_snapshot(testnet: bool | None = None) -> Dict[str, Any]:
         if coin in STABLE:
             usd_value = available
         else:
-            # coin pode ser "vETH" → tenta "vETH-USDC", "vETH-vUSDC", "ETH-USDC"
-            base = coin.lstrip("v")
-            for sym in (f"{coin}-USDC", f"{coin}-vUSDC", f"{base}-USDC"):
+            # coin pode ser "vETH", "vDEFI.ssi" etc.
+            # Normaliza: remove prefixo "v" e remove ponto (vDEFI.ssi → DEFIssi)
+            base      = coin.lstrip("v")
+            base_norm = base.replace(".", "")
+            price = 0.0
+            for sym in (f"{coin}-USDC", f"{coin}-vUSDC", f"{base}-USDC",
+                        f"{base_norm}-USDC", f"{base_norm}-USD", base_norm):
                 ticker = tickers.get(sym, {})
                 price  = float(ticker.get("lastPrice") or ticker.get("lastPx") or ticker.get("c") or 0)
                 if price:
@@ -398,7 +408,7 @@ async def get_portfolio_snapshot(testnet: bool | None = None) -> Dict[str, Any]:
         "total_usd":          total_usd,
         "network":            "testnet" if (USE_TESTNET if testnet is None else testnet) else "mainnet",
         "wallet":             SODEX_WALLET_ADDR,
-        "configured":         _can_trade(),
+        "configured":         len(balances) > 0,   # True quando recebemos dados reais do SoDEX
     }
 
 
