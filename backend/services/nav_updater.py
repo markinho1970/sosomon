@@ -16,7 +16,7 @@ import logging
 from datetime import datetime, timezone
 
 from database import SessionLocal
-from models import AlphaIndex, IndexConstituent, SubscriberPortfolio, PortfolioSnapshot
+from models import AlphaIndex, IndexConstituent, SubscriberPortfolio, PortfolioSnapshot, IndexHolding
 
 logger = logging.getLogger(__name__)
 
@@ -215,6 +215,37 @@ async def _btc_30d_return(prices: dict) -> float:
     return 0.0
 
 
+# ─── Helpers de cálculo de NAV ───────────────────────────────────────────────
+
+def _nav_from_holdings(index_id: str, prices: dict, mainnet_tokens: float, db) -> float:
+    """
+    Calcula NAV usando quantidades reais armazenadas em index_holdings.
+    Usado como segunda fonte de verdade quando SoDEX get_balances() está indisponível.
+
+    Retorna 0.0 se não há holdings registrados ou se mainnet_tokens <= 0.
+    """
+    holdings = db.query(IndexHolding).filter(
+        IndexHolding.index_id == index_id,
+        IndexHolding.network_mode == 'mainnet',
+        IndexHolding.quantity > 0,
+    ).all()
+    if not holdings or mainnet_tokens <= 0:
+        return 0.0
+    total_value = 0.0
+    for h in holdings:
+        sym_norm = h.symbol.replace('.', '').lower()
+        # Busca preço: tenta símbolo exato, depois normalizado
+        price_data = prices.get(h.symbol) or next(
+            (pd for s, pd in prices.items() if s.replace('.', '').lower() == sym_norm), None
+        )
+        if price_data:
+            price = price_data.get('current_price_usd', 0)
+            total_value += h.quantity * price
+    if total_value > 0:
+        return round(total_value / mainnet_tokens, 6)
+    return 0.0
+
+
 # ─── Job principal ────────────────────────────────────────────────────────────
 
 async def update_all_navs():
@@ -295,20 +326,24 @@ async def update_all_navs():
                             f"tokens={mainnet_tokens:.4f} → nav_sodex=${nav_sodex:.6f}"
                         )
 
-                # SoDEX é a fonte verdade para mainnet; fallback price-based com
-                # guarda de sanidade (5%/hora) quando SoDEX está indisponível
+                # Prioridade: 1) SoDEX API (ground truth)  2) index_holdings  3) price-based
                 if nav_sodex > 0:
                     new_nav = round(nav_sodex, 6)
                 else:
-                    nav_change_pct = abs((nav_price - old_nav) / old_nav * 100) if old_nav > 0 else 0
-                    if nav_change_pct > 5.0:
-                        logger.error(
-                            f"NAV Updater [{index.name}]: BLOQUEADO — variação de {nav_change_pct:.2f}% "
-                            f"sem dados SoDEX. NAV mantido em ${old_nav:.4f}."
-                        )
-                        new_nav = old_nav
+                    nav_holdings = _nav_from_holdings(index.id, prices, mainnet_tokens, db)
+                    if nav_holdings > 0:
+                        new_nav = nav_holdings
+                        logger.info(f"NAV [{index.name}]: holdings → ${nav_holdings:.6f}")
                     else:
-                        new_nav = nav_price
+                        nav_change_pct = abs((nav_price - old_nav) / old_nav * 100) if old_nav > 0 else 0
+                        if nav_change_pct > 5.0:
+                            logger.error(
+                                f"NAV Updater [{index.name}]: BLOQUEADO — variação de {nav_change_pct:.2f}% "
+                                f"sem dados SoDEX. NAV mantido em ${old_nav:.4f}."
+                            )
+                            new_nav = old_nav
+                        else:
+                            new_nav = nav_price
 
                 all_tokens = sum(p.index_tokens_held or 0 for p in portfolios)
                 index.nav_usd           = new_nav

@@ -540,7 +540,7 @@ export default function AdminPage() {
 
   // ── Lang picker (EN + PT only for admin) ────────────────────────────────────
   const ADMIN_LANGS = LANGUAGES.filter(l => l.code === "en" || l.code === "pt");
-  const currentLang = ADMIN_LANGS.find(l => l.code === lang) ?? ADMIN_LANGS[1]; // default PT
+  const currentLang = ADMIN_LANGS.find(l => l.code === lang) ?? ADMIN_LANGS[0]; // default EN
 
   function LangPicker() {
     return (
@@ -668,7 +668,7 @@ export default function AdminPage() {
           </div>
           <button
             onClick={() => { loadAll(networkMode); setLiveUpdatedAt(null); }}
-            title="Atualizar todos os dados"
+            title={t("admin_refresh_all")}
             className="flex items-center gap-1.5 text-white/30 hover:text-white transition-colors text-xs"
           >
             {loading ? (
@@ -1051,7 +1051,7 @@ export default function AdminPage() {
               <h2 className="font-semibold text-white flex items-center gap-2 text-sm">
                 <Wallet size={14} className="text-brand-blue" /> {t("admin_treasury_title")}
                 <span className={`ml-auto text-xs px-2 py-0.5 rounded-full border font-medium ${isMainnet ? "text-green-400 bg-green-500/10 border-green-500/20" : "text-yellow-400 bg-yellow-500/10 border-yellow-500/20"}`}>
-                  {isMainnet ? "🟢 Base Mainnet" : "🟡 Base Sepolia"}
+                  {isMainnet ? `🟢 ${t("admin_network_mainnet")}` : `🟡 ${t("admin_network_testnet")}`}
                 </span>
               </h2>
 
@@ -1060,10 +1060,8 @@ export default function AdminPage() {
                 <div className="flex items-start gap-3 p-3 rounded-xl bg-yellow-500/8 border border-yellow-500/20">
                   <span className="text-yellow-400 text-base mt-0.5">⚠️</span>
                   <div>
-                    <p className="text-yellow-300 text-sm font-semibold">Modo Testnet — dados financeiros não refletem a realidade</p>
-                    <p className="text-yellow-300/60 text-xs mt-0.5">
-                      Os portfólios testnet são simulados no banco de dados. O SoDEX testnet é um ambiente separado sem fundos reais — a reconciliação abaixo não tem significado financeiro.
-                    </p>
+                    <p className="text-yellow-300 text-sm font-semibold">{t("admin_testnet_warn_title")}</p>
+                    <p className="text-yellow-300/60 text-xs mt-0.5">{t("admin_testnet_warn_body")}</p>
                   </div>
                 </div>
               )}
@@ -1083,7 +1081,7 @@ export default function AdminPage() {
                 {!fundWallet && loadingFundWallet && <p className="text-white/30 text-sm text-center py-4">{t("admin_loading")}</p>}
                 {!fundWallet && !loadingFundWallet && (
                   <div className="bg-white/3 border border-white/8 rounded-lg p-4 text-center">
-                    <p className="text-white/40 text-sm">Clique em ↻ para carregar saldos</p>
+                    <p className="text-white/40 text-sm">{t("admin_click_refresh")}</p>
                   </div>
                 )}
                 {fundWallet && (
@@ -1099,22 +1097,22 @@ export default function AdminPage() {
                         </div>
                       </div>
                       <div className="mt-2 flex items-center justify-between">
-                        <span className="text-white/35 text-xs">Transações possíveis</span>
+                        <span className="text-white/35 text-xs">{t("admin_possible_txs")}</span>
                         <span className={`font-mono font-bold text-xs ${ethColor}`}>
                           {possibleTxs !== null ? `~${possibleTxs.toLocaleString("pt-BR")}` : "—"}
                         </span>
                       </div>
                       {fundWallet.gas_price_gwei !== null && (
                         <div className="flex items-center justify-between mt-1">
-                          <span className="text-white/25 text-xs">Gas price agora</span>
+                          <span className="text-white/25 text-xs">{t("admin_gas_price_now")}</span>
                           <span className="text-white/35 font-mono text-xs">{fundWallet.gas_price_gwei?.toFixed(4)} gwei</span>
                         </div>
                       )}
                       {possibleTxs !== null && possibleTxs < 50 && (
-                        <p className="text-red-400 text-xs mt-2 font-medium">Repor ETH urgente — risco de parar operação</p>
+                        <p className="text-red-400 text-xs mt-2 font-medium">{t("admin_eth_critical")}</p>
                       )}
                       {possibleTxs !== null && possibleTxs >= 50 && possibleTxs < 200 && (
-                        <p className="text-amber-400 text-xs mt-2">ETH baixo — considere repor em breve</p>
+                        <p className="text-amber-400 text-xs mt-2">{t("admin_eth_low")}</p>
                       )}
                     </div>
                   </div>
@@ -1135,7 +1133,7 @@ export default function AdminPage() {
                         <div className="flex items-center gap-2">
                           <DollarSign size={13} className="text-amber-400" />
                           <div>
-                            <p className="text-xs font-semibold text-white/60 uppercase tracking-wider">Reserva Admin</p>
+                            <p className="text-xs font-semibold text-white/60 uppercase tracking-wider">{t("admin_reserve_title")}</p>
                             <p className="text-white/25 text-xs font-mono">{adminAmt.toFixed(4)} USDC · SoDEX</p>
                           </div>
                         </div>
@@ -1186,10 +1184,10 @@ export default function AdminPage() {
                   <div>
                     <div className="flex items-center gap-2">
                       <Users size={15} className="text-brand-blue" />
-                      <h3 className="font-semibold text-white text-sm">Portfólio de Investidores</h3>
+                      <h3 className="font-semibold text-white text-sm">{t("admin_investor_portfolio")}</h3>
                       {investors && <span className="text-xs px-1.5 py-0.5 rounded bg-white/5 text-white/40">{investors.count}</span>}
                     </div>
-                    {investors && <p className="text-xs text-white/30 mt-0.5 ml-5.5">AUM total: ${investors.total_current_usd.toFixed(2)} · P&L: <span className={investors.total_pnl_pct >= 0 ? "text-green-400" : "text-red-400"}>{investors.total_pnl_pct >= 0 ? "+" : ""}{investors.total_pnl_pct.toFixed(2)}%</span></p>}
+                    {investors && <p className="text-xs text-white/30 mt-0.5 ml-5.5">{t("admin_aum_prefix")}{investors.total_current_usd.toFixed(2)} · P&L: <span className={investors.total_pnl_pct >= 0 ? "text-green-400" : "text-red-400"}>{investors.total_pnl_pct >= 0 ? "+" : ""}{investors.total_pnl_pct.toFixed(2)}%</span></p>}
                   </div>
                   <div className="flex items-center gap-2">
                     <select
@@ -1197,9 +1195,9 @@ export default function AdminPage() {
                       onChange={e => { const v = Number(e.target.value); setInvestorPerPage(v); setInvestorPage(1); setLoadingInvestors(true); adminApi.getInvestors(session!.address, session!.message, session!.signature, networkMode, 1, v).then(d => { setInvestors(d ?? null); setLoadingInvestors(false); }).catch(() => setLoadingInvestors(false)); }}
                       className="text-xs bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white/60 cursor-pointer"
                     >
-                      <option value={25}>25 / página</option>
-                      <option value={50}>50 / página</option>
-                      <option value={100}>100 / página</option>
+                      <option value={25}>25 {t("admin_per_page")}</option>
+                      <option value={50}>50 {t("admin_per_page")}</option>
+                      <option value={100}>100 {t("admin_per_page")}</option>
                     </select>
                     <button onClick={() => { setLoadingInvestors(true); adminApi.getInvestors(session!.address, session!.message, session!.signature, networkMode, investorPage, investorPerPage).then(d => { setInvestors(d ?? null); setLoadingInvestors(false); }).catch(() => setLoadingInvestors(false)); }} className="text-white/30 hover:text-white transition-colors">
                       <RefreshCw size={13} className={loadingInvestors ? "animate-spin" : ""} />
@@ -1209,13 +1207,13 @@ export default function AdminPage() {
 
                 {loadingInvestors && <p className="text-white/30 text-sm text-center py-8">{t("admin_loading")}</p>}
                 {!loadingInvestors && investors && investors.count === 0 && (
-                  <p className="text-white/30 text-sm text-center py-8">Nenhum portfólio nesta rede</p>
+                  <p className="text-white/30 text-sm text-center py-8">{t("admin_no_portfolios")}</p>
                 )}
                 {!loadingInvestors && investors && investors.count > 0 && (
                   <div className="overflow-x-auto">
                     {/* Header */}
                     <div className="grid grid-cols-[1.4fr_1fr_72px_80px_80px_96px_72px_60px_24px] gap-1 px-2 mb-1 min-w-[680px]">
-                      {["Carteira","Índice","Entrada","Depositado","Atual","P&L","Cotas","% Pool",""].map(h => (
+                      {[t("admin_th_wallet"),t("admin_th_index"),t("admin_th_entry"),t("admin_th_deposited"),t("admin_th_current"),"P&L",t("admin_th_shares"),"% Pool",""].map(h => (
                         <span key={h} className="text-xs text-white/25 uppercase tracking-wider text-right first:text-left [&:nth-child(2)]:text-left">{h}</span>
                       ))}
                     </div>
@@ -1257,7 +1255,7 @@ export default function AdminPage() {
 
                     {/* Totais */}
                     <div className="grid grid-cols-[1.4fr_1fr_72px_80px_80px_96px_72px_60px_24px] gap-1 items-center px-2.5 py-2 mt-2 border-t border-white/10 min-w-[680px]">
-                      <span className="text-white/50 text-xs font-semibold col-span-3">Total ({investors.count} {investors.count === 1 ? "investimento" : "investimentos"})</span>
+                      <span className="text-white/50 text-xs font-semibold col-span-3">Total ({investors.count} {investors.count === 1 ? t("admin_investments_one") : t("admin_investments_many")})</span>
                       <span className="text-white/50 text-xs text-right font-mono">${investors.total_deposited_usd.toFixed(2)}</span>
                       <span className="text-white font-bold text-xs text-right font-mono">${investors.total_current_usd.toFixed(2)}</span>
                       <span className={`text-xs font-bold text-right ${investors.total_pnl_pct > 0 ? "text-green-400" : investors.total_pnl_pct < 0 ? "text-red-400" : "text-white/40"}`}>
@@ -1270,7 +1268,7 @@ export default function AdminPage() {
                     {investors.total_pages > 1 && (
                       <div className="flex items-center justify-between mt-4 pt-3 border-t border-white/8">
                         <span className="text-white/30 text-xs">
-                          {((investors.page - 1) * investors.per_page) + 1}–{Math.min(investors.page * investors.per_page, investors.count)} de {investors.count}
+                          {((investors.page - 1) * investors.per_page) + 1}–{Math.min(investors.page * investors.per_page, investors.count)} {t("admin_of")} {investors.count}
                         </span>
                         <div className="flex items-center gap-1">
                           <button
@@ -1319,8 +1317,8 @@ export default function AdminPage() {
                       {/* Resumo financeiro + status */}
                       <div className="grid grid-cols-3 gap-3">
                         {[
-                          { label: "Depositado", value: `$${selectedInvestor.deposited_usd.toFixed(2)}`, cls: "text-white" },
-                          { label: "Valor Atual", value: `$${selectedInvestor.current_value_usd.toFixed(2)}`, cls: "text-white font-bold" },
+                          { label: t("admin_th_deposited"), value: `$${selectedInvestor.deposited_usd.toFixed(2)}`, cls: "text-white" },
+                          { label: t("admin_investor_current"), value: `$${selectedInvestor.current_value_usd.toFixed(2)}`, cls: "text-white font-bold" },
                           { label: "P&L", value: `${selectedInvestor.pnl_pct >= 0 ? "+" : ""}${selectedInvestor.pnl_pct.toFixed(2)}%`, cls: selectedInvestor.pnl_pct > 0 ? "text-green-400 font-bold" : selectedInvestor.pnl_pct < 0 ? "text-red-400 font-bold" : "text-white/40" },
                         ].map(i => (
                           <div key={i.label} className="bg-white/4 rounded-xl p-3 text-center">
@@ -1335,9 +1333,9 @@ export default function AdminPage() {
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
                             <span className={`text-xs px-1.5 py-0.5 rounded border ${selectedInvestor.buy_confirmed ? "text-green-400 bg-green-500/10 border-green-500/20" : "text-amber-400 bg-amber-500/10 border-amber-500/20"}`}>
-                              {selectedInvestor.buy_confirmed ? "✓ compras OK" : "⏳ pendente"}
+                              {selectedInvestor.buy_confirmed ? t("admin_buys_ok") : t("admin_buys_pending")}
                             </span>
-                            <span className="text-white/30 text-xs font-mono">NAV entrada: ${selectedInvestor.nav_at_buy.toFixed(6)}</span>
+                            <span className="text-white/30 text-xs font-mono">{t("admin_entry_nav")}{selectedInvestor.nav_at_buy.toFixed(6)}</span>
                           </div>
                           {selectedInvestor.tx_hash && (
                             <a href={`${isMainnet ? "https://basescan.org" : "https://sepolia.basescan.org"}/tx/${selectedInvestor.tx_hash}`} target="_blank" rel="noopener noreferrer" className="text-white/25 hover:text-white/60 text-xs font-mono transition-colors">
@@ -1353,14 +1351,14 @@ export default function AdminPage() {
 
                       {/* Cotas e participação no pool */}
                       <div className="bg-brand-blue/8 border border-brand-blue/20 rounded-xl p-4">
-                        <p className="text-brand-blue/70 text-xs uppercase tracking-wider mb-2 font-semibold">Participação no Pool</p>
+                        <p className="text-brand-blue/70 text-xs uppercase tracking-wider mb-2 font-semibold">{t("admin_pool_participation")}</p>
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <p className="text-white/40 text-xs">Cotas deste investimento</p>
+                            <p className="text-white/40 text-xs">{t("admin_shares_this")}</p>
                             <p className="text-white font-mono font-semibold">{selectedInvestor.shares.toFixed(4)}</p>
                           </div>
                           <div>
-                            <p className="text-white/40 text-xs">% do Pool</p>
+                            <p className="text-white/40 text-xs">{t("admin_pool_pct")}</p>
                             <p className="text-brand-blue font-mono font-bold text-lg">{selectedInvestor.pool_share_pct.toFixed(2)}%</p>
                           </div>
                         </div>
@@ -1369,7 +1367,7 @@ export default function AdminPage() {
                       {/* Composição da cesta com % de cada token no pool SoDEX */}
                       {selectedInvestor.basket.length > 0 && (
                         <div>
-                          <p className="text-white/50 text-xs uppercase tracking-wider mb-2 font-semibold">Composição da Cesta</p>
+                          <p className="text-white/50 text-xs uppercase tracking-wider mb-2 font-semibold">{t("admin_basket_comp")}</p>
                           <div className="space-y-2">
                             {selectedInvestor.basket.map(token => {
                               const ch7 = token.change_7d;
@@ -1392,7 +1390,7 @@ export default function AdminPage() {
                                     <span className="text-white text-xs font-mono font-semibold">{token.symbol}</span>
                                     <p className="text-white/30 text-xs font-mono">{token.est_qty.toFixed(4)} @ ${token.price < 1 ? token.price.toFixed(4) : token.price.toFixed(2)}</p>
                                     {tokenPoolPct !== null && (
-                                      <p className="text-brand-blue/60 text-xs font-mono">{tokenPoolPct.toFixed(1)}% do pool SoDEX</p>
+                                      <p className="text-brand-blue/60 text-xs font-mono">{tokenPoolPct.toFixed(1)}% {t("admin_sodex_pool_pct")}</p>
                                     )}
                                   </div>
                                   <div className="text-right shrink-0">
@@ -1524,9 +1522,9 @@ export default function AdminPage() {
                         <th className="text-left pb-2 font-normal">{t("admin_trade_side")}</th>
                         <th className="text-right pb-2 font-normal">{t("admin_trade_qty")}</th>
                         <th className="text-right pb-2 font-normal">{t("admin_trade_price")}</th>
-                        <th className="text-right pb-2 font-normal">USD</th>
+                        <th className="text-right pb-2 font-normal">{t("admin_usd_col")}</th>
                         <th className="text-right pb-2 font-normal">{t("admin_trade_status")}</th>
-                        {!isMainnet && <th className="text-left pb-2 font-normal pl-4">Investor</th>}
+                        {!isMainnet && <th className="text-left pb-2 font-normal pl-4">{t("admin_investor_col")}</th>}
                         <th className="text-right pb-2 font-normal">{t("admin_trade_time")}</th>
                       </tr>
                     </thead>

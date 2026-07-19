@@ -85,7 +85,7 @@ function FundWalletBox({ t, networkMode }: { t: (key: string) => string; network
           rel="noopener noreferrer"
           className="flex items-center gap-1 text-xs text-brand-orange hover:text-orange-300 transition-colors"
         >
-          View on Basescan <ExternalLink size={10} />
+          {t("idx_view_basescan")} <ExternalLink size={10} />
         </a>
       </div>
     </div>
@@ -243,7 +243,7 @@ export default function IndexDetailPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
                           <p className={`text-sm truncate ${inBasket ? "text-white/70" : "text-white/35"}`}>{token.name}</p>
-                          {!inBasket && <span className="text-[9px] px-1 py-0.5 rounded border border-white/10 text-white/25 shrink-0">candidate</span>}
+                          {!inBasket && <span className="text-[9px] px-1 py-0.5 rounded border border-white/10 text-white/25 shrink-0">{t("idx_candidate_badge")}</span>}
                         </div>
                         <p className="text-xs text-white/30">{fmt(token.current_price_usd ?? 0)}</p>
                       </div>
@@ -351,7 +351,7 @@ export default function IndexDetailPage() {
                 {risk.concentration && (
                   <div className="bg-white/3 rounded-lg p-3 mb-3">
                     <div className="flex items-center justify-between mb-2">
-                      <p className="text-xs text-white/30">Concentration Risk (HHI)</p>
+                      <p className="text-xs text-white/30">{t("idx_concentration_risk")}</p>
                       <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${
                         risk.concentration.level === "low"
                           ? "text-green-400 border-green-500/30 bg-green-500/8"
@@ -374,17 +374,17 @@ export default function IndexDetailPage() {
                     <div className="flex justify-between text-xs text-white/40">
                       <span>
                         HHI = <span className="text-white font-mono">{risk.concentration.hhi.toFixed(3)}</span>
-                        <span className="ml-2 text-white/30">· n_efetivo: <span className="text-white font-mono">{risk.concentration.effective_n}</span></span>
+                        <span className="ml-2 text-white/30">· {t("idx_effective_n")} <span className="text-white font-mono">{risk.concentration.effective_n}</span></span>
                       </span>
                       <span className="text-white/30">
-                        maior: <span className="text-white/60 font-mono">{risk.concentration.max_token}</span> {risk.concentration.max_weight_pct}%
+                        {t("idx_max_label")} <span className="text-white/60 font-mono">{risk.concentration.max_token}</span> {risk.concentration.max_weight_pct}%
                       </span>
                     </div>
                   </div>
                 )}
 
                 <div className="bg-white/3 rounded-lg p-3 mb-3">
-                  <p className="text-xs text-white/30 mb-1.5">Sentiment-driven buffer triggers</p>
+                  <p className="text-xs text-white/30 mb-1.5">{t("idx_risk_sentiment_triggers")}</p>
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-2 text-xs">
                       <div className="w-2 h-2 rounded-full bg-yellow-400 shrink-0" />
@@ -459,7 +459,7 @@ export default function IndexDetailPage() {
                 </div>
                 <div className="flex justify-between">
                   <span>{t("idx_perf_fee")}</span>
-                  <span className="text-white">20% on profits</span>
+                  <span className="text-white">{t("idx_perf_fee_value")}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>{t("idx_protocol")}</span>

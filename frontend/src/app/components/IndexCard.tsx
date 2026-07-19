@@ -58,8 +58,8 @@ export default function IndexCard({ index }: IndexCardProps) {
 
         {/* vs BTC */}
         <div className="flex items-center justify-between text-xs text-white/40 mb-4">
-          <span>vs BTC 30d: <span className={retColor(index.return_30d_pct - index.btc_benchmark_30d)}>
-            {formatPct(index.return_30d_pct - index.btc_benchmark_30d)} alpha
+          <span>{t("idx_vs_btc_label")} <span className={retColor(index.return_30d_pct - index.btc_benchmark_30d)}>
+            {formatPct(index.return_30d_pct - index.btc_benchmark_30d)} {t("idx_alpha_label")}
           </span></span>
           <span>{index.constituents.length} tokens</span>
         </div>

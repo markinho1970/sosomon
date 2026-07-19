@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Bot, TrendingUp, TrendingDown, AlertTriangle, Lightbulb, BarChart3, RefreshCw } from "lucide-react";
+import { Bot, TrendingUp, AlertTriangle, Lightbulb, BarChart3, RefreshCw } from "lucide-react";
 import Navbar from "../components/Navbar";
 import { useAccount } from "wagmi";
 import { indexApi, investApi } from "@/lib/api";
 import { useNetworkMode } from "@/lib/NetworkModeContext";
+import { useLang } from "@/lib/LanguageContext";
 import type { AlphaIndex, InvestorInsight } from "@/types";
 
 function fmtPct(v: number) {
@@ -25,6 +26,7 @@ function pctColor(v: number) {
 export default function AiInsightsPage() {
   const { address, isConnected } = useAccount();
   const { networkMode } = useNetworkMode();
+  const { t } = useLang();
 
   const [indexes, setIndexes] = useState<AlphaIndex[]>([]);
   const [insights, setInsights] = useState<InvestorInsight[]>([]);
@@ -70,10 +72,10 @@ export default function AiInsightsPage() {
               <Bot size={20} className="text-brand-orange" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-white">AI Insights</h1>
+              <h1 className="text-2xl font-bold text-white">{t("ai_title")}</h1>
               <p className="text-xs text-white/40 mt-0.5">
-                Inteligência de médio prazo · Scout SoSoMon
-                {lastUpdated && <span className="ml-2">· atualizado {lastUpdated.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>}
+                {t("ai_subtitle")}
+                {lastUpdated && <span className="ml-2">· {t("ai_updated_at").replace("{time}", lastUpdated.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }))}</span>}
               </p>
             </div>
           </div>
@@ -83,23 +85,23 @@ export default function AiInsightsPage() {
             className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white border border-white/10 hover:border-white/20 px-3 py-2 rounded-lg transition-all"
           >
             <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
-            Atualizar
+            {t("ai_refresh")}
           </button>
         </div>
 
         {loading ? (
-          <div className="flex justify-center py-24 text-white/20 text-sm">Carregando análise...</div>
+          <div className="flex justify-center py-24 text-white/20 text-sm">{t("ai_loading")}</div>
         ) : (
           <div className="space-y-6">
 
-            {/* Personalized insights — só se conectado */}
+            {/* Personalized insights */}
             {isConnected && address ? (
               <>
                 {(opportunities.length > 0 || concentrations.length > 0) ? (
                   <div className="card border-brand-orange/15">
                     <div className="flex items-center gap-2 mb-4">
                       <Lightbulb size={14} className="text-brand-orange" />
-                      <h2 className="text-sm font-semibold text-white">Insights personalizados</h2>
+                      <h2 className="text-sm font-semibold text-white">{t("ai_personalized_title")}</h2>
                       <span className="ml-auto text-xs text-white/30">{address.slice(0, 6)}…{address.slice(-4)}</span>
                     </div>
 
@@ -114,7 +116,7 @@ export default function AiInsightsPage() {
                             </span>
                             <span className="text-white/30">30d: {fmtPct(ins.return_30d_pct ?? 0)}</span>
                             <Link href={`/indexes/${ins.index_slug}`} className="text-brand-orange hover:underline ml-auto">
-                              ver índice →
+                              {t("ai_view_index_link")}
                             </Link>
                           </div>
                         </div>
@@ -127,9 +129,9 @@ export default function AiInsightsPage() {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm text-white/80">{ins.message}</p>
                           <div className="flex items-center gap-4 mt-1.5 text-xs">
-                            {ins.hhi && <span className="text-white/40 font-mono">HHI={ins.hhi.toFixed(3)} · n_efetivo={ins.effective_n}</span>}
+                            {ins.hhi && <span className="text-white/40 font-mono">HHI={ins.hhi.toFixed(3)} · n={ins.effective_n}</span>}
                             <Link href={`/indexes/${ins.index_slug}`} className="text-brand-orange hover:underline ml-auto">
-                              ver risco →
+                              {t("ai_view_risk_link")}
                             </Link>
                           </div>
                         </div>
@@ -137,31 +139,31 @@ export default function AiInsightsPage() {
                     ))}
 
                     {opportunities.length === 0 && concentrations.length === 0 && (
-                      <p className="text-xs text-white/30 py-2 text-center">Sem alertas no momento — portfólio bem diversificado.</p>
+                      <p className="text-xs text-white/30 py-2 text-center">{t("ai_no_alerts")}</p>
                     )}
                   </div>
                 ) : (
                   <div className="card border-green-500/10 bg-green-500/3 text-center py-6">
-                    <p className="text-sm text-green-400/80">Portfólio em boa forma — sem oportunidades ou riscos identificados no momento.</p>
+                    <p className="text-sm text-green-400/80">{t("ai_portfolio_ok")}</p>
                   </div>
                 )}
               </>
             ) : (
               <div className="card border-dashed border-white/10 text-center py-8">
                 <Bot size={24} className="text-white/20 mx-auto mb-3" />
-                <p className="text-sm text-white/40 mb-4">Conecte sua carteira para ver insights personalizados</p>
+                <p className="text-sm text-white/40 mb-4">{t("ai_connect_prompt")}</p>
                 <Link href="/" className="btn-primary inline-flex items-center gap-2 text-sm px-5 py-2">
-                  Conectar carteira
+                  {t("ai_connect_btn")}
                 </Link>
               </div>
             )}
 
-            {/* Market Intelligence — geral, sempre visível */}
+            {/* Market Intelligence */}
             <div className="card">
               <div className="flex items-center gap-2 mb-4">
                 <BarChart3 size={14} className="text-white/40" />
-                <h2 className="text-sm font-semibold text-white">Performance dos índices</h2>
-                <span className="ml-auto text-xs text-white/20">vs BTC benchmark</span>
+                <h2 className="text-sm font-semibold text-white">{t("ai_performance_title")}</h2>
+                <span className="ml-auto text-xs text-white/20">{t("ai_vs_btc")}</span>
               </div>
 
               <div className="space-y-3">
@@ -192,11 +194,11 @@ export default function AiInsightsPage() {
 
                       <div className="grid grid-cols-3 gap-3 text-center">
                         <div>
-                          <p className="text-xs text-white/30 mb-0.5">7 dias</p>
+                          <p className="text-xs text-white/30 mb-0.5">{t("ai_7d_col")}</p>
                           <p className={`text-sm font-mono font-semibold ${pctColor(r7)}`}>{fmtPct(r7)}</p>
                         </div>
                         <div>
-                          <p className="text-xs text-white/30 mb-0.5">30 dias</p>
+                          <p className="text-xs text-white/30 mb-0.5">{t("ai_30d_col")}</p>
                           <p className={`text-sm font-mono font-semibold ${pctColor(r30)}`}>{fmtPct(r30)}</p>
                         </div>
                         <div>
@@ -212,8 +214,7 @@ export default function AiInsightsPage() {
 
             {/* Disclaimer */}
             <p className="text-xs text-white/20 text-center px-4">
-              Insights gerados pelo Scout SoSoMon com dados reais do SoDEX e SoSoValue SSI.
-              Não constituem recomendação de investimento.
+              {t("ai_disclaimer")}
             </p>
           </div>
         )}

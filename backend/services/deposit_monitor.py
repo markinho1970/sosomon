@@ -453,6 +453,8 @@ async def check_deposits(db, network: str = "mainnet"):
                 constituents=basket,
                 dry_run=use_dry_run,
                 testnet=is_testnet,
+                index_id=target_index.id,
+                network_mode=network,
             )
             # Em testnet: "placed" = dry_run orders (status="dry_run"); em mainnet: status="placed"
             placed   = [o for o in buy_result["orders"] if o.get("status") in ("placed", "dry_run")]

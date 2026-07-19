@@ -289,10 +289,10 @@ export default function FaucetPage() {
         {/* Quick links */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
           {[
-            { label: "Indexes", href: "/indexes" },
-            { label: "Dashboard", href: "/dashboard" },
-            { label: "Transparency", href: "/transparency" },
-            { label: "What's New", href: "/whats-new" },
+            { label: t("nav_indexes"), href: "/indexes" },
+            { label: t("nav_dashboard"), href: "/dashboard" },
+            { label: t("nav_transparency"), href: "/transparency" },
+            { label: t("nav_whats_new"), href: "/whats-new" },
           ].map(link => (
             <Link
               key={link.href}

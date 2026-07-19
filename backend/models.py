@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional, List
 from sqlalchemy import (
-    Column, String, Float, Integer, Boolean, DateTime, Text, ForeignKey, JSON
+    Column, String, Float, Integer, Boolean, DateTime, Text, ForeignKey, JSON, UniqueConstraint
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -254,3 +254,19 @@ class SystemState(Base):
     key        = Column(String, primary_key=True)
     value      = Column(String, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class IndexHolding(Base):
+    """Quantidade real de cada token detido pelo fundo no SoDEX.
+    Atualizada após cada compra executada com sucesso.
+    Permite calcular NAV via quantidade×preço quando get_balances() está indisponível."""
+    __tablename__ = "index_holdings"
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    index_id     = Column(String, nullable=False)
+    network_mode = Column(String, nullable=False, default="mainnet")
+    symbol       = Column(String, nullable=False)   # símbolo limpo: DEFIssi, AAVE, LINK, UNI
+    quantity     = Column(Float, nullable=False, default=0.0)
+    updated_at   = Column(DateTime, nullable=False)
+
+    __table_args__ = (UniqueConstraint("index_id", "network_mode", "symbol"),)

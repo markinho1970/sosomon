@@ -590,6 +590,8 @@ async def execute_buy_for_deposit(
     constituents: list,          # lista de IndexConstituent (in_basket=True)
     dry_run: bool = True,
     testnet: bool | None = None,
+    index_id: str = "",
+    network_mode: str = "mainnet",
 ) -> Dict[str, Any]:
     """
     Compra tokens no SoDEX proporcional aos pesos da cesta após um depósito.
@@ -675,12 +677,13 @@ async def execute_buy_for_deposit(
             continue
 
         order_info = {
-            "symbol":    symbol,
-            "side":      "BUY",
-            "quantity":  qty_str,
-            "price":     px_str,
-            "usd_value": round(alloc_usd, 4),
-            "status":    None,
+            "symbol":       symbol,
+            "symbol_clean": clean_sym,   # símbolo sem prefixo v e sem ponto: DEFIssi, AAVE, LINK
+            "side":         "BUY",
+            "quantity":     qty_str,
+            "price":        px_str,
+            "usd_value":    round(alloc_usd, 4),
+            "status":       None,
         }
 
         if dry_run:
@@ -701,6 +704,45 @@ async def execute_buy_for_deposit(
 
         allocated_usd += alloc_usd
         orders.append(order_info)
+
+    # Atualiza index_holdings com as quantidades compradas (apenas ordens reais colocadas)
+    if not dry_run and index_id:
+        try:
+            from database import SessionLocal
+            from models import IndexHolding
+            from datetime import datetime, timezone
+            db_h = SessionLocal()
+            try:
+                for order_result in orders:
+                    if order_result.get("status") != "placed":
+                        continue
+                    sym_h = order_result.get("symbol_clean")
+                    qty   = float(order_result.get("quantity", 0) or 0)
+                    if not sym_h or qty <= 0:
+                        continue
+                    existing = db_h.query(IndexHolding).filter(
+                        IndexHolding.index_id     == index_id,
+                        IndexHolding.network_mode == network_mode,
+                        IndexHolding.symbol       == sym_h,
+                    ).first()
+                    if existing:
+                        existing.quantity   += qty
+                        existing.updated_at  = datetime.now(timezone.utc)
+                    else:
+                        db_h.add(IndexHolding(
+                            index_id=index_id,
+                            network_mode=network_mode,
+                            symbol=sym_h,
+                            quantity=qty,
+                            updated_at=datetime.now(timezone.utc),
+                        ))
+                db_h.commit()
+                placed_count = sum(1 for o in orders if o.get("status") == "placed")
+                logger.info(f"index_holdings atualizado: {placed_count} token(s) para {index_id}/{network_mode}")
+            finally:
+                db_h.close()
+        except Exception as e:
+            logger.warning(f"index_holdings update failed: {e}")
 
     return {
         "orders":        orders,

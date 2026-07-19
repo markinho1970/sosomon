@@ -148,7 +148,7 @@ export default function WhatsNewPage() {
         <div className="mb-10">
           <div className="flex items-center gap-2 mb-3">
             <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-            <span className="text-amber-400 text-sm font-medium uppercase tracking-wider">SoSoMon Changelog</span>
+            <span className="text-amber-400 text-sm font-medium uppercase tracking-wider">{t("wn_wave3_label")}</span>
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">{t("wn_title")}</h1>
           <p className="text-white/50">{t("wn_subtitle")}</p>

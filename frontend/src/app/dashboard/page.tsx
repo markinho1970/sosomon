@@ -505,12 +505,12 @@ export default function DashboardPage() {
                     <div className="card border-dashed border-white/10 text-center py-8">
                       <p className="text-white/40 text-sm mb-3">{t("dash_add_another")}</p>
                       <Link href="/indexes" className="btn-primary inline-flex items-center gap-2">
-                        <BarChart3 size={16} /> Browse Indexes
+                        <BarChart3 size={16} /> {t("dash_browse")}
                       </Link>
                     </div>
                     {breakdown.length > 0 && (
                       <div className="mt-6">
-                        <h3 className="text-white/60 text-xs uppercase tracking-widest mb-3">Token Holdings</h3>
+                        <h3 className="text-white/60 text-xs uppercase tracking-widest mb-3">{t("dash_token_holdings")}</h3>
                         {breakdown.map(b => (
                           <div key={b.index_id} className="bg-white/5 rounded-xl border border-white/10 overflow-hidden mb-4">
                             <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
@@ -554,7 +554,7 @@ export default function DashboardPage() {
                     )}
                     {transactions.length > 0 && (
                       <div className="mt-4">
-                        <h3 className="text-white/60 text-xs uppercase tracking-widest mb-3">Transaction History</h3>
+                        <h3 className="text-white/60 text-xs uppercase tracking-widest mb-3">{t("dash_transaction_history")}</h3>
                         <div className="bg-white/5 rounded-xl border border-white/10 overflow-hidden">
                           <div className="divide-y divide-white/5">
                             {transactions.map((tx, i) => (
@@ -715,8 +715,8 @@ export default function DashboardPage() {
               <div className="card">
                 <div className="flex items-center gap-2 mb-4">
                   <Bot size={16} className="text-brand-blue" />
-                  <h2 className="font-semibold text-white">AI Agent Activity Log</h2>
-                  <span className="badge badge-blue ml-auto">Live</span>
+                  <h2 className="font-semibold text-white">{t("dash_activity_title")}</h2>
+                  <span className="badge badge-blue ml-auto">{t("dash_live_badge")}</span>
                 </div>
                 <AgentActivityFeed activities={activities} maxItems={20} />
               </div>
