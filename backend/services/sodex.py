@@ -595,6 +595,24 @@ async def deposit_usdc_to_sodex(amount_usd: float, simulate: bool = False) -> di
             "wait_sec": SODEX_DEPOSIT_WAIT_SEC}
 
 
+async def _verify_order_executed(clord_id: str, testnet: bool | None = None) -> bool:
+    """Verifica via histórico de trades se uma ordem com clOrdID foi executada."""
+    wallet = os.getenv("SODEX_WALLET_ADDRESS", "") or SODEX_WALLET_ADDR
+    if not wallet:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT) as c:
+            r = await c.get(f"{_spot_url(testnet)}/accounts/{wallet}/trades?limit=50")
+            r.raise_for_status()
+            trades = r.json().get("data", [])
+            for trade in trades:
+                if trade.get("clOrdID") == clord_id:
+                    return True
+    except Exception as e:
+        logger.warning(f"_verify_order_executed: {e}")
+    return False
+
+
 async def execute_buy_for_deposit(
     amount_usd: float,
     constituents: list,          # lista de IndexConstituent (in_basket=True)
@@ -704,9 +722,26 @@ async def execute_buy_for_deposit(
             if not sym_id:
                 sym_id = await get_symbol_id(f"{symbol}-USDC", testnet=testnet)
             if sym_id:
-                result = await place_order(sym_key, sym_id, "BUY", "LIMIT", qty_str, px_str, testnet=testnet)
-                order_info["status"] = "placed" if result else "failed"
-                order_info["raw"]    = result
+                clord_id = str(uuid.uuid4())
+                result = await place_order(sym_key, sym_id, "BUY", "LIMIT", qty_str, px_str,
+                                           client_order_id=clord_id, testnet=testnet)
+                if result:
+                    order_info["status"] = "placed"
+                    order_info["raw"]    = result
+                else:
+                    # Resposta nula não significa que a ordem falhou — pode ter sido timeout de resposta
+                    # após o servidor processar. Verificar via histórico de trades.
+                    await asyncio.sleep(5)
+                    executed = await _verify_order_executed(clord_id, testnet=testnet)
+                    if executed:
+                        logger.info(f"execute_buy_for_deposit: {symbol} confirmado via histórico — resposta perdida mas ordem executou")
+                        order_info["status"] = "placed"
+                        order_info["raw"]    = {"confirmed_via_trade_history": True, "clOrdID": clord_id}
+                    else:
+                        logger.error(f"execute_buy_for_deposit: {symbol} falhou — não encontrado no histórico de trades")
+                        order_info["status"] = "failed"
+                        order_info["raw"]    = None
+                order_info["clOrdID"] = clord_id
             else:
                 logger.warning(f"execute_buy_for_deposit: symbolID não encontrado para {sym_key}")
                 order_info["status"] = "no_symbol"
