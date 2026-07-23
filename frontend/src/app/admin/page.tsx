@@ -622,6 +622,9 @@ export default function AdminPage() {
 
   // ── Main admin UI ─────────────────────────────────────────────────────────────
   const pendingCount = proposals.filter(p => p.status === "pending").length;
+  // stats.pending_proposals vem do backend (DB) e é mais confiável quando proposals
+  // ainda não carregou ou falhou silenciosamente.
+  const displayPendingCount = stats?.pending_proposals ?? pendingCount;
   const criticalAlerts = alerts.filter(a => a.severity === "critical");
   const isMainnet = networkMode === "mainnet";
   const ethBal = fundWallet?.eth_balance ?? 0;
@@ -629,12 +632,12 @@ export default function AdminPage() {
   const ethColor = possibleTxs !== null
     ? (possibleTxs >= 200 ? "text-green-400" : possibleTxs >= 50 ? "text-amber-400" : "text-red-400")
     : (ethBal >= 0.05 ? "text-green-400" : ethBal >= 0.01 ? "text-amber-400" : "text-red-400");
-  const showBanner = pendingCount > 0 && activeTab !== "proposals";
+  const showBanner = displayPendingCount > 0 && activeTab !== "proposals";
   const ethLowAlert = fundWallet && possibleTxs !== null && possibleTxs < 200;
 
   const NAV_ITEMS: { id: AdminTab; icon: React.ElementType; label: string; badge: number }[] = [
     { id: "overview",   icon: Home,            label: t("admin_tab_overview"),      badge: criticalAlerts.length },
-    { id: "proposals",  icon: Bell,            label: t("admin_tab_proposals"),     badge: pendingCount },
+    { id: "proposals",  icon: Bell,            label: t("admin_tab_proposals"),     badge: displayPendingCount },
     { id: "indexes",    icon: Layers,          label: t("admin_tab_indexes"),       badge: 0 },
     { id: "treasury",   icon: Wallet,          label: t("admin_tab_treasury"),      badge: ethLowAlert ? 1 : 0 },
     { id: "investors",  icon: Users,           label: t("admin_tab_investors_tab"), badge: 0 },
@@ -697,7 +700,7 @@ export default function AdminPage() {
         >
           <Bell size={11} className="text-amber-400 shrink-0" />
           <p className="text-amber-300 text-xs font-medium">
-            {pendingCount === 1 ? t("admin_pending_banner_one") : t("admin_pending_banner_many").replace("{n}", String(pendingCount))}
+            {displayPendingCount === 1 ? t("admin_pending_banner_one") : t("admin_pending_banner_many").replace("{n}", String(displayPendingCount))}
           </p>
           <span className="ml-auto text-amber-400/50 text-xs shrink-0">{t("admin_pending_banner_link")}</span>
         </div>
@@ -762,9 +765,9 @@ export default function AdminPage() {
                     <div className="flex items-center gap-1.5 mb-1"><BarChart3 size={13} className="text-white/30" /><p className="stat-label">{t("admin_indexes")}</p></div>
                     <p className="stat-value">{stats.indexes.length}</p>
                   </div>
-                  <div className={`stat-card cursor-pointer transition-colors ${pendingCount > 0 ? "hover:border-amber-500/30" : ""}`} onClick={() => pendingCount > 0 && goTab("proposals")}>
+                  <div className={`stat-card cursor-pointer transition-colors ${displayPendingCount > 0 ? "hover:border-amber-500/30" : ""}`} onClick={() => displayPendingCount > 0 && goTab("proposals")}>
                     <div className="flex items-center gap-1.5 mb-1"><AlertTriangle size={13} className="text-amber-400" /><p className="stat-label">{t("admin_pending")}</p></div>
-                    <p className={`stat-value ${pendingCount > 0 ? "text-amber-400" : "text-white"}`}>{pendingCount}</p>
+                    <p className={`stat-value ${displayPendingCount > 0 ? "text-amber-400" : "text-white"}`}>{displayPendingCount}</p>
                     <p className="text-xs text-white/30">{t("admin_proposals_label")}</p>
                   </div>
                 </div>
