@@ -177,7 +177,8 @@ async def run_scout_for_index(index_id: str, theme: str, db, macro: dict = None)
     ).all()
     _basket_extras = []
     for _bc in _basket_rows:
-        if _bc.symbol.upper() in _candidate_syms_set or _bc.symbol.upper() in {"USDC", "USDT"}:
+        _sym_bare = (_bc.symbol[1:] if _bc.symbol.lower().startswith("v") and len(_bc.symbol) > 1 else _bc.symbol).upper()
+        if _bc.symbol.upper() in _candidate_syms_set or _sym_bare in _candidate_syms_set or _bc.symbol.upper() in {"USDC", "USDT"}:
             continue
         # Resolve currency_id: remove prefixo 'v' e busca no cache SoSoValue
         _stripped = _bc.symbol[1:] if _bc.symbol.lower().startswith("v") and len(_bc.symbol) > 1 else _bc.symbol

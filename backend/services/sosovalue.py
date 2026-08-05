@@ -145,7 +145,7 @@ async def get_ssi_candidates_for_theme(theme: str) -> List[Dict]:
                 "symbol": ticker,
                 "name": ticker,
                 "currency_id": cid,
-                "ssi_weight": float(c.get("weight", 0)),
+                "ssi_weight": float(c.get("weight", 0)) / 100.0,
             })
     return result
 

@@ -402,18 +402,42 @@ Generate a rebalancing proposal. Respond ONLY with valid JSON:
             )
             return None
 
-        # Validação: pesos de tokens não-removidos devem somar 100%. Normaliza se necessário.
+        # Validação hard: âncoras não podem ser reduzidas pelo LLM.
+        # Prompts são instruções, não garantias — este guard é o código de proteção real.
+        anchor_syms = {c.symbol for c in basket if getattr(c, "is_anchor", False)}
+        for ch in changes:
+            if ch.get("symbol") in anchor_syms and ch.get("action") in ("decrease", "remove", "eject"):
+                anchor_db = next((c for c in basket if c.symbol == ch["symbol"]), None)
+                original_w = anchor_db.weight if anchor_db else ch.get("old_weight", 0)
+                logger.warning(
+                    f"Rebalancer [{idx.id}]: âncora {ch['symbol']} seria reduzida "
+                    f"({ch.get('old_weight', '?')}%→{ch.get('new_weight', '?')}%) pelo LLM — forçando maintain"
+                )
+                ch["action"] = "maintain"
+                ch["new_weight"] = original_w
+
+        # Validação: pesos de tokens não-removidos devem somar 100%.
+        # Normaliza APENAS tokens com mudança ativa; maintains forçam old_weight
+        # (sem isso, a normalização alteraria pesos de âncoras que o LLM marcou como maintain).
         active = [c for c in changes if c.get("action") != "remove"]
+        for c in active:
+            if c.get("action") == "maintain":
+                c["new_weight"] = c.get("old_weight", c.get("new_weight", 0))
+        maintains = [c for c in active if c.get("action") == "maintain"]
+        changing = [c for c in active if c.get("action") != "maintain"]
+        maintain_total = sum(c.get("new_weight", 0) for c in maintains)
         total = sum(c.get("new_weight", 0) for c in active)
-        if total > 0 and abs(total - 100.0) > 0.5:
+        if total > 0 and abs(total - 100.0) > 0.5 and changing:
             logger.warning(
-                f"Rebalancer [{idx.id}]: pesos somam {total:.2f}% — normalizando para 100%"
+                f"Rebalancer [{idx.id}]: pesos somam {total:.2f}% — normalizando tokens ativos para 100%"
             )
-            for c in active:
-                c["new_weight"] = round(c.get("new_weight", 0) * 100.0 / total, 2)
-            total2 = sum(c.get("new_weight", 0) for c in active)
-            if active and abs(total2 - 100.0) > 0.01:
-                biggest = max(active, key=lambda x: x.get("new_weight", 0))
+            available = 100.0 - maintain_total
+            changing_total = sum(c.get("new_weight", 0) for c in changing) or 1.0
+            for c in changing:
+                c["new_weight"] = round(c.get("new_weight", 0) * available / changing_total, 2)
+            total2 = maintain_total + sum(c.get("new_weight", 0) for c in changing)
+            if abs(total2 - 100.0) > 0.01:
+                biggest = max(changing, key=lambda x: x.get("new_weight", 0)) if changing else max(active, key=lambda x: x.get("new_weight", 0))
                 biggest["new_weight"] = round(biggest["new_weight"] + (100.0 - total2), 2)
 
         return changes
