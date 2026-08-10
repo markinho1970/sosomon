@@ -5,6 +5,11 @@ import json
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 
+# Models tried in order — first available wins; on 503 retries before moving on
+_GEMINI_MODELS = ["gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash"]
+_GEMINI_RETRIES = 3
+_GEMINI_RETRY_DELAY = 10  # seconds between retries on 503
+
 _gemini_client = None
 
 
@@ -17,14 +22,24 @@ def _get_gemini_client():
 
 
 async def _call_gemini(prompt: str, max_tokens: int = 512, temperature: float = 0.0) -> str:
-    try:
-        client = _get_gemini_client()
-        response = await client.aio.models.generate_content(
-            model="gemini-2.5-flash-lite", contents=prompt
-        )
-        return getattr(response, "text", str(response))
-    except Exception as e:
-        raise RuntimeError("Gemini call failed: " + str(e))
+    client = _get_gemini_client()
+    last_error = None
+    for model in _GEMINI_MODELS:
+        for attempt in range(_GEMINI_RETRIES):
+            try:
+                response = await client.aio.models.generate_content(
+                    model=model, contents=prompt
+                )
+                return getattr(response, "text", str(response))
+            except Exception as e:
+                err_str = str(e)
+                last_error = e
+                is_overloaded = "503" in err_str or "UNAVAILABLE" in err_str or "429" in err_str
+                if is_overloaded and attempt < _GEMINI_RETRIES - 1:
+                    await asyncio.sleep(_GEMINI_RETRY_DELAY * (attempt + 1))
+                    continue
+                break  # non-retryable error or last attempt — try next model
+    raise RuntimeError(f"Gemini call failed (all models/retries exhausted): {last_error}")
 
 
 async def _call_openai(prompt: str, max_tokens: int = 512, temperature: float = 0.0) -> str:
@@ -50,7 +65,7 @@ async def _call_openai(prompt: str, max_tokens: int = 512, temperature: float = 
 
 
 async def generate(prompt: str, max_tokens: int = 512, temperature: float = 0.0) -> str:
-    """Unified async LLM call. Priority: Gemini → OpenAI fallback."""
+    """Unified async LLM call. Priority: Gemini (with retry + model fallback) → OpenAI."""
     last_error = None
 
     if GEMINI_KEY:
