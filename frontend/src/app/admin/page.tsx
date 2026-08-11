@@ -931,6 +931,7 @@ export default function AdminPage() {
                           <div className="flex-1">
                             <div className="flex items-center gap-2 flex-wrap mb-1.5">
                               <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_BADGE[p.status] ?? STATUS_BADGE.pending}`}>{p.status}</span>
+                              <span className="text-xs text-white/40 font-mono">#{p.id}</span>
                               <span className="text-xs text-white/60 font-medium">{p.index_name}</span>
                               <span className="text-xs text-white/25">{t("admin_trigger_label")}: {p.trigger}</span>
                               <span className="text-xs text-white/25 flex items-center gap-1"><Clock size={10} /> {timeAgo(p.proposed_at)}</span>
