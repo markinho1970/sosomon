@@ -3,7 +3,7 @@ Rebalancer Agent — Portfolio maintenance using Claude Sonnet.
 
 Responsabilidades:
 - Lê relatórios do Scout para obter mudanças recomendadas
-- Verifica drift (>5% do peso alvo dispara rebalanceamento)
+- Verifica drift (>8% do peso alvo dispara rebalanceamento)
 - Aplica overrides de risco (buffer de stablecoin baseado em sentiment)
 - Ejeta tokens com perda >40% em 7 dias (emergency override)
 - Gera propostas de rebalanceamento para revisão do founder
@@ -13,7 +13,7 @@ Responsabilidades:
 import os
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 from loguru import logger
 from services.llm import generate
@@ -28,10 +28,12 @@ from services.sodex import (
 )
 
 
-DRIFT_THRESHOLD = 5.0        # % deviation from target weight that triggers rebalance
-EJECTION_THRESHOLD = -40.0   # % 7-day loss that triggers emergency ejection
-MAX_SINGLE_WEIGHT = 25.0     # no single token > 25%
-DRIFT_COOLDOWN_HOURS = 48    # horas de cooldown após execução antes de novo drift trigger
+DRIFT_THRESHOLD = 8.0              # % deviation from target weight that triggers rebalance
+EJECTION_THRESHOLD = -40.0         # % 7-day loss that triggers emergency ejection
+MAX_SINGLE_WEIGHT = 25.0           # no single token > 25%
+DRIFT_COOLDOWN_HOURS = 48          # horas de cooldown após execução antes de novo drift trigger
+SCOUT_UPGRADE_MARGIN = 15          # pts de vantagem do candidato sobre o token mais fraco para trigger Scout
+MIN_ORDER_USD = 5.0                # mínimo por ordem aceito pelo SoDEX
 
 
 async def check_and_propose_rebalances():
@@ -135,8 +137,8 @@ async def _process_index(idx: AlphaIndex, sentiment_score: float, target_buffer:
         trigger = "risk_override"
     elif drift_violations:
         trigger = "drift"
-    elif _is_weekly_rebalance_due(idx):
-        trigger = "weekly"
+    elif _has_scout_upgrade(latest_scout):
+        trigger = "scout_upgrade"
 
     if not trigger:
         _log_no_action(idx.id, db)
@@ -213,6 +215,66 @@ async def _process_index(idx: AlphaIndex, sentiment_score: float, target_buffer:
         _save_proposal(idx.id, trigger, proposal_changes, db, network_mode="mainnet")
 
 
+def _has_scout_upgrade(latest_scout) -> bool:
+    """
+    True se o Scout encontrou um candidato claramente melhor que o token mais fraco da cesta.
+    Critério: score do melhor candidato de entrada >= score do pior token de saída + SCOUT_UPGRADE_MARGIN.
+    Evita trigger por candidatos marginalmente melhores.
+    """
+    if not latest_scout:
+        return False
+    inclusions = latest_scout.inclusions or []
+    exclusions = latest_scout.exclusions or []
+    if not inclusions or not exclusions:
+        return False
+    best_in_score = max((i.get("score", 0) for i in inclusions), default=0)
+    worst_out_score = min((e.get("score", 100) for e in exclusions), default=100)
+    qualifies = (best_in_score - worst_out_score) >= SCOUT_UPGRADE_MARGIN
+    if qualifies:
+        logger.info(
+            f"Rebalancer: Scout upgrade trigger — "
+            f"melhor candidato score={best_in_score}, pior token score={worst_out_score} "
+            f"(margem={best_in_score - worst_out_score} >= {SCOUT_UPGRADE_MARGIN})"
+        )
+    return qualifies
+
+
+def _check_min_order_viability(changes: List[Dict], snapshot: Dict):
+    """
+    Separa ordens abaixo do mínimo SoDEX ($5) para evitar rejeição na exchange.
+    Ordens 'remove' e 'maintain' passam sempre — apenas trades ativos são checados.
+    Retorna (viable_changes, skipped_changes).
+    """
+    total_usd = snapshot.get("total_usd", 0) or 0
+    # Normaliza positions para dict keyed por symbol
+    raw_positions = snapshot.get("positions", [])
+    if isinstance(raw_positions, list):
+        positions = {p.get("symbol", ""): p for p in raw_positions}
+    else:
+        positions = raw_positions
+
+    viable, skipped = [], []
+    for change in changes:
+        action = change.get("action", "")
+        if action in ("remove", "maintain"):
+            viable.append(change)
+            continue
+
+        symbol = change["symbol"]
+        pos = positions.get(symbol, {})
+        current_usd = pos.get("value_usd", 0) if pos else 0
+        current_pct = (current_usd / total_usd * 100) if total_usd > 0 else 0
+        target_pct = change.get("new_weight", 0)
+        trade_usd = abs(target_pct - current_pct) / 100 * total_usd if total_usd > 0 else 0
+
+        if trade_usd < MIN_ORDER_USD:
+            skipped.append({**change, "skip_reason": "below_min_notional", "trade_usd": round(trade_usd, 2)})
+        else:
+            viable.append(change)
+
+    return viable, skipped
+
+
 def _check_emergency_ejections(constituents: List[IndexConstituent]) -> List[Dict]:
     """Find tokens that lost >40% in 7 days — immediate ejection required."""
     ejections = []
@@ -263,13 +325,6 @@ def _check_drift(constituents: List[IndexConstituent], target_buffer: float) -> 
                 "drift":          round(drift, 1),
             })
     return violations
-
-
-def _is_weekly_rebalance_due(idx: AlphaIndex) -> bool:
-    """Check if more than 7 days since last rebalance."""
-    if not idx.last_rebalanced_at:
-        return True
-    return (datetime.utcnow() - idx.last_rebalanced_at) >= timedelta(days=7)
 
 
 async def _generate_proposal(
@@ -470,7 +525,7 @@ def _log_no_action(index_id: str, db):
         index_id=index_id,
         agent="rebalancer",
         action="no_action",
-        description="Drift check complete. All positions within 5% threshold. No rebalance needed.",
+        description="Drift check complete. All positions within 8% threshold. No rebalance needed.",
         timestamp=datetime.utcnow(),
     )
     db.add(activity)
@@ -508,10 +563,18 @@ async def apply_proposal(proposal_id: int, db, dry_run: bool = False):
             f"rede: {snapshot['network']}"
         )
 
-        # 2. Monta mapa de pesos alvo a partir das mudanças aprovadas
+        # 2. Pre-check: filtra ordens abaixo do mínimo SoDEX ($5) antes de enviar
+        viable_changes, skipped_changes = _check_min_order_viability(proposal.changes, snapshot)
+        for s in skipped_changes:
+            logger.warning(
+                f"apply_proposal [{proposal_id}]: {s['symbol']} ignorado — "
+                f"notional ${s.get('trade_usd', 0):.2f} < mínimo ${MIN_ORDER_USD:.0f} (below_min_notional)"
+            )
+
+        # Monta mapa de pesos alvo somente das ordens viáveis
         target_weights = {
             c["symbol"]: c["new_weight"]
-            for c in proposal.changes
+            for c in viable_changes
             if c.get("action") != "remove"
         }
 

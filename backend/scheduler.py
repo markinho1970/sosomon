@@ -64,12 +64,17 @@ def run_nav_updater():
     _run_async(update_all_navs())
 
 
+def run_fee_manager():
+    from services.fee_manager import run_monthly_fees
+    logger.info("Scheduler: starting Fee Manager (monthly collection)")
+    _run_async(run_monthly_fees(dry_run=False))
+
+
 def start_scheduler():
     scheduler.add_job(run_scout, CronTrigger(hour=6, minute=0),
                       id="scout_daily", replace_existing=True)
 
-    scheduler.add_job(run_rebalancer, CronTrigger(day_of_week="mon", hour=8, minute=0),
-                      id="rebalancer_weekly", replace_existing=True)
+    # Rebalancer: apenas drift check a cada 4h — weekly automático removido (modelo passivo)
     scheduler.add_job(run_rebalancer, CronTrigger(hour="*/4", minute=30),
                       id="rebalancer_drift_check", replace_existing=True)
 
@@ -85,8 +90,12 @@ def start_scheduler():
     scheduler.add_job(run_nav_updater, IntervalTrigger(hours=1),
                       id="nav_updater", replace_existing=True)
 
+    # Fee Manager: dia 1 de cada mês às 08:00 UTC — management fee + performance fee
+    scheduler.add_job(run_fee_manager, CronTrigger(day=1, hour=8, minute=0),
+                      id="fee_manager_monthly", replace_existing=True)
+
     scheduler.start()
-    logger.info("Scheduler started: Scout(06:00), Rebalancer(Mon+drift), Narrator(Sun 18:00), DepositMonitor Mainnet+Testnet(2min), NAVUpdater(1h)")
+    logger.info("Scheduler started: Scout(06:00), Rebalancer(drift/4h), Narrator(Sun 18:00), DepositMonitor Mainnet+Testnet(2min), NAVUpdater(1h), FeeManager(dia1 08:00)")
 
 
 def stop_scheduler():
