@@ -426,31 +426,59 @@ export default function DashboardPage() {
                   </div>
                 ) : (
                   <>
-                    {/* ── Alertas de performance semanal ─────────────────────────── */}
-                    {portfolios.filter(p => Math.abs(p.return_7d_pct ?? 0) >= 3).map(p => {
-                      const r7 = p.return_7d_pct ?? 0;
-                      const up = r7 > 0;
+                    {/* ── Alertas de retorno vs. valor investido ─────────────────── */}
+                    {(() => {
+                      type AlertLevel = 'critical' | 'warning' | 'caution' | 'gain_strong' | 'gain_opportunity';
+                      const LEVEL_ORDER: Record<AlertLevel, number> = { critical: 0, warning: 1, caution: 2, gain_strong: 3, gain_opportunity: 4 };
+                      const classified = portfolios.map(p => {
+                        const ret = p.all_time_return_pct;
+                        let level: AlertLevel | null = null;
+                        if (ret <= -30)     level = 'critical';
+                        else if (ret <= -20) level = 'warning';
+                        else if (ret <= -10) level = 'caution';
+                        else if (ret >= 30)  level = 'gain_strong';
+                        else if (ret >= 15)  level = 'gain_opportunity';
+                        return level ? { p, level, ret } : null;
+                      }).filter(Boolean).sort((a, b) => LEVEL_ORDER[a!.level] - LEVEL_ORDER[b!.level]);
+
+                      if (!classified.length) return null;
                       return (
-                        <div key={`alert-${p.index_id}`} className={`rounded-xl border px-4 py-3 flex items-center gap-3 mb-1 ${
-                          up
-                            ? "border-green-500/30 bg-green-500/8 text-green-300"
-                            : r7 < -10
-                            ? "border-red-500/40 bg-red-500/10 text-red-300"
-                            : "border-yellow-500/30 bg-yellow-500/8 text-yellow-300"
-                        }`}>
-                          <span className="text-lg">{up ? "🚀" : r7 < -10 ? "⚠️" : "📉"}</span>
-                          <div className="flex-1">
-                            <span className="font-semibold text-sm">{p.index_name}</span>
-                            <span className="text-xs ml-2 opacity-80">
-                              {up ? "subiu" : "caiu"} <strong>{Math.abs(r7).toFixed(2)}%</strong> esta semana
-                              {p.btc_benchmark_30d !== 0 && (
-                                <span className="opacity-60 ml-2">· BTC 30d: {p.btc_benchmark_30d > 0 ? "+" : ""}{p.btc_benchmark_30d.toFixed(2)}%</span>
-                              )}
-                            </span>
-                          </div>
+                        <div className="space-y-2 mb-2">
+                          {classified.map(item => {
+                            const { p, level, ret } = item!;
+                            const absRet = Math.abs(ret).toFixed(1);
+                            const cfg: Record<AlertLevel, { border: string; bg: string; text: string; icon: string; label: string; msg: string; showWithdraw: boolean }> = {
+                              critical:         { border: 'border-red-500/50',    bg: 'bg-red-500/10',    text: 'text-red-300',    icon: '🔴', label: 'Perda crítica',    msg: `${p.index_name} perdeu ${absRet}% do valor investido — considere resgatar`, showWithdraw: true },
+                              warning:          { border: 'border-orange-500/40', bg: 'bg-orange-500/8',  text: 'text-orange-300', icon: '⚠️', label: 'Atenção',          msg: `${p.index_name} está −${absRet}% desde o seu depósito`, showWithdraw: true },
+                              caution:          { border: 'border-yellow-500/30', bg: 'bg-yellow-500/8',  text: 'text-yellow-300', icon: '📊', label: 'Monitorando',      msg: `${p.index_name} está −${absRet}% desde o seu depósito`, showWithdraw: false },
+                              gain_strong:      { border: 'border-green-500/40',  bg: 'bg-green-500/8',   text: 'text-green-300',  icon: '🚀', label: 'Ganho expressivo', msg: `${p.index_name} rendeu +${absRet}% — considere realizar parte do lucro`, showWithdraw: true },
+                              gain_opportunity: { border: 'border-green-500/25',  bg: 'bg-green-500/5',   text: 'text-green-400',  icon: '📈', label: 'Oportunidade',     msg: `${p.index_name} está +${absRet}% — portfólio em território positivo`, showWithdraw: false },
+                            };
+                            const c = cfg[level];
+                            return (
+                              <div key={`alert-${p.index_id}`} className={`rounded-xl border px-4 py-3 flex items-center gap-3 ${c.border} ${c.bg}`}>
+                                <span className="text-base shrink-0">{c.icon}</span>
+                                <div className="flex-1 min-w-0">
+                                  <span className={`font-semibold text-xs uppercase tracking-wider ${c.text} opacity-60`}>{c.label}</span>
+                                  <p className={`text-sm ${c.text} mt-0.5`}>{c.msg}</p>
+                                </div>
+                                {c.showWithdraw && (
+                                  <div className="shrink-0">
+                                    <WithdrawButton
+                                      indexId={p.index_id}
+                                      indexName={p.index_name}
+                                      currentValueUsd={p.current_value_usd}
+                                      depositedUsd={p.deposited_usd}
+                                      navUsd={1}
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       );
-                    })}
+                    })()}
 
                     {portfolios.map((p) => (
                       <div key={p.index_id} className={`card border-l-4 ${THEME_BORDER[p.theme] ?? "border-l-white/10"} hover:border-white/10 transition-all`}>
@@ -466,7 +494,7 @@ export default function DashboardPage() {
                               {p.index_name}
                             </Link>
                           </div>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 shrink-0">
+                          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 shrink-0">
                             <div>
                               <p className="stat-label text-xs">Value</p>
                               <p className="font-semibold text-white">{fmtUSD(p.current_value_usd)}</p>
@@ -476,6 +504,12 @@ export default function DashboardPage() {
                               <p className={`font-semibold flex items-center gap-1 ${pctColor(p.all_time_return_pct, 2, "text-white")}`}>
                                 {parseFloat(p.all_time_return_pct.toFixed(2)) > 0 ? <TrendingUp size={13} /> : parseFloat(p.all_time_return_pct.toFixed(2)) < 0 ? <TrendingDown size={13} /> : null}
                                 {fmtPct(p.all_time_return_pct)}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="stat-label text-xs">7d</p>
+                              <p className={`font-semibold ${pctColor(p.return_7d_pct, 2, "text-white")}`}>
+                                {fmtPct(p.return_7d_pct)}
                               </p>
                             </div>
                             <div>
