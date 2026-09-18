@@ -15,7 +15,7 @@ from eth_account import Account
 logger = logging.getLogger(__name__)
 
 from database import get_db
-from models import RebalanceProposal, AlphaIndex, AgentActivityLog, Subscriber, SubscriberPortfolio, DepositTransaction
+from models import RebalanceProposal, AlphaIndex, AgentActivityLog, Subscriber, SubscriberPortfolio, DepositTransaction, TradeExecution
 from services.sodex import get_portfolio_snapshot, get_trade_history
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -345,7 +345,38 @@ async def admin_trades(network_mode: str = "mainnet", limit: int = 50, db: Sessi
                     })
             return {"data": trades, "count": len(trades)}
 
-        trades = await get_trade_history(limit=limit, testnet=testnet)
+        # Mainnet: lê do histórico permanente local (SoDEX API só retém ~30 dias)
+        rows = (
+            db.query(TradeExecution)
+            .filter(TradeExecution.network_mode == "mainnet")
+            .order_by(TradeExecution.executed_at.desc())
+            .limit(limit)
+            .all()
+        )
+        trades = []
+        for r in rows:
+            # Busca wallet do investidor via portfolio → subscriber
+            wallet = ""
+            if r.portfolio_id:
+                p = db.query(SubscriberPortfolio).filter(SubscriberPortfolio.id == r.portfolio_id).first()
+                if p:
+                    sub = db.query(Subscriber).filter(Subscriber.id == p.subscriber_id).first()
+                    wallet = sub.wallet_address if sub else ""
+            trades.append({
+                "symbol":          r.symbol,
+                "side":            r.side,
+                "quantity":        r.quantity,
+                "price":           r.price_usd,
+                "usd_value":       round(r.notional_usd, 2),
+                "status":          r.status,
+                "skip_reason":     r.skip_reason,
+                "source":          r.source,
+                "index_id":        r.index_id,
+                "order_id":        r.order_id,
+                "timestamp":       r.executed_at.isoformat() if r.executed_at else "",
+                "is_simulated":    False,
+                "investor_wallet": wallet,
+            })
         return {"data": trades, "count": len(trades)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

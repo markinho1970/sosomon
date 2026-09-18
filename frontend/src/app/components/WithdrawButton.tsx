@@ -17,6 +17,9 @@ interface Props {
   currentValueUsd: number;
   navUsd: number;
   depositedUsd?: number;
+  minDepositUsd?: number;
+  lotNumber?: number;          // Se informado, o modal mostra "Lote #N" e opera no lote
+  buttonLabel?: string;        // Label customizado para o botão trigger
 }
 
 interface Preview {
@@ -64,34 +67,63 @@ function fmtUSD(v: number) {
   return `${v < 0 ? "-" : ""}$${abs.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export default function WithdrawButton({ indexId, indexName, currentValueUsd, navUsd, depositedUsd = 0 }: Props) {
+export default function WithdrawButton({
+  indexId, indexName, currentValueUsd, navUsd, depositedUsd = 0,
+  minDepositUsd = 25, lotNumber, buttonLabel,
+}: Props) {
   const { address } = useAccount();
   const { t } = useLang();
   const { networkMode } = useNetworkMode();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>("input");
   const [amount, setAmount] = useState("");
+  // withdrawValue armazena o valor real enviado ao backend (separado do input string)
+  const [withdrawValue, setWithdrawValue] = useState(0);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [result, setResult] = useState<ExecResult | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
   const amountNum = parseFloat(amount) || 0;
-  const isValid = amountNum >= 1 && amountNum <= currentValueUsd;
+
+  // Saque parcial só é viável se o lote/portfólio tem pelo menos 2× o mínimo do índice
+  const minPartialUsd = minDepositUsd;
+  const maxPartialUsd = currentValueUsd - minDepositUsd;
+  const partialViable = maxPartialUsd >= minPartialUsd;
+
+  const isFullWithdrawal = amountNum >= currentValueUsd * 0.9999;
+  const isValid = amountNum > 0 && (
+    isFullWithdrawal ||
+    (partialViable && amountNum >= minPartialUsd && amountNum <= maxPartialUsd)
+  );
+
+  let inputError = "";
+  if (amountNum > 0 && !isFullWithdrawal) {
+    if (!partialViable) {
+      inputError = `Saque parcial indisponível — valor abaixo do mínimo necessário. Use "Sacar Tudo" ou aguarde crescer para ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(minDepositUsd * 2)}.`;
+    } else if (amountNum < minPartialUsd) {
+      inputError = `Mínimo para saque parcial: ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(minPartialUsd)} (garante ordens mínimas de $5 por token).`;
+    } else if (amountNum > maxPartialUsd) {
+      inputError = `Máximo para saque parcial: ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(maxPartialUsd)} (deve sobrar ao menos ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(minDepositUsd)} na cesta). Para sacar mais use "Sacar Tudo".`;
+    }
+  }
 
   function handleClose() {
     setOpen(false);
-    setTimeout(() => { setStep("input"); setAmount(""); setPreview(null); setResult(null); }, 300);
+    setTimeout(() => { setStep("input"); setAmount(""); setPreview(null); setResult(null); setWithdrawValue(0); }, 300);
   }
 
-  async function loadPreview() {
-    if (!address || !isValid) return;
+  // Aceita valor opcional — quando chamado direto (ex: "Sacar Tudo"), ignora o input
+  async function loadPreview(valueOverride?: number) {
+    const v = valueOverride !== undefined ? valueOverride : amountNum;
+    if (!address || v <= 0) return;
+    setWithdrawValue(v);
     setLoadingPreview(true);
     try {
       const { data } = await api.post("/api/invest/withdraw-preview", {
         wallet_address: address,
         index_id: indexId,
-        amount_usd: amountNum,
+        amount_usd: v,
         network_mode: networkMode,
       });
       setPreview(data);
@@ -112,7 +144,7 @@ export default function WithdrawButton({ indexId, indexName, currentValueUsd, na
       const { data } = await api.post<ExecResult>("/api/invest/withdraw-execute", {
         wallet_address: address,
         index_id: indexId,
-        amount_usd: amountNum,
+        amount_usd: withdrawValue,
         simulate,
         network_mode: networkMode,
       });
@@ -135,11 +167,14 @@ export default function WithdrawButton({ indexId, indexName, currentValueUsd, na
   if (currentValueUsd <= 0) return null;
 
   const profitTotal = currentValueUsd - depositedUsd;
+  const modalTitle = lotNumber !== undefined
+    ? `${indexName} — Lote #${lotNumber}`
+    : t("wd_title", { index: indexName });
 
   return (
     <>
       <button onClick={() => setOpen(true)} className="btn-ghost w-full text-sm">
-        {t("wd_btn")}
+        {buttonLabel || t("wd_btn")}
       </button>
 
       <Dialog.Root open={open} onOpenChange={setOpen}>
@@ -149,7 +184,7 @@ export default function WithdrawButton({ indexId, indexName, currentValueUsd, na
 
             <div className="flex items-center justify-between mb-5">
               <Dialog.Title className="text-lg font-bold text-white">
-                {t("wd_title", { index: indexName })}
+                {modalTitle}
               </Dialog.Title>
               <button onClick={handleClose} className="text-white/40 hover:text-white transition-colors">
                 <X size={18} />
@@ -159,7 +194,6 @@ export default function WithdrawButton({ indexId, indexName, currentValueUsd, na
             {/* ── STEP: input ─────────────────────────────────────────── */}
             {step === "input" && (
               <div className="space-y-4">
-                {/* Current position summary */}
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <div className="bg-white/3 rounded-lg p-2.5">
                     <p className="text-xs text-white/30">{t("wd_deposited")}</p>
@@ -178,285 +212,266 @@ export default function WithdrawButton({ indexId, indexName, currentValueUsd, na
                   </div>
                 </div>
 
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs text-white/40 uppercase tracking-wider">{t("wd_amount_label")}</label>
-                    <span className="text-xs text-white/30">
-                      {t("wd_available")} <span className="text-white/60">{fmtUSD(currentValueUsd)}</span>
-                    </span>
-                  </div>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-sm">$</span>
-                    <input
-                      type="number"
-                      min="1"
-                      max={currentValueUsd}
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg pl-7 pr-4 py-3 text-white text-sm focus:outline-none focus:border-brand-blue/60"
-                      placeholder="0.00"
-                    />
-                  </div>
-                  {amountNum > 0 && !isValid && (
-                    <p className="text-xs text-red-400 mt-1">
-                      {amountNum < 1 ? t("wd_min") : t("wd_exceeds")}
-                    </p>
-                  )}
-                </div>
+                {/* Quando saque parcial não é viável, mostra apenas o botão direto */}
+                {!partialViable ? (
+                  <>
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-orange-500/8 border border-orange-500/20">
+                      <AlertTriangle size={13} className="text-orange-400 shrink-0 mt-0.5" />
+                      <p className="text-xs text-orange-300/80">
+                        Saque parcial indisponível. O valor mínimo para manter a cesta ativa é {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(minDepositUsd)} — não há margem para retirada parcial. Você pode sacar o valor total ou aguardar crescer.
+                      </p>
+                    </div>
 
-                <div className="flex gap-2">
-                  {[25, 50, 75, 100].map((pct) => (
                     <button
-                      key={pct}
-                      onClick={() => setAmount((currentValueUsd * pct / 100).toFixed(2))}
-                      className="flex-1 text-xs py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/50 hover:text-white transition-all border border-white/5"
+                      onClick={() => loadPreview(currentValueUsd)}
+                      disabled={loadingPreview}
+                      className="w-full py-3 rounded-xl font-semibold text-sm bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 hover:text-amber-300 border border-amber-500/25 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
-                      {pct}%
+                      {loadingPreview
+                        ? <><Loader2 size={15} className="animate-spin" /> Calculando...</>
+                        : `Sacar Tudo (${fmtUSD(currentValueUsd)})`
+                      }
                     </button>
-                  ))}
-                </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-xs text-white/40 uppercase tracking-wider">{t("wd_amount_label")}</label>
+                        <span className="text-xs text-white/30">
+                          {t("wd_available")} <span className="text-white/60">{fmtUSD(currentValueUsd)}</span>
+                        </span>
+                      </div>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-sm">$</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max={currentValueUsd}
+                          value={amount}
+                          onChange={(e) => setAmount(e.target.value)}
+                          className="w-full bg-white/5 border border-white/10 rounded-lg pl-7 pr-4 py-3 text-white text-sm focus:outline-none focus:border-brand-blue/60"
+                          placeholder="0.00"
+                        />
+                      </div>
+                      {inputError && (
+                        <div className="flex items-start gap-1.5 mt-1.5">
+                          <AlertCircle size={12} className="text-red-400 shrink-0 mt-0.5" />
+                          <p className="text-xs text-red-400">{inputError}</p>
+                        </div>
+                      )}
+                      {!inputError && amountNum === 0 && (
+                        <p className="text-xs text-white/30 mt-1">
+                          Parcial: entre {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(minPartialUsd)} e {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(maxPartialUsd)}
+                        </p>
+                      )}
+                    </div>
 
-                <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/8 border border-amber-500/20">
-                  <Info size={13} className="text-amber-400 shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-300/70" dangerouslySetInnerHTML={{ __html: t("wd_before_exec_hint") }} />
-                </div>
+                    <div className="flex gap-2">
+                      {[25, 50, 75, 100].map((pct) => (
+                        <button
+                          key={pct}
+                          onClick={() => {
+                            const v = currentValueUsd * pct / 100;
+                            const clamped = pct === 100 ? currentValueUsd : Math.min(Math.max(v, minPartialUsd), maxPartialUsd);
+                            setAmount(clamped.toFixed(2));
+                          }}
+                          className="flex-1 text-xs py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/50 hover:text-white transition-all border border-white/5"
+                        >
+                          {pct}%
+                        </button>
+                      ))}
+                    </div>
 
-                <button
-                  onClick={loadPreview}
-                  disabled={!isValid || loadingPreview}
-                  className="btn-primary w-full disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {loadingPreview
-                    ? <><Loader2 size={15} className="animate-spin" /> {t("transp_loading")}</>
-                    : t("wd_preview_btn")}
-                </button>
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/8 border border-amber-500/20">
+                      <Info size={13} className="text-amber-400 shrink-0 mt-0.5" />
+                      <p className="text-xs text-amber-300/70" dangerouslySetInnerHTML={{ __html: t("wd_before_exec_hint") }} />
+                    </div>
+
+                    <button
+                      onClick={() => loadPreview()}
+                      disabled={!isValid || loadingPreview}
+                      className="btn-primary w-full disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {loadingPreview
+                        ? <><Loader2 size={15} className="animate-spin" /> Calculando...</>
+                        : "Pré-visualizar saque"}
+                    </button>
+                  </>
+                )}
               </div>
             )}
 
             {/* ── STEP: preview ───────────────────────────────────────── */}
             {step === "preview" && preview && (
               <div className="space-y-4">
-                <p className="text-xs text-white/40 uppercase tracking-wider">{t("wd_summary")}</p>
-
-                {/* P&L block */}
-                <div className={`rounded-xl p-4 border ${preview.pnl_usd >= 0 ? "bg-green-500/5 border-green-500/20" : "bg-red-500/5 border-red-500/20"}`}>
-                  <div className="flex items-center gap-2 mb-2">
-                    {preview.pnl_usd >= 0 ? <TrendingUp size={15} className="text-green-400" /> : <TrendingDown size={15} className="text-red-400" />}
-                    <span className={`font-semibold text-sm ${preview.pnl_usd >= 0 ? "text-green-400" : "text-red-400"}`}>
-                      {preview.pnl_label}: {fmtUSD(preview.pnl_usd)} ({preview.pnl_pct > 0 ? "+" : ""}{preview.pnl_pct.toFixed(2)}%)
+                <div className="bg-white/3 rounded-xl p-4 space-y-2.5">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-white/50">Valor solicitado</span>
+                    <span className="text-white font-semibold">{fmtUSD(preview.withdrawal_requested)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-white/50">Custo de aquisição</span>
+                    <span className="text-white">{fmtUSD(preview.cost_basis_proportional)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-white/50">P&L</span>
+                    <span className={preview.pnl_usd >= 0 ? "text-green-400" : "text-red-400"}>
+                      {fmtUSD(preview.pnl_usd)} ({preview.pnl_pct.toFixed(2)}%)
                     </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div><span className="text-white/30">{t("wd_cost_basis")}</span><br /><span className="text-white">{fmtUSD(preview.cost_basis_proportional)}</span></div>
-                    <div><span className="text-white/30">{t("wd_current_val")}</span><br /><span className="text-white">{fmtUSD(preview.withdrawal_requested)}</span></div>
+                  <hr className="border-white/8" />
+                  <div className="flex justify-between text-sm">
+                    <span className="text-white/50">Taxa de gestão (0,75%/ano)</span>
+                    <span className="text-white/70">{fmtUSD(preview.management_fee_usd)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-white/50">Taxa de performance (15%)</span>
+                    <span className="text-white/70">{fmtUSD(preview.performance_fee_usd)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-white/50">Gas estimado (rede Base)</span>
+                    <span className="text-white/70">{fmtUSD(preview.gas_fee_est_usd)}</span>
+                  </div>
+                  <hr className="border-white/8" />
+                  <div className="flex justify-between text-sm font-bold">
+                    <span className="text-white">Você receberá</span>
+                    <span className="text-green-400 text-base">{fmtUSD(preview.net_usd)}</span>
                   </div>
                 </div>
 
-                {/* Fees breakdown */}
-                <div className="bg-white/3 rounded-xl p-4 space-y-2">
-                  <p className="text-xs text-white/40 uppercase tracking-wider mb-2">{t("wd_fees")}</p>
-                  {[
-                    { label: t("wd_mgmt_fee"), value: preview.management_fee_usd, detail: preview.fees_breakdown.management },
-                    { label: t("wd_perf_fee"), value: preview.performance_fee_usd, detail: preview.fees_breakdown.performance },
-                    { label: t("wd_gas"), value: preview.gas_fee_est_usd, detail: preview.fees_breakdown.gas },
-                  ].map((f) => (
-                    <div key={f.label} className="space-y-0.5">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-white/50">{f.label}</span>
-                        <span className={f.value > 0 ? "text-orange-400" : "text-white/30"}>{f.value > 0 ? fmtUSD(f.value) : "—"}</span>
-                      </div>
-                      <p className="text-xs text-white/25">{f.detail}</p>
-                    </div>
-                  ))}
-                  <div className="border-t border-white/10 pt-2 flex justify-between text-sm font-semibold">
-                    <span className="text-white/60">{t("wd_total_fees")}</span>
-                    <span className="text-orange-400">{fmtUSD(preview.total_fees_usd)}</span>
-                  </div>
-                </div>
-
-                {/* Net you receive */}
-                <div className="bg-brand-blue/10 border border-brand-blue/30 rounded-xl p-4 flex justify-between items-center">
-                  <div>
-                    <p className="text-xs text-white/40">{t("wd_you_receive")}</p>
-                    <p className="text-2xl font-bold text-white">{fmtUSD(preview.net_usd)}</p>
-                    <p className="text-xs text-white/30">{t("wd_usdc_wallet")}</p>
-                  </div>
-                  <div className="text-right text-xs text-white/30">
-                    <p>{t("wd_in_wallet").replace("{a}", address?.slice(0, 6) ?? "")}{address?.slice(-4)}</p>
-                    <p className="mt-0.5">{t("wd_time_estimate")}</p>
-                  </div>
-                </div>
-
-                {/* Warnings */}
-                {preview.warnings.length > 0 && (
+                {preview.warnings?.length > 0 && (
                   <div className="space-y-1.5">
                     {preview.warnings.map((w, i) => (
-                      <div key={i} className="flex items-start gap-2 p-2.5 rounded-lg bg-yellow-500/8 border border-yellow-500/20">
-                        <AlertTriangle size={13} className="text-yellow-400 shrink-0 mt-0.5" />
-                        <p className="text-xs text-yellow-300/80">{w}</p>
+                      <div key={i} className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/8 border border-amber-500/15">
+                        <AlertTriangle size={12} className="text-amber-400 shrink-0 mt-0.5" />
+                        <p className="text-xs text-amber-300/80">{w}</p>
                       </div>
                     ))}
                   </div>
                 )}
 
-                {/* Risks */}
-                {preview.risks.length > 0 && (
-                  <details className="text-xs text-white/30">
-                    <summary className="cursor-pointer hover:text-white/50">{t("wd_risks")}</summary>
-                    <ul className="mt-2 space-y-1 pl-3">
-                      {preview.risks.map((r, i) => <li key={i} className="list-disc list-inside">{r}</li>)}
-                    </ul>
-                  </details>
+                {networkMode === "testnet" && (
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-purple-500/10 border border-purple-500/20">
+                    <FlaskConical size={13} className="text-purple-400 shrink-0" />
+                    <p className="text-xs text-purple-300/80">Modo testnet — simulação sem transação real</p>
+                  </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => execute(true)}
-                    className="flex items-center justify-center gap-1.5 text-sm py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-cyan-400 border border-cyan-500/20 transition-all"
-                  >
-                    <FlaskConical size={14} />
-                    {t("wd_simulate")}
+                <div className="flex gap-3">
+                  <button onClick={() => setStep("input")} className="flex-1 btn-ghost text-sm">
+                    ← Voltar
                   </button>
-                  <button
-                    onClick={() => setStep("confirm")}
-                    disabled={preview.net_usd <= 0}
-                    className="btn-primary disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    {t("wd_execute")}
+                  <button onClick={() => setStep("confirm")} className="flex-1 btn-primary text-sm">
+                    Continuar
                   </button>
                 </div>
-                <button onClick={() => setStep("input")} className="text-xs text-white/30 hover:text-white/60 w-full text-center transition-colors">
-                  {t("wd_back_confirm")}
-                </button>
               </div>
             )}
 
             {/* ── STEP: confirm ───────────────────────────────────────── */}
             {step === "confirm" && preview && (
               <div className="space-y-4">
-                <div className="bg-white/3 rounded-xl p-4 space-y-2 text-sm">
-                  {[
-                    [t("wd_confirm_from"), indexName],
-                    [t("wd_confirm_amount"), fmtUSD(preview.withdrawal_requested)],
-                    [t("wd_total_fees"), fmtUSD(preview.total_fees_usd)],
-                    [t("wd_you_receive"), fmtUSD(preview.net_usd)],
-                    [t("wd_confirm_to"), `${address?.slice(0, 8)}…${address?.slice(-6)}`],
-                    [t("wd_confirm_network"), "Base (chainId 8453)"],
-                    [t("wd_confirm_token"), "USDC"],
-                  ].map(([label, value]) => (
-                    <div key={label} className="flex justify-between">
-                      <span className="text-white/40">{label}</span>
-                      <span className="text-white font-medium font-mono text-xs">{value}</span>
-                    </div>
-                  ))}
+                <div className="text-center py-2">
+                  <p className="text-white/60 text-sm">Confirmar saque de</p>
+                  <p className="text-2xl font-bold text-white mt-2">{fmtUSD(preview.net_usd)}</p>
+                  <p className="text-xs text-white/30 mt-1">após taxas · USDC na sua carteira</p>
                 </div>
-                <p className="text-xs text-white/30 leading-relaxed">
-                  {t("wd_irreversible")}
-                </p>
-                <div className="flex gap-2">
-                  <button onClick={() => setStep("preview")} className="flex-1 btn-ghost">{t("wd_back_confirm")}</button>
-                  <button onClick={() => execute(false)} className="flex-1 btn-primary">
-                    {t("wd_execute")}
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => execute(true)}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-white/5 hover:bg-white/8 text-white/60 hover:text-white border border-white/8 transition-all flex items-center justify-center gap-1.5"
+                  >
+                    <FlaskConical size={14} />
+                    Simular
+                  </button>
+                  <button
+                    onClick={() => execute(false)}
+                    className="flex-1 btn-primary text-sm"
+                  >
+                    Executar saque →
                   </button>
                 </div>
+                <button onClick={() => setStep("input")} className="w-full btn-ghost text-xs text-white/30">
+                  Cancelar
+                </button>
               </div>
             )}
 
             {/* ── STEP: processing ────────────────────────────────────── */}
             {step === "processing" && (
-              <div className="py-10 flex flex-col items-center gap-3">
-                <Loader2 size={36} className="text-brand-blue animate-spin" />
-                <p className="text-white/60 text-sm">{t("wd_processing")}</p>
+              <div className="flex flex-col items-center gap-4 py-8">
+                <Loader2 size={36} className="animate-spin text-brand-blue" />
+                <p className="text-white/60 text-sm">Enviando transação… não feche esta janela</p>
+              </div>
+            )}
+
+            {/* ── STEP: success ───────────────────────────────────────── */}
+            {step === "success" && result && (
+              <div className="space-y-4">
+                <div className="flex flex-col items-center gap-3 py-4">
+                  <CheckCircle2 size={40} className="text-green-400" />
+                  <p className="text-white font-semibold">Saque enviado!</p>
+                  <p className="text-2xl font-bold text-green-400">{fmtUSD(result.net_usd)}</p>
+                </div>
+
+                {result.tx_hash && (
+                  <a
+                    href={result.basescan}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-center gap-2 text-xs text-brand-blue/70 hover:text-brand-blue transition-colors"
+                  >
+                    <ExternalLink size={12} />
+                    Ver transação no Basescan
+                  </a>
+                )}
+
+                <button onClick={handleClose} className="btn-primary w-full">
+                  Fechar
+                </button>
               </div>
             )}
 
             {/* ── STEP: simulated ─────────────────────────────────────── */}
             {step === "simulated" && result && (
               <div className="space-y-4">
-                <div className="flex flex-col items-center gap-2 py-4 text-center">
-                  <FlaskConical size={36} className="text-cyan-400" />
-                  <p className="text-white font-bold text-lg">{t("wd_simulated")}</p>
-                  <p className="text-white/50 text-sm">{t("wd_no_tx")}</p>
+                <div className="flex flex-col items-center gap-3 py-4">
+                  <FlaskConical size={40} className="text-purple-400" />
+                  <p className="text-white font-semibold">Simulação concluída</p>
+                  <p className="text-2xl font-bold text-white">{fmtUSD(result.net_usd)}</p>
                 </div>
 
-                {result.checks && Object.keys(result.checks).length > 0 && (
-                  <div className="bg-white/3 rounded-xl p-4 space-y-1.5">
-                    <p className="text-xs text-white/40 uppercase tracking-wider mb-2">{t("wd_system_checks")}</p>
+                {result.checks && (
+                  <div className="bg-white/3 rounded-xl p-3 space-y-1">
                     {Object.entries(result.checks).map(([k, v]) => (
                       <div key={k} className="flex justify-between text-xs">
                         <span className="text-white/40">{k}</span>
-                        <span className={String(v).includes("Erro") || String(v).includes("false") ? "text-red-400" : "text-green-400"}>
-                          {String(v)}
-                        </span>
+                        <span className="text-white/70">{String(v)}</span>
                       </div>
                     ))}
                   </div>
                 )}
 
-                <div className="bg-white/3 rounded-xl p-3 text-sm space-y-1.5">
-                  <div className="flex justify-between"><span className="text-white/40">{t("wd_you_receive")}</span><span className="text-white font-semibold">{fmtUSD(result.net_usd)}</span></div>
-                  <div className="flex justify-between"><span className="text-white/40">{t("wd_pnl")}</span><span className={result.pnl_usd >= 0 ? "text-green-400" : "text-red-400"}>{fmtUSD(result.pnl_usd)}</span></div>
-                  <div className="flex justify-between"><span className="text-white/40">{t("wd_mgmt_fee")}</span><span className="text-orange-400">{fmtUSD(result.management_fee)}</span></div>
-                  <div className="flex justify-between"><span className="text-white/40">{t("wd_perf_fee")}</span><span className="text-orange-400">{fmtUSD(result.performance_fee)}</span></div>
-                </div>
-
-                {result.message && (
-                  <p className="text-xs text-cyan-400/70 bg-cyan-500/5 border border-cyan-500/20 rounded-lg p-3">{result.message}</p>
-                )}
-
-                <div className="flex gap-2">
-                  <button onClick={() => setStep("preview")} className="flex-1 btn-ghost">{t("wd_back_confirm")}</button>
-                  <button onClick={() => execute(false)} className="flex-1 btn-primary">{t("wd_execute")}</button>
-                </div>
-              </div>
-            )}
-
-            {/* ── STEP: success ───────────────────────────────────────── */}
-            {step === "success" && result && (
-              <div className="py-6 flex flex-col items-center gap-4 text-center">
-                <CheckCircle2 size={40} className="text-green-400" />
-                <div>
-                  <p className="text-white font-bold text-lg">{t("wd_success")}</p>
-                  <p className="text-white/50 text-sm mt-1">
-                    {fmtUSD(result.net_usd)} {t("wd_usdc_sent")}
-                  </p>
-                </div>
-                <div className="bg-white/3 rounded-xl p-3 w-full text-sm space-y-1.5">
-                  <div className="flex justify-between"><span className="text-white/40">{t("wd_realized_pnl")}</span><span className={result.pnl_usd >= 0 ? "text-green-400" : "text-red-400"}>{result.pnl_label}: {fmtUSD(result.pnl_usd)}</span></div>
-                  <div className="flex justify-between"><span className="text-white/40">{t("wd_mgmt_fee")}</span><span className="text-white/60">{fmtUSD(result.management_fee)}</span></div>
-                  <div className="flex justify-between"><span className="text-white/40">{t("wd_perf_fee")}</span><span className="text-white/60">{fmtUSD(result.performance_fee)}</span></div>
-                </div>
-                {result.basescan && (
-                  <a href={result.basescan} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-sm text-brand-blue hover:text-blue-300 transition-colors">
-                    <ExternalLink size={14} /> {t("wd_view_basescan")}
-                  </a>
-                )}
-                {result.warnings?.length > 0 && (
-                  <div className="w-full space-y-1">
-                    {result.warnings.map((w, i) => (
-                      <p key={i} className="text-xs text-yellow-400/70">{w}</p>
-                    ))}
-                  </div>
-                )}
-                <button onClick={handleClose} className="btn-ghost w-full">{t("wd_cancel")}</button>
+                <button onClick={handleClose} className="btn-primary w-full">
+                  Fechar
+                </button>
               </div>
             )}
 
             {/* ── STEP: error ─────────────────────────────────────────── */}
             {step === "error" && (
-              <div className="py-6 flex flex-col items-center gap-4 text-center">
-                <AlertCircle size={40} className="text-red-400" />
-                <div>
-                  <p className="text-white font-bold">{t("wd_failed")}</p>
-                  <p className="text-white/40 text-sm mt-1 max-w-sm">{errorMsg}</p>
+              <div className="space-y-4">
+                <div className="flex flex-col items-center gap-3 py-4">
+                  <AlertCircle size={40} className="text-red-400" />
+                  <p className="text-white font-semibold">Erro no saque</p>
+                  <p className="text-xs text-white/50 text-center">{errorMsg}</p>
                 </div>
-                {errorMsg.includes("ETH") && (
-                  <div className="text-xs text-yellow-400/70 bg-yellow-500/8 border border-yellow-500/20 rounded-lg p-3 text-left">
-                    {t("wd_eth_required")}
-                  </div>
-                )}
-                <button onClick={() => setStep("input")} className="btn-ghost w-full">{t("wd_try_again")}</button>
+
+                <button onClick={() => setStep("input")} className="btn-primary w-full">
+                  {t("wd_try_again")}
+                </button>
               </div>
             )}
 

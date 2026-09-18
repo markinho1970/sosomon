@@ -206,6 +206,16 @@ async def run_scout_for_index(index_id: str, theme: str, db, macro: dict = None)
         _basket_extras = await sosovalue.enrich_candidates_with_performance(_basket_extras)
         candidates.extend(_basket_extras)
 
+    # Captura roi_30d do step 7 (SoSoValue klines) — campo definido por enrich_candidates_with_performance.
+    # Não usar price_change_30d: esse campo é inicializado em 0.0 e só é atualizado pelo step 8 (SoDEX candles),
+    # que pode zerar o valor para mercados com histórico curto. O benchmark também vem da SoSoValue →
+    # usar roi_30d (mesma fonte) na proteção garante comparação consistente.
+    ssi_fresh_30d: dict = {
+        t["symbol"]: t["roi_30d"]
+        for t in candidates
+        if t.get("roi_30d") is not None
+    }
+
     # 8. Enriquece com dados on-chain do SoDEX
     for token in candidates:
         sym = token["symbol"]
@@ -268,6 +278,10 @@ async def run_scout_for_index(index_id: str, theme: str, db, macro: dict = None)
     )
 
     # 12. Calcula inclusões / exclusões / mudanças de peso
+    benchmark_30d_pct = 0.0
+    if benchmark:
+        raw = benchmark.get("roi_1m", benchmark.get("1month_roi", 0)) or 0
+        benchmark_30d_pct = raw * 100
     inclusions, exclusions, weight_changes = _compute_changes(
         candidates=candidates_with_rationale,
         current_symbols=current_symbols,
@@ -275,6 +289,8 @@ async def run_scout_for_index(index_id: str, theme: str, db, macro: dict = None)
         theme=theme,
         target_n=target_n,
         anchor_symbols=anchor_symbols,
+        benchmark_30d=benchmark_30d_pct,
+        fresh_30d=ssi_fresh_30d,
     )
 
     # 13. Salva ScoutReport
@@ -485,11 +501,14 @@ def _compute_changes(
     theme: str = "",
     target_n: int = 5,
     anchor_symbols: set = None,
+    benchmark_30d: float = 0.0,
+    fresh_30d: dict = None,
 ) -> tuple:
     """Determina inclusões/exclusões/mudanças de peso vs composição atual.
     Respeita target_n: número alvo de tokens na cesta (fixo por índice).
     Cap de MAX_WEIGHT_PCT por token para evitar concentração.
     Tokens âncora (is_anchor=True) são IMUNES a exclusão pelo Scout.
+    Tokens da cesta com price_change_30d > benchmark_30d também são protegidos.
     """
     from services.sosovalue import get_stablecoin_buffer_from_sentiment
     from loguru import logger as _log
@@ -524,6 +543,34 @@ def _compute_changes(
     protected = [sym for sym in current_symbol_set if sym not in top_n_symbols and sym in all_anchors]
     if protected:
         _log.info(f"Scout [{theme}]: âncoras protegidas contra remoção: {sorted(protected)}")
+
+    # PROTEÇÃO POR PERFORMANCE: tokens da cesta (in_basket=True) que superam o benchmark 30d são imunes a exclusão.
+    # Lógica: se o token está performando melhor que o índice de referência, removê-lo seria
+    # prejudicial ao fundo — o benchmark é o custo de oportunidade do índice temático.
+    # Usa dados frescos de klines (fresh_30d) em vez do DB para evitar valores desatualizados
+    # no horário de execução do Scout (NAV Updater roda depois).
+    if benchmark_30d > 0 and tokens_to_remove:
+        _fresh = fresh_30d or {}
+        perf_protected = []
+        remaining = []
+        for sym in tokens_to_remove:
+            constituent = current_symbols.get(sym)
+            # Só protege tokens efetivamente na cesta — candidatos não precisam de proteção
+            if not getattr(constituent, "in_basket", False):
+                remaining.append(sym)
+                continue
+            # Prefere dado fresco de klines (roi_30d da SoSoValue); fallback para DB se não disponível
+            change_30d = _fresh.get(sym) if sym in _fresh else getattr(constituent, "price_change_30d", None)
+            if change_30d is not None and change_30d > benchmark_30d:
+                perf_protected.append(sym)
+            else:
+                remaining.append(sym)
+        if perf_protected:
+            _log.info(
+                f"Scout [{theme}]: proteção por performance ({benchmark_30d:.1f}% benchmark 30d) — "
+                f"{sorted(perf_protected)} superam o benchmark → imunes a exclusão"
+            )
+            tokens_to_remove = remaining
 
     exclusions = []
     for sym in tokens_to_remove:

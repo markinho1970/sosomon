@@ -270,3 +270,27 @@ class IndexHolding(Base):
     updated_at   = Column(DateTime, nullable=False)
 
     __table_args__ = (UniqueConstraint("index_id", "network_mode", "symbol"),)
+
+
+class TradeExecution(Base):
+    """Histórico permanente de cada ordem individual executada (compra/venda) no SoDEX.
+    Independente da retenção de histórico da SoDEX API — persiste para sempre no banco."""
+    __tablename__ = "trade_executions"
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    source         = Column(String, nullable=False)          # 'deposit' | 'rebalance' | 'withdrawal'
+    deposit_tx_id  = Column(Integer, ForeignKey("deposit_transactions.id"), nullable=True)
+    proposal_id    = Column(Integer, ForeignKey("rebalance_proposals.id"), nullable=True)
+    portfolio_id   = Column(Integer, ForeignKey("portfolios.id"), nullable=True)
+    index_id       = Column(String, nullable=False)
+    network_mode   = Column(String, nullable=False, default="mainnet")
+    symbol         = Column(String, nullable=False)          # ex: DEFIssi, AAVE, LINK
+    side           = Column(String, nullable=False)          # 'buy' | 'sell'
+    quantity       = Column(Float, nullable=False, default=0.0)
+    price_usd      = Column(Float, nullable=False, default=0.0)
+    notional_usd   = Column(Float, nullable=False, default=0.0)
+    status         = Column(String, nullable=False, default="filled")  # 'filled' | 'skipped' | 'failed'
+    skip_reason    = Column(String, nullable=True)
+    order_id       = Column(String, nullable=True)           # ID da ordem no SoDEX
+    executed_at    = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at     = Column(DateTime, default=datetime.utcnow)

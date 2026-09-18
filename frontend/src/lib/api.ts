@@ -110,6 +110,9 @@ export const investApi = {
 
   getInsights: (walletAddress: string, networkMode: string): Promise<{ insights: import("@/types").InvestorInsight[]; total: number }> =>
     axios.get(`/api/invest/insights?wallet_address=${walletAddress}&network_mode=${networkMode}`).then(r => r.data),
+
+  getLots: (walletAddress: string, networkMode: string): Promise<import("@/types").PortfolioLot[]> =>
+    axios.get(`/api/invest/portfolio/${walletAddress}/lots?network_mode=${networkMode}`).then(r => r.data),
 };
 
 // ─── Admin ────────────────────────────────────────────────────────────────────

@@ -476,6 +476,32 @@ async def check_deposits(db, network: str = "mainnet"):
                 extra_pct = round((skipped / amount_usd) * 100, 2)
                 target_index.stablecoin_buffer_pct = min(100.0, (target_index.stablecoin_buffer_pct or 0) + extra_pct)
             buy_result["investor_wallet"] = from_address
+            # Persiste cada ordem no histórico permanente de trades
+            from models import TradeExecution
+            _portfolio_id = None
+            if _dtx and _dtx.portfolio_id:
+                _portfolio_id = _dtx.portfolio_id
+            _exec_at = datetime.now(timezone.utc)
+            for o in buy_result.get("orders", []):
+                _sym = (o.get("symbol_clean") or o.get("symbol") or "").replace("v","").replace(".","")
+                _status_te = "filled" if o.get("status") in ("placed","dry_run") else "skipped"
+                _skip_r = o.get("status") if _status_te == "skipped" else None
+                db.add(TradeExecution(
+                    source="deposit",
+                    deposit_tx_id=_dtx.id if _dtx else None,
+                    portfolio_id=_portfolio_id,
+                    index_id=target_index.id,
+                    network_mode=network,
+                    symbol=_sym or o.get("symbol","?"),
+                    side="buy",
+                    quantity=float(o.get("quantity") or 0),
+                    price_usd=float(o.get("price") or 0),
+                    notional_usd=float(o.get("usd_value") or 0),
+                    status=_status_te,
+                    skip_reason=_skip_r,
+                    order_id=o.get("clOrdID"),
+                    executed_at=_exec_at,
+                ))
             db.add(AgentActivityLog(
                 id=str(uuid.uuid4()),
                 index_id=target_index.id,

@@ -8,7 +8,7 @@ import { useAccount } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import {
   TrendingUp, TrendingDown, RefreshCw, Bot, BarChart3,
-  AlertTriangle, Zap, Award, Wallet,
+  AlertTriangle, Zap, Award, Wallet, Sparkles, ArrowRightLeft,
 } from "lucide-react";
 import Navbar from "../components/Navbar";
 import AgentActivityFeed from "../components/AgentActivityFeed";
@@ -16,10 +16,10 @@ import MacroWidget from "../components/MacroWidget";
 import NetworkGuard from "../components/NetworkGuard";
 import WithdrawButton from "../components/WithdrawButton";
 import PerformancePanel from "../components/PerformancePanel";
-import { investApi, agentApi, macroApi } from "@/lib/api";
+import { investApi, indexApi, agentApi, macroApi } from "@/lib/api";
 import { useNetworkMode } from "@/lib/NetworkModeContext";
 import { useLang } from "@/lib/LanguageContext";
-import type { AgentActivity, MacroData } from "@/types";
+import type { AgentActivity, MacroData, InvestorInsight, AlphaIndex, PortfolioLot } from "@/types";
 
 const THEME_BADGE: Record<string, string> = {
   "ai-crypto": "bg-purple-500/10 text-purple-400 border-purple-500/20",
@@ -99,10 +99,14 @@ export default function DashboardPage() {
   const [pendingWalletChange, setPendingWalletChange] = useState<string | null>(null);
   const [breakdown, setBreakdown] = useState<BreakdownIndex[]>([]);
   const [history, setHistory] = useState<HistoryIndex[]>([]);
+  const [historyDays, setHistoryDays] = useState<7 | 30 | 90 | 365 | 9999>(30);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [refreshToken, setRefreshToken] = useState(0);
   const [lastPriceCheck, setLastPriceCheck] = useState<Date | null>(null);
   const [secondsSince, setSecondsSince] = useState(0);
+  const [insights, setInsights] = useState<InvestorInsight[]>([]);
+  const [allIndexes, setAllIndexes] = useState<AlphaIndex[]>([]);
+  const [lots, setLots] = useState<PortfolioLot[]>([]);
   // { symbol: 'up' | 'down' } — tokens com valor em flash momentâneo
   const [flashed, setFlashed] = useState<Record<string, "up" | "down">>({});
   // Ref para o breakdown atual sem ser dependência do interval
@@ -205,56 +209,54 @@ export default function DashboardPage() {
     });
   }, [address]);
 
-  // Efeito 2: busca dados quando a carteira visualizada muda
+  // Efeito 2: busca dados quando a carteira visualizada muda — progressive loading
   useEffect(() => {
     if (!viewingAddress || !networkModeLoaded) return;
     setPortfolios([]);
     setSubscriber(null);
     setRefundNotices([]);
     setBreakdown([]);
-    setHistory([]);
     setTransactions([]);
     let cancelled = false;
     setLoading(true);
 
-    // allSettled: falha individual não derruba os outros dados
-    Promise.allSettled([
-      investApi.getPortfolio(viewingAddress, networkMode),
-      agentApi.getRecentActivity(20),
-      macroApi.get(),
-      investApi.getRefunds(viewingAddress, networkMode),
-      investApi.getBreakdown(viewingAddress, networkMode),
-      investApi.getHistory(viewingAddress, networkMode, 30),
-      investApi.getTransactions(viewingAddress, networkMode),
-    ]).then((results) => {
-      if (cancelled) return;
-      const ok = (r: PromiseSettledResult<any>) => r.status === "fulfilled" ? r.value : null;
-      const [portfolioData, activityData, macroData, refundsData, bkd, hist, txs] = results.map(ok);
-      if (portfolioData) {
-        setPortfolios(portfolioData.portfolios ?? []);
-        setSubscriber(portfolioData.subscriber ?? null);
-      }
-      if (activityData)  setActivities(activityData ?? []);
-      if (macroData)     setMacro(macroData);
-      if (refundsData)   setRefundNotices(refundsData ?? []);
-      if (bkd)           setBreakdown(bkd);
-      if (hist)          setHistory(hist);
-      if (txs)           setTransactions(txs);
+    // Dado crítico: portfólio. Desbloqueia a UI assim que chegar.
+    investApi.getPortfolio(viewingAddress, networkMode)
+      .then(d => { if (!cancelled && d) { setPortfolios(d.portfolios ?? []); setSubscriber(d.subscriber ?? null); } })
+      .catch(e => console.warn("portfolio fetch failed:", e))
+      .finally(() => { if (!cancelled) { setLoading(false); setLastPriceCheck(new Date()); setSecondsSince(0); } });
 
-      // Log falhas para debug sem quebrar a UI
-      results.forEach((r, i) => {
-        if (r.status === "rejected") console.warn(`Dashboard fetch[${i}] failed:`, r.reason);
-      });
-    }).finally(() => {
-      if (!cancelled) {
-        setLoading(false);
-        setLastPriceCheck(new Date());
-        setSecondsSince(0);
-      }
-    });
+    // Dados secundários: preenchem conforme chegam, sem bloquear a tela
+    investApi.getRefunds(viewingAddress, networkMode)
+      .then(d => { if (!cancelled && d) setRefundNotices(d ?? []); }).catch(() => {});
+    investApi.getBreakdown(viewingAddress, networkMode)
+      .then(d => { if (!cancelled && d) setBreakdown(d); }).catch(() => {});
+    investApi.getTransactions(viewingAddress, networkMode)
+      .then(d => { if (!cancelled && d) setTransactions(d); }).catch(() => {});
+    investApi.getInsights(viewingAddress, networkMode)
+      .then(d => { if (!cancelled && d) setInsights(d.insights ?? []); }).catch(() => {});
+    investApi.getLots(viewingAddress, networkMode)
+      .then(d => { if (!cancelled && d) setLots(d ?? []); }).catch(() => {});
+    agentApi.getRecentActivity(20)
+      .then(d => { if (!cancelled && d) setActivities(d ?? []); }).catch(() => {});
+    macroApi.get()
+      .then(d => { if (!cancelled && d) setMacro(d); }).catch(() => {});
+    indexApi.getAll(networkMode)
+      .then(d => { if (!cancelled && d) setAllIndexes(d); }).catch(() => {});
 
     return () => { cancelled = true; };
   }, [viewingAddress, networkMode, networkModeLoaded, refreshToken]);
+
+  // Efeito separado: histórico de performance — refetch isolado quando o período muda
+  useEffect(() => {
+    if (!viewingAddress || !networkModeLoaded) return;
+    let cancelled = false;
+    setHistory([]);
+    investApi.getHistory(viewingAddress, networkMode, historyDays).then(hist => {
+      if (!cancelled && hist) setHistory(hist);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [viewingAddress, networkMode, networkModeLoaded, historyDays]);
 
   const totalValue = portfolios.reduce((s, p) => s + p.current_value_usd, 0);
   const totalDeposited = portfolios.reduce((s, p) => s + p.deposited_usd, 0);
@@ -470,6 +472,7 @@ export default function DashboardPage() {
                                       currentValueUsd={p.current_value_usd}
                                       depositedUsd={p.deposited_usd}
                                       navUsd={1}
+                                      minDepositUsd={allIndexes.find(idx => idx.id === p.index_id)?.min_deposit_usd ?? 25}
                                     />
                                   </div>
                                 )}
@@ -480,62 +483,215 @@ export default function DashboardPage() {
                       );
                     })()}
 
-                    {portfolios.map((p) => (
-                      <div key={p.index_id} className={`card border-l-4 ${THEME_BORDER[p.theme] ?? "border-l-white/10"} hover:border-white/10 transition-all`}>
-                        <div className="flex flex-col md:flex-row gap-4">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className={`badge border text-xs ${THEME_BADGE[p.theme] ?? ""}`}>
-                                {p.theme === "ai-crypto" ? "AI × Crypto" : p.theme.toUpperCase()}
-                              </span>
-                              <span className="text-xs text-white/30">{p.days_invested} {t("dash_days_invested")}</span>
-                            </div>
-                            <Link href={`/indexes/${p.index_id}`} className="font-semibold text-white hover:text-brand-blue transition-colors">
-                              {p.index_name}
-                            </Link>
-                          </div>
-                          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 shrink-0">
+                    {portfolios.map((p) => {
+                      const indexLots = lots.filter(l => l.index_id === p.index_id);
+                      const mgmtFee = p.current_value_usd * 0.02 / 365 * Math.max(p.days_invested, 0);
+                      const perfFee = p.accrued_performance_fee_usd || 0;
+                      return (
+                        <div key={p.index_id} className={`card border-l-4 ${THEME_BORDER[p.theme] ?? "border-l-white/10"} hover:border-white/10 transition-all`}>
+                          {/* ── Cabeçalho do índice ── */}
+                          <div className="flex items-center justify-between mb-3">
                             <div>
-                              <p className="stat-label text-xs">Value</p>
-                              <p className="font-semibold text-white">{fmtUSD(p.current_value_usd)}</p>
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <span className={`badge border text-xs ${THEME_BADGE[p.theme] ?? ""}`}>
+                                  {p.theme === "ai-crypto" ? "AI × Crypto" : p.theme.toUpperCase()}
+                                </span>
+                                {indexLots.length > 1 && (
+                                  <span className="text-xs text-white/30">{indexLots.length} lotes</span>
+                                )}
+                              </div>
+                              <Link href={`/indexes/${p.index_id}`} className="font-semibold text-white hover:text-brand-blue transition-colors">
+                                {p.index_name}
+                              </Link>
                             </div>
-                            <div>
-                              <p className="stat-label text-xs">P&L</p>
-                              <p className={`font-semibold flex items-center gap-1 ${pctColor(p.all_time_return_pct, 2, "text-white")}`}>
-                                {parseFloat(p.all_time_return_pct.toFixed(2)) > 0 ? <TrendingUp size={13} /> : parseFloat(p.all_time_return_pct.toFixed(2)) < 0 ? <TrendingDown size={13} /> : null}
-                                {fmtPct(p.all_time_return_pct)}
+                            <div className="text-right">
+                              <p className="text-xs text-white/30">Total · Taxas</p>
+                              <p className="font-bold text-white">{fmtUSD(p.current_value_usd)}</p>
+                              <p className="text-xs text-white/30" title={`Gestão: ${fmtUSD(mgmtFee)} · Performance: ${fmtUSD(perfFee)}`}>
+                                {fmtUSD(mgmtFee + perfFee)}
                               </p>
-                            </div>
-                            <div>
-                              <p className="stat-label text-xs">7d</p>
-                              <p className={`font-semibold ${pctColor(p.return_7d_pct, 2, "text-white")}`}>
-                                {fmtPct(p.return_7d_pct)}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="stat-label text-xs">30d</p>
-                              <p className={`font-semibold ${pctColor(p.return_30d_pct, 2, "text-white")}`}>
-                                {fmtPct(p.return_30d_pct)}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="stat-label text-xs">HWM</p>
-                              <p className="font-semibold text-white">{fmtUSD(p.high_water_mark_usd)}</p>
-                              <p className="text-xs text-white/30">Fee: {fmtUSD(p.accrued_performance_fee_usd)}</p>
                             </div>
                           </div>
-                          <div className="shrink-0 flex items-center">
-                            <WithdrawButton
-                              indexId={p.index_id}
-                              indexName={p.index_name}
-                              currentValueUsd={p.current_value_usd}
-                              depositedUsd={p.deposited_usd}
-                              navUsd={1}
-                            />
+
+                          {/* ── Lotes ── */}
+                          {indexLots.length > 0 ? indexLots.map((lot) => (
+                            <div key={lot.lot_id} className="border-t border-white/5 pt-2.5 mt-2.5">
+                              <div className="flex flex-col md:flex-row md:items-center gap-3">
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs text-white/50 font-medium">
+                                    Lote #{lot.lot_number}
+                                    {indexLots.length === 1 && (
+                                      <span className="text-white/30 font-normal"> · {lot.days_invested} {t("dash_days_invested")}</span>
+                                    )}
+                                    {indexLots.length > 1 && (
+                                      <span className="text-white/30 font-normal"> · {lot.days_invested}d · entrada {new Date(lot.invested_at).toLocaleDateString("pt-BR", {day:"2-digit",month:"2-digit",year:"2-digit"})}</span>
+                                    )}
+                                  </p>
+                                  <p className="text-xs text-white/25">
+                                    NAV entrada ${lot.nav_at_purchase.toFixed(6)} · {lot.shares_issued.toFixed(2)} cotas · depositado {fmtUSD(lot.deposited_usd)}
+                                  </p>
+                                </div>
+                                <div className="grid grid-cols-4 gap-4 shrink-0">
+                                  <div>
+                                    <p className="stat-label text-xs">Valor</p>
+                                    <p className="font-semibold text-white">{fmtUSD(lot.current_value_usd)}</p>
+                                  </div>
+                                  <div>
+                                    <p className="stat-label text-xs">P&L</p>
+                                    <p className={`font-semibold flex items-center gap-1 ${pctColor(lot.pnl_pct, 2, "text-white")}`}>
+                                      {lot.pnl_pct > 0.01 ? <TrendingUp size={12} /> : lot.pnl_pct < -0.01 ? <TrendingDown size={12} /> : null}
+                                      {fmtPct(lot.pnl_pct)}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="stat-label text-xs">7d</p>
+                                    <p className={`font-semibold ${pctColor(lot.return_7d_pct, 2, "text-white")}`}>{fmtPct(lot.return_7d_pct)}</p>
+                                  </div>
+                                  <div>
+                                    <p className="stat-label text-xs">30d</p>
+                                    <p className={`font-semibold ${pctColor(lot.return_30d_pct, 2, "text-white")}`}>{fmtPct(lot.return_30d_pct)}</p>
+                                  </div>
+                                </div>
+                                <div className="shrink-0 w-20">
+                                  <WithdrawButton
+                                    indexId={lot.index_id}
+                                    indexName={lot.index_name}
+                                    currentValueUsd={lot.current_value_usd}
+                                    depositedUsd={lot.deposited_usd}
+                                    navUsd={lot.current_nav}
+                                    minDepositUsd={lot.min_deposit_usd}
+                                    lotNumber={lot.lot_number}
+                                    buttonLabel="Sacar"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          )) : (
+                            /* fallback: sem lotes confirmados ainda — mostra linha consolidada */
+                            <div className="border-t border-white/5 pt-2.5 mt-2.5">
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div><p className="stat-label text-xs">P&L</p><p className={`font-semibold ${pctColor(p.all_time_return_pct, 2, "text-white")}`}>{fmtPct(p.all_time_return_pct)}</p></div>
+                                <div><p className="stat-label text-xs">7d</p><p className={`font-semibold ${pctColor(p.return_7d_pct, 2, "text-white")}`}>{fmtPct(p.return_7d_pct)}</p></div>
+                                <div><p className="stat-label text-xs">30d</p><p className={`font-semibold ${pctColor(p.return_30d_pct, 2, "text-white")}`}>{fmtPct(p.return_30d_pct)}</p></div>
+                                <div><p className="stat-label text-xs">Dias</p><p className="font-semibold text-white">{p.days_invested}</p></div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {/* ── Guardian Insights ──────────────────────────────────── */}
+                    {insights.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 mb-1 mt-2">
+                          <Sparkles size={14} className="text-brand-blue" />
+                          <h3 className="text-white/60 text-xs uppercase tracking-widest">Guardian Insights</h3>
+                        </div>
+                        {insights.map((ins, i) => (
+                          <div key={i} className={`rounded-xl border px-4 py-3 flex items-start gap-3 ${
+                            ins.type === "opportunity"
+                              ? "border-brand-blue/30 bg-brand-blue/5"
+                              : "border-yellow-500/30 bg-yellow-500/8"
+                          }`}>
+                            <span className="text-base shrink-0 mt-0.5">{ins.type === "opportunity" ? "💡" : "⚠️"}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm ${ins.type === "opportunity" ? "text-blue-300" : "text-yellow-300"}`}>
+                                {ins.message}
+                              </p>
+                              {ins.type === "opportunity" && ins.return_30d_pct !== undefined && (
+                                <div className="flex gap-3 mt-1">
+                                  <span className={`text-xs ${pctColor(ins.return_30d_pct, 1)}`}>{fmtChange(ins.return_30d_pct, 1)} 30d</span>
+                                  {ins.btc_benchmark_30d !== undefined && ins.btc_benchmark_30d !== 0 && (
+                                    <span className="text-xs text-white/30">vs BTC {fmtChange(ins.btc_benchmark_30d, 1)}</span>
+                                  )}
+                                </div>
+                              )}
+                              {ins.type === "concentration" && ins.effective_n !== undefined && (
+                                <p className="text-xs text-white/30 mt-1">
+                                  Diversificação efetiva: {ins.effective_n.toFixed(1)} tokens equivalentes
+                                </p>
+                              )}
+                            </div>
+                            {ins.type === "opportunity" && ins.index_slug && (
+                              <Link href={`/indexes/${ins.index_slug}`} className="shrink-0 text-xs text-brand-blue hover:underline whitespace-nowrap">
+                                Ver índice →
+                              </Link>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* ── Comparativo de Índices + Simulação de Migração ───────── */}
+                    {allIndexes.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-3 mt-4">
+                          <ArrowRightLeft size={14} className="text-white/40" />
+                          <h3 className="text-white/60 text-xs uppercase tracking-widest">Comparativo de Índices</h3>
+                        </div>
+                        <div className="bg-white/5 rounded-xl border border-white/10 overflow-hidden">
+                          <div className="px-4 py-2 border-b border-white/5 grid grid-cols-12 gap-2 text-white/30 text-xs uppercase tracking-wider">
+                            <span className="col-span-4">Índice</span>
+                            <span className="col-span-2 text-right">7d</span>
+                            <span className="col-span-2 text-right">30d</span>
+                            <span className="col-span-4 text-right">Ação</span>
+                          </div>
+                          <div className="divide-y divide-white/5">
+                            {allIndexes.map(idx => {
+                              const isInvested = portfolios.some(p => p.index_id === idx.id);
+                              const myPortfolio = portfolios.find(p => p.index_id === idx.id);
+                              const switchSlippage = myPortfolio ? myPortfolio.current_value_usd * 0.012 : 0;
+                              const netAfterSwitch = myPortfolio ? myPortfolio.current_value_usd - switchSlippage : 0;
+                              const canSwitch = !isInvested && myPortfolio && netAfterSwitch >= idx.min_deposit_usd;
+                              const needsMore = !isInvested && myPortfolio && !canSwitch ? idx.min_deposit_usd - netAfterSwitch : 0;
+                              return (
+                                <div key={idx.id} className={`px-4 py-3 grid grid-cols-12 gap-2 items-center ${isInvested ? "bg-white/3" : ""}`}>
+                                  <div className="col-span-4 min-w-0">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <p className="text-white text-sm font-medium truncate">{idx.name}</p>
+                                      {isInvested && <span className="text-xs text-brand-blue shrink-0 font-medium">● você</span>}
+                                    </div>
+                                    <p className="text-white/30 text-xs">mín {fmtUSD(idx.min_deposit_usd)}</p>
+                                  </div>
+                                  <div className="col-span-2 text-right">
+                                    <p className={`text-sm font-semibold ${pctColor(idx.return_7d_pct, 1)}`}>{fmtChange(idx.return_7d_pct, 1)}</p>
+                                  </div>
+                                  <div className="col-span-2 text-right">
+                                    <p className={`text-sm font-semibold ${pctColor(idx.return_30d_pct, 1)}`}>{fmtChange(idx.return_30d_pct, 1)}</p>
+                                  </div>
+                                  <div className="col-span-4 flex items-center justify-end">
+                                    {isInvested ? (
+                                      <span className="px-2.5 py-1 rounded-full bg-green-500/10 border border-green-500/25 text-green-400 text-xs font-semibold tracking-wide">
+                                        ✓ Investido
+                                      </span>
+                                    ) : canSwitch ? (
+                                      <div className="text-right">
+                                        <Link href={`/indexes/${idx.slug}`} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-500/15 border border-orange-500/30 text-orange-400 text-sm font-semibold hover:bg-orange-500/25 transition-all">
+                                          <ArrowRightLeft size={13} /> Migrar
+                                        </Link>
+                                        <p className="text-xs text-white/25 mt-1">custo ~{fmtUSD(switchSlippage)}</p>
+                                      </div>
+                                    ) : myPortfolio ? (
+                                      <span className="text-yellow-400/80 text-sm font-medium">
+                                        + {fmtUSD(needsMore)} p/ migrar
+                                      </span>
+                                    ) : (
+                                      <Link href={`/indexes/${idx.slug}`} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-blue/15 border border-brand-blue/30 text-brand-blue text-sm font-semibold hover:bg-brand-blue/25 transition-all">
+                                        Ver índice →
+                                      </Link>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className="px-4 py-2 border-t border-white/5">
+                            <p className="text-white/20 text-xs">Custo de migração estimado: ~1.2% slippage nas ordens de venda e compra</p>
                           </div>
                         </div>
                       </div>
-                    ))}
+                    )}
+
                     <div className="card border-dashed border-white/10 text-center py-8">
                       <p className="text-white/40 text-sm mb-3">{t("dash_add_another")}</p>
                       <Link href="/indexes" className="btn-primary inline-flex items-center gap-2">
@@ -625,6 +781,20 @@ export default function DashboardPage() {
 
             {activeTab === "performance" && (
               <div className="space-y-6">
+                {/* Seletor de período */}
+                <div className="flex justify-end gap-1">
+                  {([7, 30, 90, 365, 9999] as const).map(d => (
+                    <button
+                      key={d}
+                      onClick={() => setHistoryDays(d)}
+                      className={`text-xs px-2.5 py-1 rounded-lg transition-all ${
+                        historyDays === d ? "bg-brand-blue text-white" : "text-white/40 hover:text-white bg-white/5"
+                      }`}
+                    >
+                      {d === 9999 ? "Tudo" : d === 365 ? "1A" : `${d}d`}
+                    </button>
+                  ))}
+                </div>
                 {history.length === 0 ? (
                   <div className="text-center text-white/40 py-16">No performance data yet — chart fills in hourly.</div>
                 ) : history.map(h => {
@@ -684,7 +854,9 @@ export default function DashboardPage() {
                       {/* Gráfico NAV % (principal) */}
                       {useNav ? (
                         <>
-                          <p className="text-white/40 text-xs mb-2 uppercase tracking-widest">NAV Return % since inception</p>
+                          <p className="text-white/40 text-xs mb-2 uppercase tracking-widest">
+                            {historyDays === 9999 ? "NAV Return % — Desde o início" : `NAV Return % — últimos ${historyDays === 365 ? "1 ano" : `${historyDays}d`}`}
+                          </p>
                           <ResponsiveContainer width="100%" height={200}>
                             <LineChart data={navChartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
                               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />

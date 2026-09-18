@@ -1522,13 +1522,13 @@ export default function AdminPage() {
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="text-white/20 border-b border-white/5">
+                        <th className="text-left pb-2 font-normal pr-4">{t("admin_investor_col")}</th>
                         <th className="text-left pb-2 font-normal">{t("admin_trade_symbol")}</th>
                         <th className="text-left pb-2 font-normal">{t("admin_trade_side")}</th>
                         <th className="text-right pb-2 font-normal">{t("admin_trade_qty")}</th>
                         <th className="text-right pb-2 font-normal">{t("admin_trade_price")}</th>
                         <th className="text-right pb-2 font-normal">{t("admin_usd_col")}</th>
                         <th className="text-right pb-2 font-normal">{t("admin_trade_status")}</th>
-                        {!isMainnet && <th className="text-left pb-2 font-normal pl-4">{t("admin_investor_col")}</th>}
                         <th className="text-right pb-2 font-normal">{t("admin_trade_time")}</th>
                       </tr>
                     </thead>
@@ -1539,6 +1539,14 @@ export default function AdminPage() {
                         const isFounder = wallet.toLowerCase() === "0x1a3ade798b60bd6e99ff3d84367cc7913115031c";
                         return (
                           <tr key={tr.id ?? i}>
+                            <td className="py-2 pr-4">
+                              <div className="flex items-center gap-1.5" title={wallet || undefined}>
+                                <span className="font-mono text-white/50 cursor-default">{shortWallet || "—"}</span>
+                                {isFounder && (
+                                  <span className="text-xs px-1 py-0.5 rounded border font-medium text-purple-300 bg-purple-500/10 border-purple-500/20">Founder</span>
+                                )}
+                              </div>
+                            </td>
                             <td className="py-2 font-mono text-white">{String(tr.symbol ?? tr.s ?? "—")}</td>
                             <td className={`py-2 font-medium ${String(tr.side).toUpperCase() === "BUY" ? "text-green-400" : "text-red-400"}`}>{String(tr.side ?? "—").toUpperCase()}</td>
                             <td className="py-2 text-right text-white/60">{Number(tr.quantity ?? tr.qty ?? 0).toFixed(6)}</td>
@@ -1553,17 +1561,6 @@ export default function AdminPage() {
                                 <span className={`px-1.5 py-0.5 rounded text-xs ${String(tr.status) === "placed" || String(tr.status) === "filled" ? "text-green-400" : "text-white/40"}`}>{String(tr.status ?? "—")}</span>
                               )}
                             </td>
-                            {!isMainnet && (
-                              <td className="py-2 pl-4">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-mono text-white/50">{shortWallet || "—"}</span>
-                                  {isFounder && (
-                                    <span className="text-xs px-1 py-0.5 rounded border font-medium text-purple-300 bg-purple-500/10 border-purple-500/20">Founder</span>
-                                  )}
-                                </div>
-                                <p className="text-white/25 mt-0.5">{String(tr.index_id ?? "")}</p>
-                              </td>
-                            )}
                             <td className="py-2 text-right text-white/30">{(tr.timestamp || tr.created_at) ? timeAgo(String(tr.timestamp ?? tr.created_at)) : "—"}</td>
                           </tr>
                         );

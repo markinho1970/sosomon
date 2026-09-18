@@ -440,6 +440,20 @@ Generate a rebalancing proposal. Respond ONLY with valid JSON:
         # Rejeita WSOSO como constituinte — é o token do SoDEX
         changes = [c for c in changes if not (c.get("action") in ("add", "maintain") and c.get("symbol") == "WSOSO")]
 
+        # Rejeita "add" com peso zero — LLM quer adicionar mas não tem espaço.
+        # Converte para maintain se o token já está na cesta, ou descarta se é novo.
+        basket_symbols = {c.symbol for c in basket}
+        zero_adds = [c for c in changes if c.get("action") == "add" and c.get("new_weight", 0) <= 0]
+        if zero_adds:
+            for c in zero_adds:
+                if c["symbol"] in basket_symbols:
+                    c["action"] = "maintain"
+                    c["new_weight"] = next((b.weight for b in basket if b.symbol == c["symbol"]), 0)
+                    logger.warning(f"Rebalancer [{idx.id}]: {c['symbol']} add com peso=0 → convertido para maintain")
+                else:
+                    logger.warning(f"Rebalancer [{idx.id}]: {c['symbol']} add com peso=0 → descartado (sem espaço na proposta)")
+            changes = [c for c in changes if not (c.get("action") == "add" and c.get("new_weight", 0) <= 0)]
+
         # Garante que o número de tokens adicionados não ultrapassa target_constituents
         adds = [c for c in changes if c.get("action") in ("add", "maintain", "increase", "decrease")]
         if len(adds) > idx.target_constituents:
@@ -448,6 +462,40 @@ Generate a rebalancing proposal. Respond ONLY with valid JSON:
             )
             keep_symbols = {c["symbol"] for c in sorted(adds, key=lambda x: x.get("new_weight", 0), reverse=True)[:idx.target_constituents]}
             changes = [c for c in changes if c.get("action") == "remove" or c.get("symbol") in keep_symbols]
+
+        # Tokens in-basket não mencionados na proposta precisam de ação explícita.
+        # Se os ativos já somam ~100%, são remoções implícitas — tornar explícito para evitar
+        # que fiquem "fantasmas" na cesta após execução.
+        changes_symbols = {c["symbol"] for c in changes}
+        active_total_proposed = sum(
+            c.get("new_weight", 0) for c in changes if c.get("action") not in ("remove",)
+        )
+        for constituent in basket:
+            if constituent.symbol in changes_symbols:
+                continue
+            if active_total_proposed >= 99.5:
+                changes.append({
+                    "symbol": constituent.symbol,
+                    "action": "remove",
+                    "old_weight": constituent.weight,
+                    "new_weight": 0.0,
+                    "rationale": (
+                        f"Removido: proposta aloca 100% do peso para outros tokens, "
+                        f"sem espaço para {constituent.symbol}."
+                    ),
+                })
+                logger.info(
+                    f"Rebalancer [{idx.id}]: {constituent.symbol} marcado como 'remove' implícito "
+                    f"(ativo_total={active_total_proposed:.1f}%, token não listado na proposta LLM)"
+                )
+            else:
+                changes.append({
+                    "symbol": constituent.symbol,
+                    "action": "maintain",
+                    "old_weight": constituent.weight,
+                    "new_weight": constituent.weight,
+                    "rationale": "Mantido sem alteração — não mencionado na proposta e há espaço disponível.",
+                })
 
         # Rejeita proposta se há menos tokens ativos que o target
         active_check = [c for c in changes if c.get("action") != "remove"]

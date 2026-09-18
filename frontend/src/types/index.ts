@@ -201,6 +201,27 @@ export interface PaginatedResponse<T> {
   per_page: number;
 }
 
+export interface PortfolioLot {
+  lot_id: number;
+  lot_number: number;
+  index_id: string;
+  index_name: string;
+  theme: string;
+  deposited_usd: number;
+  shares_issued: number;
+  nav_at_purchase: number;
+  current_nav: number;
+  current_value_usd: number;
+  pnl_usd: number;
+  pnl_pct: number;
+  days_invested: number;
+  invested_at: string;
+  tx_hash: string;
+  return_7d_pct: number;
+  return_30d_pct: number;
+  min_deposit_usd: number;
+}
+
 export interface DashboardData {
   portfolios: SubscriberPortfolio[];
   recent_activity: AgentActivity[];

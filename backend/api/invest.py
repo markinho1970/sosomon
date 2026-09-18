@@ -265,12 +265,16 @@ def withdraw_preview(req: WithdrawPreviewRequest, db: Session = Depends(get_db))
     if not portfolio:
         raise HTTPException(status_code=404, detail="Sem posição neste index")
 
-    if req.amount_usd > (portfolio.current_value_usd or 0):
-        raise HTTPException(status_code=400, detail=f"Valor excede saldo atual (${portfolio.current_value_usd:.2f})")
+    db_value = portfolio.current_value_usd or 0
+    # Tolerância de 2%: NAV live no frontend pode diferir do DB (atualização horária)
+    # Se o valor enviado está dentro da tolerância, trata como saque total
+    if req.amount_usd > db_value * 1.02:
+        raise HTTPException(status_code=400, detail=f"Valor excede saldo atual (${db_value:.2f})")
+    amount_usd = min(req.amount_usd, db_value)
 
     from services.withdrawal_executor import preview_withdrawal
     try:
-        preview = preview_withdrawal(portfolio, None, req.amount_usd)
+        preview = preview_withdrawal(portfolio, None, amount_usd)
         preview["to_wallet"] = subscriber.wallet_address
         return preview
     except ValueError as e:
@@ -310,15 +314,17 @@ async def withdraw_execute(req: WithdrawExecuteRequest, db: Session = Depends(ge
     if not portfolio:
         raise HTTPException(status_code=404, detail="Sem posição neste index")
 
-    if req.amount_usd > (portfolio.current_value_usd or 0):
-        raise HTTPException(status_code=400, detail=f"Valor excede saldo atual (${portfolio.current_value_usd:.2f})")
+    db_value = portfolio.current_value_usd or 0
+    if req.amount_usd > db_value * 1.02:
+        raise HTTPException(status_code=400, detail=f"Valor excede saldo atual (${db_value:.2f})")
+    amount_usd = min(req.amount_usd, db_value)
 
     index = db.query(AlphaIndex).filter(AlphaIndex.id == req.index_id).first()
 
     # Calcular preview (taxas e P&L)
     from services.withdrawal_executor import preview_withdrawal, execute_withdrawal
     try:
-        preview = preview_withdrawal(portfolio, index, req.amount_usd)
+        preview = preview_withdrawal(portfolio, index, amount_usd)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -335,7 +341,7 @@ async def withdraw_execute(req: WithdrawExecuteRequest, db: Session = Depends(ge
 
     from services.sodex import execute_sell_for_withdrawal
     sell_result = await execute_sell_for_withdrawal(
-        amount_usd   = req.amount_usd,
+        amount_usd   = amount_usd,
         constituents = basket,
         dry_run      = req.simulate,
     )
@@ -356,12 +362,12 @@ async def withdraw_execute(req: WithdrawExecuteRequest, db: Session = Depends(ge
     # Só atualiza o banco se a tx foi bem-sucedida E não é simulação
     if tx_result["success"] and not req.simulate:
         nav = index.nav_usd if index and index.nav_usd else 1.0
-        tokens_burned = req.amount_usd / nav
+        tokens_burned = amount_usd / nav
         cost_basis    = (portfolio.avg_cost_basis_per_share or nav) * tokens_burned
         pnl_usd       = preview["pnl_usd"]
         pnl_pct       = preview["pnl_pct"]
 
-        portfolio.current_value_usd  = max(0, (portfolio.current_value_usd or 0) - req.amount_usd)
+        portfolio.current_value_usd  = max(0, (portfolio.current_value_usd or 0) - amount_usd)
         portfolio.index_tokens_held  = max(0, (portfolio.index_tokens_held or 0) - tokens_burned)
         portfolio.total_shares_redeemed = (portfolio.total_shares_redeemed or 0) + tokens_burned
         portfolio.last_updated_at    = datetime.now(timezone.utc)
@@ -369,7 +375,7 @@ async def withdraw_execute(req: WithdrawExecuteRequest, db: Session = Depends(ge
             portfolio.high_water_mark_usd = portfolio.current_value_usd
 
         if index:
-            index.aum_usd = max(0, (index.aum_usd or 0) - req.amount_usd)
+            index.aum_usd = max(0, (index.aum_usd or 0) - amount_usd)
             if portfolio.current_value_usd <= 0:
                 index.subscriber_count = max(0, (index.subscriber_count or 1) - 1)
 
@@ -1033,6 +1039,67 @@ def get_portfolio_transactions(wallet_address: str, network_mode: str = "mainnet
 
     txs.sort(key=lambda x: x["timestamp"], reverse=True)
     return txs
+
+
+@router.get("/portfolio/{wallet_address}/lots")
+def get_portfolio_lots(wallet_address: str, network_mode: str = "mainnet", db: Session = Depends(get_db)):
+    """Retorna cada depósito confirmado como um lote independente com P&L calculado ao NAV atual.
+    Regra: cada DepositTransaction = 1 lote com vida própria (NAV de entrada, P&L, dias)."""
+    wallet_address = wallet_address.lower()
+    subscriber = db.query(Subscriber).filter(Subscriber.wallet_address == wallet_address).first()
+    if not subscriber:
+        return []
+
+    deposits = db.query(DepositTransaction).filter(
+        DepositTransaction.subscriber_id == subscriber.id,
+        DepositTransaction.network_mode == network_mode,
+        DepositTransaction.buy_confirmed == True,
+    ).order_by(DepositTransaction.created_at.asc()).all()
+
+    index_cache: dict = {}
+    # pré-calcula número de lotes por índice
+    lot_counter: dict = {}
+    lots = []
+
+    for tx in deposits:
+        if tx.index_id not in index_cache:
+            idx = db.query(AlphaIndex).filter(AlphaIndex.id == tx.index_id).first()
+            index_cache[tx.index_id] = idx
+            lot_counter[tx.index_id] = 0
+        idx = index_cache[tx.index_id]
+        if not idx:
+            continue
+
+        lot_counter[tx.index_id] += 1
+        current_nav = idx.nav_usd or 1.0
+        current_value = float(tx.shares_issued or 0) * current_nav
+        deposited = float(tx.amount_usd or 0)
+        pnl_usd = current_value - deposited
+        pnl_pct = (pnl_usd / deposited * 100) if deposited > 0 else 0
+        days = (datetime.utcnow() - tx.created_at).days if tx.created_at else 0
+
+        lots.append({
+            "lot_id":           tx.id,
+            "lot_number":       lot_counter[tx.index_id],
+            "index_id":         tx.index_id,
+            "index_name":       idx.name,
+            "theme":            idx.theme,
+            "deposited_usd":    round(deposited, 2),
+            "shares_issued":    round(float(tx.shares_issued or 0), 8),
+            "nav_at_purchase":  round(float(tx.nav_at_purchase or tx.cost_basis_per_share or 1.0), 6),
+            "current_nav":      round(current_nav, 6),
+            "current_value_usd": round(current_value, 2),
+            "pnl_usd":          round(pnl_usd, 2),
+            "pnl_pct":          round(pnl_pct, 2),
+            "days_invested":    days,
+            "invested_at":      tx.created_at.isoformat() if tx.created_at else "",
+            "tx_hash":          tx.tx_hash or "",
+            "return_7d_pct":    round(float(idx.return_7d_pct or 0), 2),
+            "return_30d_pct":   round(float(idx.return_30d_pct or 0), 2),
+            "min_deposit_usd":  round(float(idx.min_deposit_usd or 25), 2),
+        })
+
+    return lots
 
 
 @router.get("/refunds/{wallet_address}")
