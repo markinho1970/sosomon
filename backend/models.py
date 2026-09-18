@@ -294,3 +294,20 @@ class TradeExecution(Base):
     order_id       = Column(String, nullable=True)           # ID da ordem no SoDEX
     executed_at    = Column(DateTime, nullable=False, default=datetime.utcnow)
     created_at     = Column(DateTime, default=datetime.utcnow)
+
+
+class Announcement(Base):
+    __tablename__ = "announcements"
+
+    id               = Column(Integer, primary_key=True, autoincrement=True)
+    source           = Column(String, nullable=False, default="sodex")  # sodex | manual
+    external_id      = Column(String, nullable=True)      # ID externo p/ dedup
+    title            = Column(Text, nullable=False)
+    body             = Column(Text, nullable=True)         # detalhes adicionados pelo admin
+    labels           = Column(JSON, default=list)          # ["Delistings", "Updates"]
+    severity         = Column(String, nullable=False, default="info")  # info | warning | critical
+    affects_symbols  = Column(JSON, default=list)          # ["ADA", "ZEC"]
+    action_deadline  = Column(DateTime, nullable=True)
+    published_at     = Column(DateTime, nullable=True)
+    is_active        = Column(Boolean, nullable=False, default=True)
+    created_at       = Column(DateTime, default=datetime.utcnow)

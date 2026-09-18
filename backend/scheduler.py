@@ -70,6 +70,17 @@ def run_fee_manager():
     _run_async(run_monthly_fees(dry_run=False))
 
 
+def run_announcement_fetcher():
+    from database import SessionLocal
+    from services.announcement_fetcher import sync_announcements
+    logger.info("Scheduler: starting Announcement Fetcher")
+    db = SessionLocal()
+    try:
+        _run_async(sync_announcements(db))
+    finally:
+        db.close()
+
+
 def start_scheduler():
     scheduler.add_job(run_scout, CronTrigger(hour=6, minute=0),
                       id="scout_daily", replace_existing=True)
@@ -94,8 +105,12 @@ def start_scheduler():
     scheduler.add_job(run_fee_manager, CronTrigger(day=1, hour=8, minute=0),
                       id="fee_manager_monthly", replace_existing=True)
 
+    # Announcement Fetcher: busca anúncios SoDEX a cada 2h
+    scheduler.add_job(run_announcement_fetcher, IntervalTrigger(hours=2),
+                      id="announcement_fetcher", replace_existing=True)
+
     scheduler.start()
-    logger.info("Scheduler started: Scout(06:00), Rebalancer(drift/4h), Narrator(Sun 18:00), DepositMonitor Mainnet+Testnet(2min), NAVUpdater(1h), FeeManager(dia1 08:00)")
+    logger.info("Scheduler started: Scout(06:00), Rebalancer(drift/4h), Narrator(Sun 18:00), DepositMonitor Mainnet+Testnet(2min), NAVUpdater(1h), FeeManager(dia1 08:00), AnnouncementFetcher(2h)")
 
 
 def stop_scheduler():

@@ -6,6 +6,7 @@ import type {
   MacroData,
   DashboardData,
   ApiResponse,
+  Announcement,
 } from "@/types";
 
 // Empty string = relative URLs → hits Next.js rewrite proxy (/api/* → backend)
@@ -282,6 +283,61 @@ export const statsApi = {
   get: async (networkMode: "mainnet" | "testnet" = "mainnet"): Promise<PublicStats> => {
     const { data } = await api.get<ApiResponse<PublicStats>>(`/api/stats?network_mode=${networkMode}`);
     return data.data;
+  },
+};
+
+// ─── Announcements (público) ─────────────────────────────────────────────────
+
+export const announcementApi = {
+  getActive: async (): Promise<Announcement[]> => {
+    const { data } = await api.get<{ data: Announcement[] }>("/api/announcements");
+    return data.data;
+  },
+};
+
+// ─── Announcements (admin) ───────────────────────────────────────────────────
+
+export const adminAnnouncementApi = {
+  getAll: async (address: string, message: string, signature: string): Promise<Announcement[]> => {
+    const { data } = await api.get<{ data: Announcement[] }>(
+      "/api/admin/announcements",
+      adminHeaders(address, message, signature)
+    );
+    return data.data;
+  },
+
+  create: async (
+    address: string, message: string, signature: string,
+    payload: { title: string; body?: string; labels?: string[]; severity?: string; affects_symbols?: string[]; action_deadline?: string; source?: string }
+  ): Promise<Announcement> => {
+    const { data } = await api.post<{ data: Announcement }>(
+      "/api/admin/announcements",
+      payload,
+      adminHeaders(address, message, signature)
+    );
+    return data.data;
+  },
+
+  update: async (
+    address: string, message: string, signature: string,
+    id: number,
+    payload: Partial<{ title: string; body: string; labels: string[]; severity: string; affects_symbols: string[]; action_deadline: string | null; is_active: boolean }>
+  ): Promise<Announcement> => {
+    const { data } = await api.patch<{ data: Announcement }>(
+      `/api/admin/announcements/${id}`,
+      payload,
+      adminHeaders(address, message, signature)
+    );
+    return data.data;
+  },
+
+  sync: async (address: string, message: string, signature: string): Promise<{ new: number; skipped: number; total_fetched: number }> => {
+    const { data } = await api.post(
+      "/api/admin/announcements/sync",
+      {},
+      adminHeaders(address, message, signature)
+    );
+    return data;
   },
 };
 

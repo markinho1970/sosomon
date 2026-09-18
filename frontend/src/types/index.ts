@@ -229,3 +229,20 @@ export interface DashboardData {
   total_value_usd: number;
   total_return_pct: number;
 }
+
+// ─── Announcements ───────────────────────────────────────────────────────────
+
+export interface Announcement {
+  id: number;
+  source: string;           // "sodex" | "manual"
+  external_id: string | null;
+  title: string;
+  body: string | null;
+  labels: string[];
+  severity: "info" | "warning" | "critical";
+  affects_symbols: string[];
+  action_deadline: string | null;
+  published_at: string | null;
+  is_active: boolean;
+  created_at: string;
+}

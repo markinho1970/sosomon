@@ -8,14 +8,15 @@ import {
   DollarSign, AlertTriangle, ShieldCheck, Play, Zap, Wallet, ArrowRightLeft,
   Fuel, ExternalLink, ChevronDown, ChevronRight, Copy, Download,
   Home, Bell, Layers, Cpu, Menu, Activity, Server,
-  TrendingUp, TrendingDown, Scale,
+  TrendingUp, TrendingDown, Scale, Megaphone, Plus, Eye, EyeOff,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { adminApi, investApi, type SystemAlert } from "@/lib/api";
+import { adminApi, investApi, adminAnnouncementApi, type SystemAlert } from "@/lib/api";
+import type { Announcement } from "@/types";
 import { useLang } from "@/lib/LanguageContext";
 import { LANGUAGES, type Lang } from "@/lib/i18n/translations";
 
-type AdminTab = "overview" | "proposals" | "indexes" | "treasury" | "investors" | "trades" | "agents";
+type AdminTab = "overview" | "proposals" | "indexes" | "treasury" | "investors" | "trades" | "agents" | "announcements";
 
 interface Proposal {
   id: number;
@@ -213,6 +214,21 @@ export default function AdminPage() {
   const [liveSecs, setLiveSecs] = useState(0);
   const [report, setReport] = useState<Record<string, unknown> | null>(null);
   const [showReport, setShowReport] = useState(false);
+
+  // Announcements state
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [annLoading, setAnnLoading] = useState(false);
+  const [annSyncing, setAnnSyncing] = useState(false);
+  const [annEditId, setAnnEditId] = useState<number | null>(null);
+  const [annEditBody, setAnnEditBody] = useState("");
+  const [annEditSymbols, setAnnEditSymbols] = useState("");
+  const [annEditDeadline, setAnnEditDeadline] = useState("");
+  const [annCreateMode, setAnnCreateMode] = useState(false);
+  const [annNewTitle, setAnnNewTitle] = useState("");
+  const [annNewBody, setAnnNewBody] = useState("");
+  const [annNewSeverity, setAnnNewSeverity] = useState("info");
+  const [annNewSymbols, setAnnNewSymbols] = useState("");
+  const [annNewDeadline, setAnnNewDeadline] = useState("");
 
   // Loading state
   const [loading, setLoading] = useState(false);
@@ -454,6 +470,25 @@ export default function AdminPage() {
     return () => clearInterval(id);
   }, []);
 
+  // Load announcements when tab becomes active
+  useEffect(() => {
+    if (activeTab !== "announcements" || !address || !signMessageAsync || annLoading) return;
+    let cancelled = false;
+    setAnnLoading(true);
+    (async () => {
+      try {
+        const msg = `SoSoMon Admin\nTimestamp: ${new Date().toISOString()}`;
+        const sig = await signMessageAsync({ message: msg });
+        if (cancelled) return;
+        const rows = await adminAnnouncementApi.getAll(address, msg, sig);
+        if (!cancelled) setAnnouncements(rows);
+      } catch (e) { console.error(e); }
+      finally { if (!cancelled) setAnnLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, address]);
+
   // ── Action handlers ──────────────────────────────────────────────────────────
   async function handleApprove(id: number) {
     if (!session) return;
@@ -643,6 +678,7 @@ export default function AdminPage() {
     { id: "investors",  icon: Users,           label: t("admin_tab_investors_tab"), badge: 0 },
     { id: "trades",     icon: ArrowRightLeft,  label: t("admin_tab_trades"),        badge: 0 },
     { id: "agents",     icon: Cpu,             label: t("admin_tab_agents"),        badge: 0 },
+    { id: "announcements", icon: Megaphone,    label: "Anúncios",                   badge: 0 },
   ];
 
   function goTab(tab: AdminTab) { setActiveTab(tab); setSidebarOpen(false); }
@@ -1720,6 +1756,245 @@ export default function AdminPage() {
                     </div>
                   ))}
                 </div>
+              </div>
+            </>
+          )}
+
+          {/* ── ANNOUNCEMENTS TAB ─────────────────────────────────────────── */}
+          {activeTab === "announcements" && (
+            <>
+              {/* Header */}
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-white font-semibold flex items-center gap-2">
+                  <Megaphone size={16} className="text-yellow-400" /> Anúncios SoDEX / Mercado
+                </h2>
+                <div className="flex gap-2">
+                  <button
+                    className="btn-secondary text-xs flex items-center gap-1"
+                    disabled={annSyncing || !address}
+                    onClick={async () => {
+                      if (!address || !signMessageAsync) return;
+                      setAnnSyncing(true);
+                      try {
+                        const msg = `SoSoMon Admin\nTimestamp: ${new Date().toISOString()}`;
+                        const sig = await signMessageAsync({ message: msg });
+                        await adminAnnouncementApi.sync(address, msg, sig);
+                        const rows = await adminAnnouncementApi.getAll(address, msg, sig);
+                        setAnnouncements(rows);
+                      } catch (e) { console.error(e); }
+                      finally { setAnnSyncing(false); }
+                    }}
+                  >
+                    <RefreshCw size={12} className={annSyncing ? "animate-spin" : ""} />
+                    {annSyncing ? "Sincronizando..." : "Sincronizar SoDEX"}
+                  </button>
+                  <button
+                    className="btn-secondary text-xs flex items-center gap-1"
+                    onClick={() => { setAnnCreateMode(true); setAnnEditId(null); }}
+                  >
+                    <Plus size={12} /> Novo Manual
+                  </button>
+                </div>
+              </div>
+
+              {/* Create form */}
+              {annCreateMode && (
+                <div className="card mb-4 space-y-3">
+                  <h3 className="text-white text-sm font-medium">Novo Anúncio Manual</h3>
+                  <input
+                    className="input w-full text-xs"
+                    placeholder="Título"
+                    value={annNewTitle}
+                    onChange={e => setAnnNewTitle(e.target.value)}
+                  />
+                  <textarea
+                    className="input w-full text-xs"
+                    rows={3}
+                    placeholder="Corpo / detalhe (opcional)"
+                    value={annNewBody}
+                    onChange={e => setAnnNewBody(e.target.value)}
+                  />
+                  <div className="flex gap-2">
+                    <select
+                      className="input text-xs flex-1"
+                      value={annNewSeverity}
+                      onChange={e => setAnnNewSeverity(e.target.value)}
+                    >
+                      <option value="info">info</option>
+                      <option value="warning">warning</option>
+                      <option value="critical">critical</option>
+                    </select>
+                    <input
+                      className="input text-xs flex-1"
+                      placeholder="Símbolos (ADA,UNI,...)"
+                      value={annNewSymbols}
+                      onChange={e => setAnnNewSymbols(e.target.value)}
+                    />
+                    <input
+                      type="datetime-local"
+                      className="input text-xs flex-1"
+                      value={annNewDeadline}
+                      onChange={e => setAnnNewDeadline(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <button className="btn-secondary text-xs" onClick={() => setAnnCreateMode(false)}>Cancelar</button>
+                    <button
+                      className="btn-primary text-xs"
+                      onClick={async () => {
+                        if (!address || !annNewTitle || !signMessageAsync) return;
+                        try {
+                          const msg = `SoSoMon Admin\nTimestamp: ${new Date().toISOString()}`;
+                          const sig = await signMessageAsync({ message: msg });
+                          await adminAnnouncementApi.create(address, msg, sig, {
+                            title: annNewTitle,
+                            body: annNewBody || undefined,
+                            severity: annNewSeverity,
+                            affects_symbols: annNewSymbols ? annNewSymbols.split(",").map(s => s.trim()) : [],
+                            action_deadline: annNewDeadline || undefined,
+                            source: "manual",
+                          });
+                          const rows = await adminAnnouncementApi.getAll(address, msg, sig);
+                          setAnnouncements(rows);
+                          setAnnCreateMode(false);
+                          setAnnNewTitle(""); setAnnNewBody(""); setAnnNewSeverity("info"); setAnnNewSymbols(""); setAnnNewDeadline("");
+                        } catch (e) { console.error(e); }
+                      }}
+                    >
+                      Salvar
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* List */}
+              <div className="card">
+                {annLoading ? (
+                  <div className="text-white/30 text-sm text-center py-8">Carregando…</div>
+                ) : announcements.length === 0 ? (
+                  <div className="text-white/30 text-sm text-center py-8">Nenhum anúncio. Clique em "Sincronizar SoDEX".</div>
+                ) : (
+                  <div className="space-y-2">
+                    {announcements.map(ann => {
+                      const severityColor = ann.severity === "critical" ? "text-red-400 border-red-500/30" :
+                        ann.severity === "warning" ? "text-yellow-400 border-yellow-500/30" : "text-blue-400 border-blue-500/30";
+                      const isEditing = annEditId === ann.id;
+                      return (
+                        <div key={ann.id} className={`border rounded-lg p-3 ${ann.is_active ? "border-white/10" : "border-white/5 opacity-50"}`}>
+                          <div className="flex items-start gap-2">
+                            <span className={`text-xs font-bold uppercase tracking-wider shrink-0 mt-0.5 ${severityColor}`}>
+                              {ann.severity}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-white text-xs font-medium truncate">{ann.title}</span>
+                                <span className="text-white/30 text-xs shrink-0">[{ann.source}]</span>
+                              </div>
+                              {ann.affects_symbols.length > 0 && (
+                                <div className="flex gap-1 mt-1 flex-wrap">
+                                  {ann.affects_symbols.map(s => (
+                                    <span key={s} className="bg-white/10 text-white/60 text-xs px-1.5 py-0.5 rounded">{s}</span>
+                                  ))}
+                                </div>
+                              )}
+                              {ann.body && !isEditing && (
+                                <p className="text-white/40 text-xs mt-1 line-clamp-2">{ann.body}</p>
+                              )}
+                              {ann.action_deadline && (
+                                <p className="text-orange-400 text-xs mt-1">Prazo: {new Date(ann.action_deadline).toLocaleDateString("pt-BR")}</p>
+                              )}
+                              {/* Edit inline */}
+                              {isEditing && (
+                                <div className="mt-2 space-y-2">
+                                  <textarea
+                                    className="input w-full text-xs"
+                                    rows={2}
+                                    placeholder="Corpo / detalhe"
+                                    value={annEditBody}
+                                    onChange={e => setAnnEditBody(e.target.value)}
+                                  />
+                                  <div className="flex gap-2">
+                                    <input
+                                      className="input text-xs flex-1"
+                                      placeholder="Símbolos (ADA,UNI,...)"
+                                      value={annEditSymbols}
+                                      onChange={e => setAnnEditSymbols(e.target.value)}
+                                    />
+                                    <input
+                                      type="datetime-local"
+                                      className="input text-xs flex-1"
+                                      value={annEditDeadline}
+                                      onChange={e => setAnnEditDeadline(e.target.value)}
+                                    />
+                                  </div>
+                                  <div className="flex gap-2 justify-end">
+                                    <button className="btn-secondary text-xs" onClick={() => setAnnEditId(null)}>Cancelar</button>
+                                    <button
+                                      className="btn-primary text-xs"
+                                      onClick={async () => {
+                                        if (!address || !signMessageAsync) return;
+                                        try {
+                                          const msg = `SoSoMon Admin\nTimestamp: ${new Date().toISOString()}`;
+                                          const sig = await signMessageAsync({ message: msg });
+                                          await adminAnnouncementApi.update(address, msg, sig, ann.id, {
+                                            body: annEditBody || undefined,
+                                            affects_symbols: annEditSymbols ? annEditSymbols.split(",").map(s => s.trim()) : undefined,
+                                            action_deadline: annEditDeadline || null,
+                                          });
+                                          const rows = await adminAnnouncementApi.getAll(address, msg, sig);
+                                          setAnnouncements(rows);
+                                          setAnnEditId(null);
+                                        } catch (e) { console.error(e); }
+                                      }}
+                                    >
+                                      Salvar
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            {/* Actions */}
+                            <div className="flex gap-1 shrink-0">
+                              <button
+                                title="Editar"
+                                className="text-white/30 hover:text-white/80 p-1"
+                                onClick={() => {
+                                  setAnnEditId(ann.id);
+                                  setAnnEditBody(ann.body || "");
+                                  setAnnEditSymbols(ann.affects_symbols.join(","));
+                                  setAnnEditDeadline(ann.action_deadline ? ann.action_deadline.slice(0, 16) : "");
+                                  setAnnCreateMode(false);
+                                }}
+                              >
+                                <RefreshCw size={12} />
+                              </button>
+                              <button
+                                title={ann.is_active ? "Desativar" : "Ativar"}
+                                className="text-white/30 hover:text-white/80 p-1"
+                                onClick={async () => {
+                                  if (!address || !signMessageAsync) return;
+                                  try {
+                                    const msg = `SoSoMon Admin\nTimestamp: ${new Date().toISOString()}`;
+                                    const sig = await signMessageAsync({ message: msg });
+                                    await adminAnnouncementApi.update(address, msg, sig, ann.id, { is_active: !ann.is_active });
+                                    const rows = await adminAnnouncementApi.getAll(address, msg, sig);
+                                    setAnnouncements(rows);
+                                  } catch (e) { console.error(e); }
+                                }}
+                              >
+                                {ann.is_active ? <EyeOff size={12} /> : <Eye size={12} />}
+                              </button>
+                            </div>
+                          </div>
+                          <div className="text-white/20 text-xs mt-1">
+                            {ann.published_at ? new Date(ann.published_at).toLocaleDateString("pt-BR") : new Date(ann.created_at).toLocaleDateString("pt-BR")}
+                            {ann.labels.length > 0 && <span className="ml-2">{ann.labels.join(", ")}</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </>
           )}
