@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useState, useRef, useEffect } from "react";
 import { usePathname } from "next/navigation";
-import { Menu, X, FlaskConical, ChevronDown, Bot } from "lucide-react";
+import { Menu, X, FlaskConical, ChevronDown, Bot, Megaphone } from "lucide-react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useAccount } from "wagmi";
 import { useRouter } from "next/navigation";
@@ -64,6 +64,11 @@ export default function Navbar() {
           ) : (
             <span title={t("nav_faucet_locked_hint")} className="text-sm text-white/20 cursor-not-allowed select-none">{t("nav_faucet")}</span>
           )}
+
+          <Link href="/announcements" className="flex items-center gap-1.5 text-sm text-white/60 hover:text-white transition-colors">
+            <Megaphone size={13} />
+            Anúncios
+          </Link>
 
           <Link href="/whats-new" className="flex items-center gap-1.5 text-sm text-amber-400/80 hover:text-amber-300 transition-colors font-medium">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
@@ -140,6 +145,10 @@ export default function Navbar() {
           ) : (
             <span className="text-sm text-white/20 cursor-not-allowed">{t("nav_faucet")}</span>
           )}
+          <Link href="/announcements" className="flex items-center gap-1.5 text-sm text-white/60 hover:text-white" onClick={() => setOpen(false)}>
+            <Megaphone size={13} />
+            Anúncios
+          </Link>
           <Link href="/whats-new" className="text-sm text-amber-400/80 hover:text-amber-300 font-medium" onClick={() => setOpen(false)}>{t("nav_whats_new")}</Link>
           {isConnected ? (
             <Link href="/dashboard" className="text-sm text-center text-white/60 border border-white/10 rounded-lg px-4 py-2" onClick={() => setOpen(false)}>{t("nav_dashboard")}</Link>

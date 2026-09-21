@@ -16,10 +16,10 @@ import MacroWidget from "../components/MacroWidget";
 import NetworkGuard from "../components/NetworkGuard";
 import WithdrawButton from "../components/WithdrawButton";
 import PerformancePanel from "../components/PerformancePanel";
-import { investApi, indexApi, agentApi, macroApi, announcementApi } from "@/lib/api";
+import { investApi, indexApi, agentApi, macroApi } from "@/lib/api";
 import { useNetworkMode } from "@/lib/NetworkModeContext";
 import { useLang } from "@/lib/LanguageContext";
-import type { AgentActivity, MacroData, InvestorInsight, AlphaIndex, PortfolioLot, Announcement } from "@/types";
+import type { AgentActivity, MacroData, InvestorInsight, AlphaIndex, PortfolioLot } from "@/types";
 
 const THEME_BADGE: Record<string, string> = {
   "ai-crypto": "bg-purple-500/10 text-purple-400 border-purple-500/20",
@@ -107,7 +107,6 @@ export default function DashboardPage() {
   const [insights, setInsights] = useState<InvestorInsight[]>([]);
   const [allIndexes, setAllIndexes] = useState<AlphaIndex[]>([]);
   const [lots, setLots] = useState<PortfolioLot[]>([]);
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   // { symbol: 'up' | 'down' } — tokens com valor em flash momentâneo
   const [flashed, setFlashed] = useState<Record<string, "up" | "down">>({});
   // Ref para o breakdown atual sem ser dependência do interval
@@ -116,10 +115,6 @@ export default function DashboardPage() {
   const seenConnected = useRef(false);
 
   useEffect(() => { setMounted(true); }, []);
-
-  useEffect(() => {
-    announcementApi.getActive().then(setAnnouncements).catch(() => {});
-  }, []);
 
   // Mantém ref do breakdown sempre atual (evita re-criar o interval a cada mudança)
   useEffect(() => { breakdownRef.current = breakdown; }, [breakdown]);
@@ -291,41 +286,6 @@ export default function DashboardPage() {
         )}
 
         <NetworkGuard />
-
-        {/* ── Announcements banner (critical/warning only) ──────────────── */}
-        {announcements.filter(a => a.severity === "critical" || a.severity === "warning").map(ann => (
-          <div
-            key={ann.id}
-            className={`mb-4 rounded-xl border px-4 py-3 flex items-start gap-3 ${
-              ann.severity === "critical"
-                ? "border-red-500/40 bg-red-500/10"
-                : "border-yellow-500/40 bg-yellow-500/10"
-            }`}
-          >
-            <AlertTriangle size={16} className={ann.severity === "critical" ? "text-red-400 shrink-0 mt-0.5" : "text-yellow-400 shrink-0 mt-0.5"} />
-            <div className="flex-1 min-w-0">
-              <p className={`text-sm font-semibold ${ann.severity === "critical" ? "text-red-300" : "text-yellow-300"}`}>
-                {ann.title}
-              </p>
-              {ann.body && <p className="text-white/60 text-xs mt-0.5">{ann.body}</p>}
-              {ann.affects_symbols.length > 0 && (
-                <div className="flex gap-1 mt-1 flex-wrap">
-                  {ann.affects_symbols.map(s => (
-                    <span key={s} className="text-xs bg-white/10 text-white/50 px-1.5 py-0.5 rounded">{s}</span>
-                  ))}
-                </div>
-              )}
-              {ann.action_deadline && (
-                <p className="text-orange-400 text-xs mt-1 font-medium">
-                  Prazo de ação: {new Date(ann.action_deadline).toLocaleDateString("pt-BR")}
-                </p>
-              )}
-            </div>
-            <span className="text-white/20 text-xs shrink-0">
-              {ann.published_at ? new Date(ann.published_at).toLocaleDateString("pt-BR") : ""}
-            </span>
-          </div>
-        ))}
 
         {pendingWalletChange && (
           <div className="mb-4 rounded-xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -819,43 +779,7 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* ── Market Notices (all active, info included) ───────────── */}
-            {activeTab === "portfolio" && announcements.length > 0 && (
-              <div className="mt-6">
-                <h3 className="text-white/50 text-xs uppercase tracking-widest mb-3 flex items-center gap-2">
-                  <AlertTriangle size={12} /> Avisos do Mercado
-                </h3>
-                <div className="space-y-2">
-                  {announcements.map(ann => {
-                    const color = ann.severity === "critical" ? "border-red-500/30 bg-red-500/5" :
-                      ann.severity === "warning" ? "border-yellow-500/30 bg-yellow-500/5" : "border-white/10 bg-white/2";
-                    const labelColor = ann.severity === "critical" ? "text-red-400" :
-                      ann.severity === "warning" ? "text-yellow-400" : "text-blue-400";
-                    return (
-                      <div key={ann.id} className={`rounded-lg border px-3 py-2 flex items-start gap-2 ${color}`}>
-                        <span className={`text-xs font-bold uppercase shrink-0 mt-0.5 ${labelColor}`}>{ann.severity}</span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-white/80 text-xs font-medium truncate">{ann.title}</p>
-                          {ann.affects_symbols.length > 0 && (
-                            <div className="flex gap-1 mt-0.5 flex-wrap">
-                              {ann.affects_symbols.map(s => (
-                                <span key={s} className="text-white/40 text-xs bg-white/10 px-1 rounded">{s}</span>
-                              ))}
-                            </div>
-                          )}
-                          {ann.action_deadline && (
-                            <p className="text-orange-400 text-xs mt-0.5">Prazo: {new Date(ann.action_deadline).toLocaleDateString("pt-BR")}</p>
-                          )}
-                        </div>
-                        <span className="text-white/20 text-xs shrink-0">
-                          {ann.published_at ? new Date(ann.published_at).toLocaleDateString("pt-BR") : ""}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+
 
             {activeTab === "performance" && (
               <div className="space-y-6">
