@@ -290,16 +290,42 @@ async def update_all_navs():
                 mainnet_tokens     = sum(p.index_tokens_held or 0 for p in mainnet_portfolios)
 
                 # ── NAV via SoDEX (ground truth mainnet) ──────────────────────────
-                # Usa sodex_total diretamente: toda a conta SoDEX pertence ao investidor
-                # (tokens da cesta + USDC residual de depósitos não deployados).
-                # Versão anterior filtrava só tokens da cesta e perdia o USDC residual.
+                # Calcula valor dos investidores somando preço × quantidade de cada
+                # token da cesta no SoDEX. Exclui USDC/ETH operacionais (reserva do fundo,
+                # não pertence ao investidor). Resolve o bug de vDEFI.ssi retornar
+                # usd_value=0 na API de portfolio.
                 nav_sodex = 0.0
-                if sodex_ok and mainnet_tokens > 0 and sodex_total > 0:
-                    nav_sodex = round(sodex_total / mainnet_tokens, 6)
-                    logger.info(
-                        f"NAV [{index.name}]: SoDEX total=${sodex_total:.4f} / "
-                        f"tokens={mainnet_tokens:.4f} → nav_sodex=${nav_sodex:.6f}"
-                    )
+                if sodex_ok and mainnet_tokens > 0:
+                    basket_norm = {
+                        c.symbol.replace('.', '').lower()
+                        for c in constituents
+                        if not c.is_stablecoin and (c.weight or 0) > 0
+                    }
+                    investor_sodex = 0.0
+                    for pos in sodex_snapshot.get('positions', []):
+                        raw_asset  = pos.get('asset', '')
+                        asset      = raw_asset[1:] if raw_asset.startswith('v') else raw_asset
+                        asset_norm = asset.replace('.', '').lower()
+                        if asset_norm not in basket_norm:
+                            continue
+                        amount  = float(pos.get('amount', 0))
+                        usd_val = float(pos.get('usd_value', 0))
+                        if usd_val == 0 and amount > 0:
+                            # API não retornou preço — calcular via preços obtidos
+                            price_data = prices.get(asset) or next(
+                                (pd for sym, pd in prices.items()
+                                 if sym.replace('.', '').lower() == asset_norm),
+                                None
+                            )
+                            if price_data:
+                                usd_val = amount * price_data.get('current_price_usd', 0)
+                        investor_sodex += usd_val
+                    if investor_sodex > 0:
+                        nav_sodex = investor_sodex / mainnet_tokens
+                        logger.info(
+                            f"NAV [{index.name}]: SoDEX basket=${investor_sodex:.4f} / "
+                            f"tokens={mainnet_tokens:.4f} → nav_sodex=${nav_sodex:.6f}"
+                        )
 
                 # Prioridade: 1) SoDEX API (ground truth)  2) index_holdings  3) price-based
                 if nav_sodex > 0:
