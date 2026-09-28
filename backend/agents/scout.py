@@ -318,6 +318,107 @@ async def run_scout_for_index(index_id: str, theme: str, db, macro: dict = None)
         data={"inclusions": len(inclusions), "exclusions": len(exclusions), "weight_changes": len(weight_changes)},
     )
     db.add(activity)
+
+    # 15. Cria RebalanceProposal quando Scout detecta inclusões ou exclusões
+    if inclusions or exclusions:
+        # Monta lista de mudanças no formato esperado pelo admin console
+        proposal_changes = []
+        for inc in inclusions:
+            # Busca peso alvo do candidato na lista com rationale
+            target_w = next(
+                (c.get("target_weight") or c.get("ssi_weight", 0)
+                 for c in candidates_with_rationale if c.get("symbol") == inc["symbol"]),
+                0,
+            )
+            proposal_changes.append({
+                "action": "add",
+                "symbol": inc["symbol"],
+                "name": inc.get("name", inc["symbol"]),
+                "target_weight": round(float(target_w), 2),
+                "rationale": inc.get("rationale", ""),
+            })
+        for exc in exclusions:
+            constituent = current_symbols.get(exc["symbol"])
+            proposal_changes.append({
+                "action": "remove",
+                "symbol": exc["symbol"],
+                "old_weight": float(getattr(constituent, "weight", 0) or 0),
+                "target_weight": 0,
+                "reason": exc.get("reason", ""),
+            })
+
+        # Monta análise detalhada em português para tomada de decisão do admin
+        def _pct(v):
+            if v is None:
+                return "n/d"
+            return f"{float(v):+.1f}%"
+
+        lines = [
+            f"## Análise Scout — {theme.upper()} — {datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC",
+            "",
+            f"**Benchmark 30d:** {_pct(benchmark_30d_pct)}",
+            f"**Sentimento macro:** {sentiment_score}/100",
+            "",
+        ]
+
+        if inclusions:
+            lines.append("### Tokens para INCLUSÃO")
+            for inc in inclusions:
+                cand = next(
+                    (c for c in candidates_with_rationale if c.get("symbol") == inc["symbol"]),
+                    {},
+                )
+                lines.append(f"\n**{inc['symbol']}** — {inc.get('name', '')}")
+                lines.append(f"- Peso SSI: {cand.get('ssi_weight', 'n/d')}")
+                lines.append(f"- Retorno 30d: {_pct(cand.get('roi_30d'))}")
+                lines.append(f"- Retorno 7d: {_pct(cand.get('roi_7d'))}")
+                lines.append(f"- Momentum score: {cand.get('momentum_score', 'n/d')}")
+                lines.append(f"- Rationale: {inc.get('rationale', 'n/d')}")
+
+        if exclusions:
+            lines.append("\n### Tokens para EXCLUSÃO")
+            for exc in exclusions:
+                constituent = current_symbols.get(exc["symbol"])
+                cand = next(
+                    (c for c in candidates_with_rationale if c.get("symbol") == exc["symbol"]),
+                    {},
+                )
+                curr_w = float(getattr(constituent, "weight", 0) or 0)
+                perf_30d = cand.get("roi_30d") or getattr(constituent, "price_change_30d", None)
+                lines.append(f"\n**{exc['symbol']}** (peso atual: {curr_w:.1f}%)")
+                lines.append(f"- Retorno 30d: {_pct(perf_30d)}")
+                lines.append(f"- Motivo: {exc.get('reason', 'n/d')}")
+                if perf_30d is not None and benchmark_30d_pct > 0:
+                    rel = float(perf_30d) - benchmark_30d_pct
+                    lines.append(f"- Performance vs benchmark: {_pct(rel)}")
+
+        lines += [
+            "",
+            "### Para o Admin — Pontos a avaliar antes de aprovar",
+            "1. Os tokens para inclusão estão listados/com liquidez no SoDEX?",
+            "2. Os tokens para exclusão têm ordens abertas que precisam ser fechadas?",
+            "3. O sentimento macro justifica a mudança neste momento?",
+            "4. Verificar se as exclusões superam o benchmark antes de remover.",
+            "5. Confirmar que os pesos resultantes respeitam o cap máximo por token.",
+        ]
+
+        ai_rationale = "\n".join(lines)
+
+        proposal = RebalanceProposal(
+            index_id=index_id,
+            proposed_at=datetime.utcnow(),
+            status="pending",
+            trigger="scout",
+            changes=proposal_changes,
+            ai_rationale=ai_rationale,
+            network_mode="mainnet",
+        )
+        db.add(proposal)
+        logger.info(
+            f"Scout [{theme}]: RebalanceProposal criada — "
+            f"{len(inclusions)} inclusões, {len(exclusions)} exclusões"
+        )
+
     db.commit()
 
     logger.success(
